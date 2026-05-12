@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cruscotto Vendite Personale</title>
+    <link rel="icon" href="data:;base64,">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
@@ -256,7 +257,7 @@
     <script>
         const SUPABASE_URL = window.__env?.SUPABASE_URL || '';
         const SUPABASE_KEY = window.__env?.SUPABASE_KEY || '';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let sidebarOpen = false;
 
@@ -300,7 +301,7 @@
             }
 
             try {
-                const { data: kpiData, error: kpiError } = await supabase
+                const { data: kpiData, error: kpiError } = await supabaseClient
                     .from('rolling_fatturato')
                     .select('mese_consegnato, fatt_mese_anno_prec, variazione_mese, fatt_prog_anno_corr, gto_mag_2026')
                     .order('mese_consegnato', { ascending: false })
@@ -313,20 +314,20 @@
                 const startDate = startOfMonth.toISOString().split('T')[0];
                 const endDate = endOfMonth.toISOString().split('T')[0];
 
-                const { data: ordiniData, error: ordiniError } = await supabase
+                const { data: ordiniData, error: ordiniError } = await supabaseClient
                     .from('ordini')
                     .select('valore_totale, data_ordine')
                     .gte('data_ordine', startDate)
                     .lte('data_ordine', endDate);
                 if (ordiniError) throw ordiniError;
 
-                const { data: ddtData, error: ddtError } = await supabase
+                const { data: ddtData, error: ddtError } = await supabaseClient
                     .from('ddt')
                     .select('id')
                     .eq('stato', 'spedito');
                 if (ddtError) throw ddtError;
 
-                const { data: topClientiData, error: topClientiError } = await supabase
+                const { data: topClientiData, error: topClientiError } = await supabaseClient
                     .from('rolling_fatturato')
                     .select('clienti (nome), fatt_prog_anno_corr')
                     .order('fatt_prog_anno_corr', { ascending: false })
