@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cruscotto Vendite Personale</title>
+    <link rel="icon" href="data:;base64,">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
@@ -198,13 +199,13 @@
     <div class="sidebar" id="sidebar">
         <h2>Cruscotto</h2>
         <ul>
-            <li><a href="#" onclick="showPage('dashboard')" class="active">Dashboard</a></li>
-            <li><a href="#" onclick="showPage('ordini')">Ordini</a></li>
-            <li><a href="#" onclick="showPage('clienti')">Clienti</a></li>
-            <li><a href="#" onclick="showPage('ddt')">DDT & Tracking</a></li>
-            <li><a href="#" onclick="showPage('fatturato')">Fatturato</a></li>
-            <li><a href="#" onclick="showPage('preventivi')">Preventivi</a></li>
-            <li><a href="#" onclick="showPage('agenda')">Agenda</a></li>
+            <li><a href="#" onclick="showPage('dashboard', event)" class="active">Dashboard</a></li>
+            <li><a href="#" onclick="showPage('ordini', event)">Ordini</a></li>
+            <li><a href="#" onclick="showPage('clienti', event)">Clienti</a></li>
+            <li><a href="#" onclick="showPage('ddt', event)">DDT & Tracking</a></li>
+            <li><a href="#" onclick="showPage('fatturato', event)">Fatturato</a></li>
+            <li><a href="#" onclick="showPage('preventivi', event)">Preventivi</a></li>
+            <li><a href="#" onclick="showPage('agenda', event)">Agenda</a></li>
         </ul>
     </div>
     <div class="main-content" id="main-content">
@@ -252,11 +253,11 @@
         </div>
     </div>
 
+    <script src="env.js"></script>
     <script>
-        // Nota: Credenziali prese da .claude/.env
-        const supabaseUrl = 'https://btcnfxoqkddpfhzahhaz.supabase.co';
-        const supabaseKey = 'sb_secret_9FqS1Q8tJUfv4KAm0bmBkQ_WtXElWhv';
-        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+        const SUPABASE_URL = window.__env?.SUPABASE_URL || '';
+        const SUPABASE_KEY = window.__env?.SUPABASE_KEY || '';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let sidebarOpen = false;
 
@@ -273,14 +274,17 @@
             }
         }
 
-        function showPage(pageId) {
+        function showPage(pageId, event) {
+            event.preventDefault();
             const pages = document.querySelectorAll('.page');
             pages.forEach(page => page.classList.remove('active'));
             document.getElementById(pageId).classList.add('active');
 
             const links = document.querySelectorAll('.sidebar a');
             links.forEach(link => link.classList.remove('active'));
-            event.target.classList.add('active');
+            if (event?.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
 
             if (pageId === 'dashboard') {
                 loadDashboard();
@@ -288,99 +292,96 @@
         }
 
         async function loadDashboard() {
+            const kpiGrid = document.getElementById('kpi-grid');
+            const tableBody = document.querySelector('#top-clienti-table tbody');
+            if (!SUPABASE_URL || !SUPABASE_KEY) {
+                kpiGrid.innerHTML = '<div class="loading">Configurazione Supabase mancante</div>';
+                tableBody.innerHTML = '<tr><td colspan="2" class="loading">Configurazione Supabase mancante</td></tr>';
+                return;
+            }
+
             try {
-                // KPI Fatturato
-                const { data: kpiData, error: kpiError } = await supabase
+                const { data: kpiData, error: kpiError } = await supabaseClient
                     .from('rolling_fatturato')
                     .select('mese_consegnato, fatt_mese_anno_prec, variazione_mese, fatt_prog_anno_corr, gto_mag_2026')
                     .order('mese_consegnato', { ascending: false })
                     .limit(1);
-
                 if (kpiError) throw kpiError;
 
-                // Ordini mese corrente
                 const now = new Date();
                 const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                const { data: ordiniData, error: ordiniError } = await supabase
-                    .from('ordini')
-                    .select('*')
-                    .gte('data_ordine', startOfMonth.toISOString().split('T')[0]);
+                const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                const startDate = startOfMonth.toISOString().split('T')[0];
+                const endDate = endOfMonth.toISOString().split('T')[0];
 
+                const { data: ordiniData, error: ordiniError } = await supabaseClient
+                    .from('ordini')
+                    .select('valore_totale, data_ordine')
+                    .gte('data_ordine', startDate)
+                    .lte('data_ordine', endDate);
                 if (ordiniError) throw ordiniError;
 
-                // DDT in transito
-                const { data: ddtData, error: ddtError } = await supabase
+                const { data: ddtData, error: ddtError } = await supabaseClient
                     .from('ddt')
-                    .select('*')
+                    .select('id')
                     .eq('stato', 'spedito');
-
                 if (ddtError) throw ddtError;
 
-                // Top 5 clienti
-                const { data: topClientiData, error: topClientiError } = await supabase
+                const { data: topClientiData, error: topClientiError } = await supabaseClient
                     .from('rolling_fatturato')
-                    .select(`
-                        clienti (nome),
-                        fatt_prog_anno_corr
-                    `)
+                    .select('clienti (nome), fatt_prog_anno_corr')
                     .order('fatt_prog_anno_corr', { ascending: false })
                     .limit(5);
-
                 if (topClientiError) throw topClientiError;
 
-                // Render KPI
-                const kpiGrid = document.getElementById('kpi-grid');
-                if (kpiData.length > 0) {
+                let kpItems = '<div class="loading">Nessun dato KPI disponibile</div>';
+                if (kpiData?.length) {
                     const kpi = kpiData[0];
-                    const fattMeseCorr = kpi.fatt_mese_anno_prec * (1 + kpi.variazione_mese / 100);
-                    const progressAnnuo = (kpi.fatt_prog_anno_corr / kpi.gto_mag_2026) * 100;
-                    const ordiniCount = ordiniData.length;
-                    const ordiniValue = ordiniData.reduce((sum, ordine) => sum + ordine.valore_totale, 0);
-                    const ddtCount = ddtData.length;
+                    const currentMonthValue = kpi.fatt_mese_anno_prec * (1 + kpi.variazione_mese / 100);
+                    const progressAnnuo = kpi.gto_mag_2026 ? (kpi.fatt_prog_anno_corr / kpi.gto_mag_2026) * 100 : 0;
+                    const ordiniCount = ordiniData?.length || 0;
+                    const ordiniValue = ordiniData?.reduce((sum, ordine) => sum + Number(ordine.valore_totale || 0), 0) || 0;
+                    const ddtCount = ddtData?.length || 0;
 
-                    kpiGrid.innerHTML = `
+                    kpItems = `
                         <div class="kpi-card">
-                            <h3>Fatturato Mese Corrente vs Anno Precedente</h3>
-                            <div class="kpi-value">€${fattMeseCorr.toFixed(2)}</div>
+                            <h3>Fatturato mese corrente vs anno precedente</h3>
+                            <div class="kpi-value">€${currentMonthValue.toFixed(2)}</div>
                             <div class="kpi-change ${kpi.variazione_mese >= 0 ? 'positive' : 'negative'}">${kpi.variazione_mese >= 0 ? '+' : ''}${kpi.variazione_mese.toFixed(2)}%</div>
                         </div>
                         <div class="kpi-card">
-                            <h3>Progressivo Annuale vs GTO</h3>
+                            <h3>Progressivo annuale vs GTO</h3>
                             <div class="kpi-value">${progressAnnuo.toFixed(1)}%</div>
                         </div>
                         <div class="kpi-card">
-                            <h3>Ordini del Mese</h3>
+                            <h3>Ordini del mese</h3>
                             <div class="kpi-value">${ordiniCount} (€${ordiniValue.toFixed(2)})</div>
                         </div>
                         <div class="kpi-card">
-                            <h3>DDT in Transito</h3>
+                            <h3>DDT in transito</h3>
                             <div class="kpi-value">${ddtCount}</div>
-                        </div>
-                        <div class="kpi-card">
-                            <h3>Variazione % sul Mese Precedente</h3>
-                            <div class="kpi-value">${kpi.variazione_mese.toFixed(2)}%</div>
-                            <div class="kpi-change ${kpi.variazione_mese >= 0 ? 'positive' : 'negative'}">${kpi.variazione_mese >= 0 ? 'Aumento' : 'Diminuzione'}</div>
                         </div>
                     `;
                 }
+                kpiGrid.innerHTML = kpItems;
 
-                // Render Top 5 Clienti
-                const tableBody = document.querySelector('#top-clienti-table tbody');
-                tableBody.innerHTML = topClientiData.map(cliente => `
-                    <tr>
-                        <td>${cliente.clienti?.nome || 'N/A'}</td>
-                        <td>€${cliente.fatt_prog_anno_corr.toFixed(2)}</td>
-                    </tr>
-                `).join('');
-
+                if (topClientiData?.length) {
+                    tableBody.innerHTML = topClientiData.map(cliente => `
+                        <tr>
+                            <td>${cliente.clienti?.nome || 'N/A'}</td>
+                            <td>€${Number(cliente.fatt_prog_anno_corr || 0).toFixed(2)}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="2" class="loading">Nessun cliente disponibile</td></tr>';
+                }
             } catch (error) {
                 console.error('Errore nel caricamento del dashboard:', error);
-                document.getElementById('kpi-grid').innerHTML = '<div class="loading">Errore nel caricamento dei dati</div>';
-                document.querySelector('#top-clienti-table tbody').innerHTML = '<tr><td colspan="2" class="loading">Errore nel caricamento dei dati</td></tr>';
+                kpiGrid.innerHTML = '<div class="loading">Errore nel caricamento dei dati</div>';
+                tableBody.innerHTML = '<tr><td colspan="2" class="loading">Errore nel caricamento dei dati</td></tr>';
             }
         }
 
-        // Carica dashboard all'avvio
         loadDashboard();
     </script>
 </body>
