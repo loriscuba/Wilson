@@ -349,22 +349,23 @@
 
                 const { data: ordiniData, error: ordiniError } = await supabaseClient
                     .from('ordini')
-                    .select('totale_ordine, data_ordine')
-                    .gte('data_ordine', startDate)
-                    .lte('data_ordine', endDate);
+                    .select('*')
+                    .limit(100);
                 if (ordiniError) throw ordiniError;
                 
                 console.log('Date range:', startDate, 'to', endDate);
-                console.log('Ordini Data:', ordiniData);
-                console.log('Ordini count:', ordiniData?.length);
+                console.log('All Ordini (no filter):', ordiniData);
+                console.log('Ordini with filter:', ordiniData?.filter(o => o.data_ordine >= startDate && o.data_ordine <= endDate));
 
                 const { data: ddtData, error: ddtError } = await supabaseClient
                     .from('ddt')
-                    .select('id, stato');
+                    .select('*')
+                    .limit(100);
                 if (ddtError) throw ddtError;
                 
-                console.log('All DDT Data:', ddtData);
-                console.log('DDT with stato=spedito:', ddtData?.filter(d => d.stato === 'spedito'));
+                console.log('All DDT Data (no filter):', ddtData);
+                console.log('DDT column names:', ddtData?.[0] ? Object.keys(ddtData[0]) : 'no data');
+                console.log('Ordini column names:', ordiniData?.[0] ? Object.keys(ordiniData[0]) : 'no data');
 
                 const { data: topClientiData, error: topClientiError } = {data: [], error: null};
                 // TODO: Fix the join with clienti table - currently rolling_fatturato doesn't have a direct relationship
@@ -380,8 +381,9 @@
                     const kpi = kpiData[0];
                     const currentMonthValue = kpi.fatt_mese_anno_prec * (1 + kpi.variazione_mese / 100);
                     const progressAnnuo = kpi.gto_mag_2026 ? (kpi.fatt_prog_anno_corr / kpi.gto_mag_2026) * 100 : 0;
-                    const ordiniCount = ordiniData?.length || 0;
-                    const ordiniValue = ordiniData?.reduce((sum, ordine) => sum + Number(ordine.totale_ordine || 0), 0) || 0;
+                    const ordiniFiltrati = ordiniData?.filter(o => o.data_ordine >= startDate && o.data_ordine <= endDate) || [];
+                    const ordiniCount = ordiniFiltrati.length;
+                    const ordiniValue = ordiniFiltrati.reduce((sum, ordine) => sum + Number(ordine.totale_ordine || 0), 0) || 0;
                     const ddtSpeditiCount = ddtData?.filter(d => d.stato === 'spedito')?.length || 0;
 
                     kpItems = `
@@ -404,8 +406,9 @@
                         </div>
                     `;
                 } else {
-                    const ordiniCount = ordiniData?.length || 0;
-                    const ordiniValue = ordiniData?.reduce((sum, ordine) => sum + Number(ordine.totale_ordine || 0), 0) || 0;
+                    const ordiniFiltrati = ordiniData?.filter(o => o.data_ordine >= startDate && o.data_ordine <= endDate) || [];
+                    const ordiniCount = ordiniFiltrati.length;
+                    const ordiniValue = ordiniFiltrati.reduce((sum, ordine) => sum + Number(ordine.totale_ordine || 0), 0) || 0;
                     const ddtSpeditiCount = ddtData?.filter(d => d.stato === 'spedito')?.length || 0;
                     
                     kpItems = `
