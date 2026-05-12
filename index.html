@@ -257,7 +257,28 @@
     <script>
         const SUPABASE_URL = window.__env?.SUPABASE_URL || '';
         const SUPABASE_KEY = window.__env?.SUPABASE_KEY || '';
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        function getSafeStorage() {
+            try {
+                const testKey = '__supabase_storage_test__';
+                window.localStorage.setItem(testKey, testKey);
+                window.localStorage.removeItem(testKey);
+                return window.localStorage;
+            } catch (error) {
+                return {
+                    getItem: () => null,
+                    setItem: () => {},
+                    removeItem: () => {},
+                };
+            }
+        }
+
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+            auth: {
+                persistSession: false,
+                storage: getSafeStorage(),
+            },
+        });
 
         let sidebarOpen = false;
 
