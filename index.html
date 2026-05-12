@@ -360,11 +360,13 @@
                     .eq('stato', 'spedito');
                 if (ddtError) throw ddtError;
 
-                const { data: topClientiData, error: topClientiError } = await supabaseClient
-                    .from('rolling_fatturato')
-                    .select('clienti (nome), fatt_prog_anno_corr')
-                    .order('fatt_prog_anno_corr', { ascending: false })
-                    .limit(5);
+                const { data: topClientiData, error: topClientiError } = {data: [], error: null};
+                // TODO: Fix the join with clienti table - currently rolling_fatturato doesn't have a direct relationship
+                // const { data: topClientiData, error: topClientiError } = await supabaseClient
+                //     .from('rolling_fatturato')
+                //     .select('clienti (nome), fatt_prog_anno_corr')
+                //     .order('fatt_prog_anno_corr', { ascending: false })
+                //     .limit(5);
                 if (topClientiError) throw topClientiError;
 
                 let kpItems = '<div class="loading">Nessun dato KPI disponibile</div>';
