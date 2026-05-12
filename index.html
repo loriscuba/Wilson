@@ -353,12 +353,18 @@
                     .gte('data_ordine', startDate)
                     .lte('data_ordine', endDate);
                 if (ordiniError) throw ordiniError;
+                
+                console.log('Date range:', startDate, 'to', endDate);
+                console.log('Ordini Data:', ordiniData);
+                console.log('Ordini count:', ordiniData?.length);
 
                 const { data: ddtData, error: ddtError } = await supabaseClient
                     .from('ddt')
-                    .select('id')
-                    .eq('stato', 'spedito');
+                    .select('id, stato');
                 if (ddtError) throw ddtError;
+                
+                console.log('All DDT Data:', ddtData);
+                console.log('DDT with stato=spedito:', ddtData?.filter(d => d.stato === 'spedito'));
 
                 const { data: topClientiData, error: topClientiError } = {data: [], error: null};
                 // TODO: Fix the join with clienti table - currently rolling_fatturato doesn't have a direct relationship
@@ -376,7 +382,7 @@
                     const progressAnnuo = kpi.gto_mag_2026 ? (kpi.fatt_prog_anno_corr / kpi.gto_mag_2026) * 100 : 0;
                     const ordiniCount = ordiniData?.length || 0;
                     const ordiniValue = ordiniData?.reduce((sum, ordine) => sum + Number(ordine.totale_ordine || 0), 0) || 0;
-                    const ddtCount = ddtData?.length || 0;
+                    const ddtSpeditiCount = ddtData?.filter(d => d.stato === 'spedito')?.length || 0;
 
                     kpItems = `
                         <div class="kpi-card">
@@ -394,13 +400,13 @@
                         </div>
                         <div class="kpi-card">
                             <h3>DDT in transito</h3>
-                            <div class="kpi-value">${ddtCount}</div>
+                            <div class="kpi-value">${ddtSpeditiCount}</div>
                         </div>
                     `;
                 } else {
                     const ordiniCount = ordiniData?.length || 0;
                     const ordiniValue = ordiniData?.reduce((sum, ordine) => sum + Number(ordine.totale_ordine || 0), 0) || 0;
-                    const ddtCount = ddtData?.length || 0;
+                    const ddtSpeditiCount = ddtData?.filter(d => d.stato === 'spedito')?.length || 0;
                     
                     kpItems = `
                         <div class="kpi-card">
@@ -413,7 +419,7 @@
                         </div>
                         <div class="kpi-card">
                             <h3>DDT in transito</h3>
-                            <div class="kpi-value">${ddtCount}</div>
+                            <div class="kpi-value">${ddtSpeditiCount}</div>
                         </div>
                     `;
                 }
