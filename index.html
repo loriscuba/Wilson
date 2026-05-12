@@ -349,7 +349,7 @@
 
                 const { data: ordiniData, error: ordiniError } = await supabaseClient
                     .from('ordini')
-                    .select('valore_totale, data_ordine')
+                    .select('totale_ordine, data_ordine')
                     .gte('data_ordine', startDate)
                     .lte('data_ordine', endDate);
                 if (ordiniError) throw ordiniError;
@@ -373,7 +373,7 @@
                     const currentMonthValue = kpi.fatt_mese_anno_prec * (1 + kpi.variazione_mese / 100);
                     const progressAnnuo = kpi.gto_mag_2026 ? (kpi.fatt_prog_anno_corr / kpi.gto_mag_2026) * 100 : 0;
                     const ordiniCount = ordiniData?.length || 0;
-                    const ordiniValue = ordiniData?.reduce((sum, ordine) => sum + Number(ordine.valore_totale || 0), 0) || 0;
+                    const ordiniValue = ordiniData?.reduce((sum, ordine) => sum + Number(ordine.totale_ordine || 0), 0) || 0;
                     const ddtCount = ddtData?.length || 0;
 
                     kpItems = `
