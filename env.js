@@ -1,4 +1,4 @@
 window.__env = {
     SUPABASE_URL: 'https://btcnfxoqkddpfhzahhaz.supabase.co',
-    SUPABASE_KEY: 'sb_secret_9FqS1Q8tJUfv4KAm0bmBkQ_WtXElWhv'
+    SUPABASE_KEY: 'YOUR_ANON_KEY_HERE' // replace with your Supabase anon/public key, not the secret key
 };

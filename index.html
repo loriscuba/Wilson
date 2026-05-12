@@ -273,6 +273,18 @@
             }
         }
 
+        if (SUPABASE_KEY.startsWith('sb_secret_')) {
+            console.error('Supabase secret key used in browser; use anon/public key instead.');
+            const kpiGrid = document.getElementById('kpi-grid');
+            const tableBody = document.querySelector('#top-clienti-table tbody');
+            if (kpiGrid) {
+                kpiGrid.innerHTML = '<div class="loading">Errore: chiave segreta Supabase non consentita in browser.</div>';
+            }
+            if (tableBody) {
+                tableBody.innerHTML = '<tr><td colspan="2" class="loading">Usa la chiave anonima Supabase, non la chiave segreta.</td></tr>';
+            }
+        }
+
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
             auth: {
                 persistSession: false,
