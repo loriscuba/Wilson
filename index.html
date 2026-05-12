@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cruscotto Vendite Personale</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --bg: #F7F6F3;
+            --surface: #FFFFFF;
+            --border: #E5E2DA;
+            --text: #1A1916;
+            --text2: #6B6860;
+            --accent: #C84B2F;
+            --green: #2D7D4F;
+            --red: #C84B2F;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .sidebar h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: var(--accent);
+        }
+
+        .sidebar ul {
+            list-style: none;
+        }
+
+        .sidebar li {
+            margin-bottom: 10px;
+        }
+
+        .sidebar a {
+            text-decoration: none;
+            color: var(--text);
+            font-weight: 500;
+            display: block;
+            padding: 10px;
+            border-radius: 5px;
+            transition: background-color 0.2s;
+        }
+
+        .sidebar a:hover, .sidebar a.active {
+            background-color: var(--bg);
+        }
+
+        .hamburger {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 24px;
+            color: var(--text);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            margin-left: 0;
+            transition: margin-left 0.3s ease;
+        }
+
+        .main-content.shifted {
+            margin-left: 250px;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .kpi-card {
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .kpi-card h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: var(--text2);
+        }
+
+        .kpi-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .kpi-change {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .kpi-change.positive {
+            color: var(--green);
+        }
+
+        .kpi-change.negative {
+            color: var(--red);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .table th, .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .table th {
+            background-color: var(--bg);
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--text2);
+        }
+
+        .placeholder {
+            text-align: center;
+            padding: 40px;
+            color: var(--text2);
+        }
+    </style>
+</head>
+<body>
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="sidebar" id="sidebar">
+        <h2>Cruscotto</h2>
+        <ul>
+            <li><a href="#" onclick="showPage('dashboard')" class="active">Dashboard</a></li>
+            <li><a href="#" onclick="showPage('ordini')">Ordini</a></li>
+            <li><a href="#" onclick="showPage('clienti')">Clienti</a></li>
+            <li><a href="#" onclick="showPage('ddt')">DDT & Tracking</a></li>
+            <li><a href="#" onclick="showPage('fatturato')">Fatturato</a></li>
+            <li><a href="#" onclick="showPage('preventivi')">Preventivi</a></li>
+            <li><a href="#" onclick="showPage('agenda')">Agenda</a></li>
+        </ul>
+    </div>
+    <div class="main-content" id="main-content">
+        <div id="dashboard" class="page active">
+            <h1>Dashboard</h1>
+            <div class="kpi-grid" id="kpi-grid">
+                <div class="loading">Caricamento KPI...</div>
+            </div>
+            <h2>Top 5 Clienti per Fatturato</h2>
+            <table class="table" id="top-clienti-table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Fatturato Progressivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="2" class="loading">Caricamento dati...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="ordini" class="page">
+            <h1>Ordini</h1>
+            <div class="placeholder">Sezione Ordini - In sviluppo</div>
+        </div>
+        <div id="clienti" class="page">
+            <h1>Clienti</h1>
+            <div class="placeholder">Sezione Clienti - In sviluppo</div>
+        </div>
+        <div id="ddt" class="page">
+            <h1>DDT & Tracking</h1>
+            <div class="placeholder">Sezione DDT & Tracking - In sviluppo</div>
+        </div>
+        <div id="fatturato" class="page">
+            <h1>Fatturato</h1>
+            <div class="placeholder">Sezione Fatturato - In sviluppo</div>
+        </div>
+        <div id="preventivi" class="page">
+            <h1>Preventivi</h1>
+            <div class="placeholder">Placeholder - Preventivi</div>
+        </div>
+        <div id="agenda" class="page">
+            <h1>Agenda</h1>
+            <div class="placeholder">Placeholder - Agenda</div>
+        </div>
+    </div>
+
+    <script>
+        // Nota: Credenziali prese da .claude/.env
+        const supabaseUrl = 'https://btcnfxoqkddpfhzahhaz.supabase.co';
+        const supabaseKey = 'sb_secret_9FqS1Q8tJUfv4KAm0bmBkQ_WtXElWhv';
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+        let sidebarOpen = false;
+
+        function toggleSidebar() {
+            sidebarOpen = !sidebarOpen;
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            if (sidebarOpen) {
+                sidebar.classList.add('open');
+                mainContent.classList.add('shifted');
+            } else {
+                sidebar.classList.remove('open');
+                mainContent.classList.remove('shifted');
+            }
+        }
+
+        function showPage(pageId) {
+            const pages = document.querySelectorAll('.page');
+            pages.forEach(page => page.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+
+            const links = document.querySelectorAll('.sidebar a');
+            links.forEach(link => link.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (pageId === 'dashboard') {
+                loadDashboard();
+            }
+        }
+
+        async function loadDashboard() {
+            try {
+                // KPI Fatturato
+                const { data: kpiData, error: kpiError } = await supabase
+                    .from('rolling_fatturato')
+                    .select('mese_consegnato, fatt_mese_anno_prec, variazione_mese, fatt_prog_anno_corr, gto_mag_2026')
+                    .order('mese_consegnato', { ascending: false })
+                    .limit(1);
+
+                if (kpiError) throw kpiError;
+
+                // Ordini mese corrente
+                const now = new Date();
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                const { data: ordiniData, error: ordiniError } = await supabase
+                    .from('ordini')
+                    .select('*')
+                    .gte('data_ordine', startOfMonth.toISOString().split('T')[0]);
+
+                if (ordiniError) throw ordiniError;
+
+                // DDT in transito
+                const { data: ddtData, error: ddtError } = await supabase
+                    .from('ddt')
+                    .select('*')
+                    .eq('stato', 'spedito');
+
+                if (ddtError) throw ddtError;
+
+                // Top 5 clienti
+                const { data: topClientiData, error: topClientiError } = await supabase
+                    .from('rolling_fatturato')
+                    .select(`
+                        clienti (nome),
+                        fatt_prog_anno_corr
+                    `)
+                    .order('fatt_prog_anno_corr', { ascending: false })
+                    .limit(5);
+
+                if (topClientiError) throw topClientiError;
+
+                // Render KPI
+                const kpiGrid = document.getElementById('kpi-grid');
+                if (kpiData.length > 0) {
+                    const kpi = kpiData[0];
+                    const fattMeseCorr = kpi.fatt_mese_anno_prec * (1 + kpi.variazione_mese / 100);
+                    const progressAnnuo = (kpi.fatt_prog_anno_corr / kpi.gto_mag_2026) * 100;
+                    const ordiniCount = ordiniData.length;
+                    const ordiniValue = ordiniData.reduce((sum, ordine) => sum + ordine.valore_totale, 0);
+                    const ddtCount = ddtData.length;
+
+                    kpiGrid.innerHTML = `
+                        <div class="kpi-card">
+                            <h3>Fatturato Mese Corrente vs Anno Precedente</h3>
+                            <div class="kpi-value">€${fattMeseCorr.toFixed(2)}</div>
+                            <div class="kpi-change ${kpi.variazione_mese >= 0 ? 'positive' : 'negative'}">${kpi.variazione_mese >= 0 ? '+' : ''}${kpi.variazione_mese.toFixed(2)}%</div>
+                        </div>
+                        <div class="kpi-card">
+                            <h3>Progressivo Annuale vs GTO</h3>
+                            <div class="kpi-value">${progressAnnuo.toFixed(1)}%</div>
+                        </div>
+                        <div class="kpi-card">
+                            <h3>Ordini del Mese</h3>
+                            <div class="kpi-value">${ordiniCount} (€${ordiniValue.toFixed(2)})</div>
+                        </div>
+                        <div class="kpi-card">
+                            <h3>DDT in Transito</h3>
+                            <div class="kpi-value">${ddtCount}</div>
+                        </div>
+                        <div class="kpi-card">
+                            <h3>Variazione % sul Mese Precedente</h3>
+                            <div class="kpi-value">${kpi.variazione_mese.toFixed(2)}%</div>
+                            <div class="kpi-change ${kpi.variazione_mese >= 0 ? 'positive' : 'negative'}">${kpi.variazione_mese >= 0 ? 'Aumento' : 'Diminuzione'}</div>
+                        </div>
+                    `;
+                }
+
+                // Render Top 5 Clienti
+                const tableBody = document.querySelector('#top-clienti-table tbody');
+                tableBody.innerHTML = topClientiData.map(cliente => `
+                    <tr>
+                        <td>${cliente.clienti?.nome || 'N/A'}</td>
+                        <td>€${cliente.fatt_prog_anno_corr.toFixed(2)}</td>
+                    </tr>
+                `).join('');
+
+            } catch (error) {
+                console.error('Errore nel caricamento del dashboard:', error);
+                document.getElementById('kpi-grid').innerHTML = '<div class="loading">Errore nel caricamento dei dati</div>';
+                document.querySelector('#top-clienti-table tbody').innerHTML = '<tr><td colspan="2" class="loading">Errore nel caricamento dei dati</td></tr>';
+            }
+        }
+
+        // Carica dashboard all'avvio
+        loadDashboard();
+    </script>
+</body>
+</html>
