@@ -1,0 +1,155 @@
+name: Wilson - Sync Drive → Supabase
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # ogni 15 minuti
+  workflow_dispatch:          # permette esecuzione manuale
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installa dipendenze
+        run: |
+          pip install pdfplumber openpyxl xlrd supabase google-auth google-api-python-client
+
+      - name: Scarica file da Google Drive
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_FOLDER_ID: 1G96ZLk4OS2QR3a53lBtVbpPeBi0uTnMr
+        run: |
+          python3 - <<'EOF'
+          import os
+          import json
+          import io
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaIoBaseDownload
+
+          # Autenticazione
+          sa_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'])
+          creds = service_account.Credentials.from_service_account_info(
+              sa_info,
+              scopes=['https://www.googleapis.com/auth/drive']
+          )
+          service = build('drive', 'v3', credentials=creds)
+
+          folder_id = os.environ['DRIVE_FOLDER_ID']
+
+          # Lista file nella cartella inbox
+          results = service.files().list(
+              q=f"'{folder_id}' in parents and trashed=false",
+              fields="files(id, name, mimeType)"
+          ).execute()
+
+          files = results.get('files', [])
+          print(f"File trovati su Drive: {len(files)}")
+
+          if not files:
+              print("Nessun file da processare.")
+              exit(0)
+
+          # Crea cartella allegati locale
+          os.makedirs('allegati', exist_ok=True)
+
+          # Scarica ogni file
+          downloaded = []
+          for f in files:
+              file_id = f['id']
+              file_name = f['name']
+              print(f"  ⬇️  Scaricando: {file_name}")
+
+              request = service.files().get_media(fileId=file_id)
+              path = os.path.join('allegati', file_name)
+
+              with io.FileIO(path, 'wb') as fh:
+                  downloader = MediaIoBaseDownload(fh, request)
+                  done = False
+                  while not done:
+                      _, done = downloader.next_chunk()
+
+              downloaded.append((file_id, file_name))
+              print(f"  ✅ Salvato: {file_name}")
+
+          # Salva gli ID per eliminarli dopo
+          with open('drive_files_to_delete.json', 'w') as f:
+              json.dump(downloaded, f)
+
+          print(f"\nTotale scaricati: {len(downloaded)}")
+          EOF
+
+      - name: Esegui dispatcher
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          # Controlla se ci sono file da processare
+          if [ -z "$(ls -A allegati 2>/dev/null)" ]; then
+            echo "Nessun file nella cartella allegati, skip."
+            exit 0
+          fi
+
+          echo "File da processare:"
+          ls -la allegati/
+
+          python3 dispatcher.py --cartella ./allegati/
+
+      - name: Elimina file da Drive dopo import
+        if: success()
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 - <<'EOF'
+          import os
+          import json
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          # Controlla se ci sono file da eliminare
+          if not os.path.exists('drive_files_to_delete.json'):
+              print("Nessun file da eliminare.")
+              exit(0)
+
+          with open('drive_files_to_delete.json') as f:
+              files = json.load(f)
+
+          if not files:
+              print("Lista file vuota.")
+              exit(0)
+
+          # Autenticazione
+          sa_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'])
+          creds = service_account.Credentials.from_service_account_info(
+              sa_info,
+              scopes=['https://www.googleapis.com/auth/drive']
+          )
+          service = build('drive', 'v3', credentials=creds)
+
+          # Elimina ogni file
+          for file_id, file_name in files:
+              try:
+                  service.files().delete(fileId=file_id).execute()
+                  print(f"  🗑️  Eliminato da Drive: {file_name}")
+              except Exception as e:
+                  print(f"  ❌ Errore eliminazione {file_name}: {e}")
+
+          print(f"\nEliminati {len(files)} file da Drive.")
+          EOF
+
+      - name: Elimina file locali
+        if: always()
+        run: |
+          rm -rf allegati/
+          rm -f drive_files_to_delete.json
+          echo "Pulizia locale completata."
