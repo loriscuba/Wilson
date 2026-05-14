@@ -105,20 +105,22 @@ jobs:
 
           python3 dispatcher.py --cartella ./allegati/
 
-      - name: Elimina file da Drive dopo import
+      - name: Sposta file in processed/ dopo import
         if: success()
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_PROCESSED_FOLDER_ID: 1Qvhn_T2XqT8gxSsfAzwiSUUQL2P4Ou3R
         run: |
           python3 - <<'EOF'
           import os
           import json
+          from datetime import datetime
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
 
-          # Controlla se ci sono file da eliminare
+          # Controlla se ci sono file da spostare
           if not os.path.exists('drive_files_to_delete.json'):
-              print("Nessun file da eliminare.")
+              print("Nessun file da spostare.")
               exit(0)
 
           with open('drive_files_to_delete.json') as f:
@@ -136,15 +138,31 @@ jobs:
           )
           service = build('drive', 'v3', credentials=creds)
 
-          # Elimina ogni file
+          processed_folder_id = os.environ['DRIVE_PROCESSED_FOLDER_ID']
+          oggi = datetime.now().strftime('%Y-%m-%d')
+
+          # Sposta ogni file in processed/
           for file_id, file_name in files:
               try:
-                  service.files().delete(fileId=file_id).execute()
-                  print(f"  🗑️  Eliminato da Drive: {file_name}")
-              except Exception as e:
-                  print(f"  ❌ Errore eliminazione {file_name}: {e}")
+                  # Recupera i parent attuali
+                  file_info = service.files().get(
+                      fileId=file_id,
+                      fields='parents'
+                  ).execute()
+                  current_parents = ','.join(file_info.get('parents', []))
 
-          print(f"\nEliminati {len(files)} file da Drive.")
+                  # Sposta nella cartella processed
+                  service.files().update(
+                      fileId=file_id,
+                      addParents=processed_folder_id,
+                      removeParents=current_parents,
+                      fields='id, parents'
+                  ).execute()
+                  print(f"  📁 Spostato in processed/: {file_name}")
+              except Exception as e:
+                  print(f"  ❌ Errore spostamento {file_name}: {e}")
+
+          print(f"\nSpostati {len(files)} file in processed/.")
           EOF
 
       - name: Elimina file locali
