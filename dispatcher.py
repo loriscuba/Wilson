@@ -24,11 +24,6 @@ import re
 import glob
 import argparse
 from supabase import create_client
-from dotenv import load_dotenv
-
-# Carica .env dalla directory di lavoro (o da quella dello script)
-load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-load_dotenv()
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
