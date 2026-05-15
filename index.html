@@ -253,6 +253,82 @@
         .table-header-bar span { font-size: 13px; color: var(--text2); }
         .table-count { font-weight: 700; color: var(--text); }
 
+        /* ── Filtri ── */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            flex-wrap: wrap;
+        }
+        .filter-bar label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text2);
+            white-space: nowrap;
+        }
+        .filter-input {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--accent); }
+        .filter-input[type=date] { width: 130px; }
+        .filter-input[type=text] { width: 180px; }
+        .filter-reset {
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            color: var(--text2);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .filter-reset:hover { background: var(--bg); color: var(--text); }
+        .filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+        /* ── Expand righe ordine ── */
+        .expand-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text2);
+            font-size: 11px;
+            padding: 3px 5px;
+            border-radius: 4px;
+            transition: color 0.15s, transform 0.2s;
+            line-height: 1;
+            display: inline-block;
+        }
+        .expand-btn:hover { color: var(--text); }
+        .expand-btn.open { transform: rotate(90deg); color: var(--accent); }
+        .righe-row { display: none; }
+        .righe-row.open { display: table-row; }
+        .righe-row > td { padding: 0 !important; background: #FAFAF8; border-bottom: 2px solid var(--border); }
+        .righe-inner { padding: 10px 16px 10px 44px; }
+        .righe-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .righe-table th {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.4px; color: var(--text2);
+            padding: 6px 10px; text-align: left;
+            border-bottom: 1px solid var(--border);
+            background: #F0EEE9;
+        }
+        .righe-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+        .righe-table tr:last-child td { border-bottom: none; }
+        .ordine-row { cursor: pointer; }
+
         /* ── Sync button ── */
         .sync-btn {
             display: flex;
@@ -334,13 +410,25 @@
         <div id="ordini" class="page">
             <h1>Ordini</h1>
             <div class="table-wrapper" id="ordini-wrapper">
+                <div class="filter-bar">
+                    <label>Dal</label>
+                    <input class="filter-input" type="date" id="filtro-da" oninput="loadOrdini()">
+                    <label>Al</label>
+                    <input class="filter-input" type="date" id="filtro-a" oninput="loadOrdini()">
+                    <div class="filter-sep"></div>
+                    <label>Cliente</label>
+                    <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="debounceOrdini()">
+                    <div class="filter-sep"></div>
+                    <button class="filter-reset" onclick="resetFiltriOrdini()">Azzera filtri</button>
+                </div>
                 <div class="table-header-bar">
-                    <span>Tutti gli ordini · <span class="table-count" id="ordini-count">—</span></span>
+                    <span>Ordini · <span class="table-count" id="ordini-count">—</span></span>
                 </div>
                 <div class="table-scroll">
                     <table class="table" id="ordini-table">
                         <thead>
                             <tr>
+                                <th style="width:32px"></th>
                                 <th>N° Ordine</th>
                                 <th>Data</th>
                                 <th>Codice Cliente</th>
@@ -351,7 +439,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td colspan="7" class="loading">Caricamento…</td></tr>
+                            <tr><td colspan="8" class="loading">Caricamento…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -721,27 +809,51 @@
 
         // ── Ordini ────────────────────────────────────────────────
 
+        let _ordiniDebounceTimer = null;
+        function debounceOrdini() {
+            clearTimeout(_ordiniDebounceTimer);
+            _ordiniDebounceTimer = setTimeout(loadOrdini, 350);
+        }
+
+        function resetFiltriOrdini() {
+            document.getElementById('filtro-da').value = '';
+            document.getElementById('filtro-a').value = '';
+            document.getElementById('filtro-cliente').value = '';
+            loadOrdini();
+        }
+
         async function loadOrdini() {
             const tbody = document.querySelector('#ordini-table tbody');
             const countEl = document.getElementById('ordini-count');
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
+
+            const da      = document.getElementById('filtro-da')?.value;
+            const a       = document.getElementById('filtro-a')?.value;
+            const cliente = document.getElementById('filtro-cliente')?.value?.trim();
 
             try {
-                const { data, error } = await supabaseClient
+                let q = supabaseClient
                     .from('ordini')
-                    .select('numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
+                    .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
                     .order('data_ordine', { ascending: false });
+
+                if (da)      q = q.gte('data_ordine', da);
+                if (a)       q = q.lte('data_ordine', a);
+                if (cliente) q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%`);
+
+                const { data, error } = await q;
                 if (error) throw error;
 
                 countEl.textContent = data?.length || 0;
 
                 if (!data?.length) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="loading">Nessun ordine trovato</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun ordine trovato</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = data.map(o => `
-                    <tr>
+                    <tr class="ordine-row" onclick="toggleRighe('${o.id}', this)">
+                        <td><button class="expand-btn" id="expand-${o.id}">▶</button></td>
                         <td><strong>${o.numero_ordine || '—'}</strong></td>
                         <td>${fmtDate(o.data_ordine)}</td>
                         <td>${o.codice_cliente || '—'}</td>
@@ -750,10 +862,73 @@
                         <td class="num-right"><strong>€${fmt(o.totale_ordine)}</strong></td>
                         <td>${statoBadge(o.stato)}</td>
                     </tr>
+                    <tr class="righe-row" id="righe-${o.id}">
+                        <td colspan="8"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>
+                    </tr>
                 `).join('');
             } catch (err) {
                 console.error('Errore ordini:', err);
-                tbody.innerHTML = `<tr><td colspan="7" class="loading">Errore: ${err.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function toggleRighe(ordineId, triggerEl) {
+            if (triggerEl.tagName === 'BUTTON') return; // evita doppio trigger
+            const righeRow  = document.getElementById('righe-' + ordineId);
+            const expandBtn = document.getElementById('expand-' + ordineId);
+            const isOpen    = righeRow.classList.contains('open');
+
+            righeRow.classList.toggle('open', !isOpen);
+            expandBtn.classList.toggle('open', !isOpen);
+            if (isOpen) return;
+
+            const inner = document.getElementById('righe-inner-' + ordineId);
+            if (inner.dataset.loaded) return;
+
+            inner.innerHTML = '<div class="loading" style="padding:12px 0">Caricamento righe…</div>';
+            try {
+                const { data, error } = await supabaseClient
+                    .from('righe_ordine')
+                    .select('codice_articolo, descrizione_articolo, quantita, unita_misura, prezzo_unitario, importo_eur, data_consegna_prevista')
+                    .eq('ordine_id', ordineId)
+                    .order('codice_articolo');
+                if (error) throw error;
+
+                if (!data?.length) {
+                    inner.innerHTML = '<div class="loading" style="padding:12px 0">Nessuna riga trovata</div>';
+                    inner.dataset.loaded = '1';
+                    return;
+                }
+
+                inner.innerHTML = `
+                    <table class="righe-table">
+                        <thead><tr>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th class="num-right">Qtà</th>
+                            <th>U.M.</th>
+                            <th class="num-right">Prezzo unit.</th>
+                            <th class="num-right">Importo €</th>
+                            <th>Cons. prevista</th>
+                        </tr></thead>
+                        <tbody>
+                        ${data.map(r => `
+                            <tr>
+                                <td><strong>${r.codice_articolo || '—'}</strong></td>
+                                <td>${r.descrizione_articolo || '—'}</td>
+                                <td class="num-right">${r.quantita != null ? r.quantita : '—'}</td>
+                                <td>${r.unita_misura || '—'}</td>
+                                <td class="num-right">€${fmt(r.prezzo_unitario)}</td>
+                                <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
+                                <td>${fmtDate(r.data_consegna_prevista)}</td>
+                            </tr>
+                        `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                inner.dataset.loaded = '1';
+            } catch (err) {
+                inner.innerHTML = `<div class="loading" style="padding:12px 0">Errore: ${err.message}</div>`;
             }
         }
 
