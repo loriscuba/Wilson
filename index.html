@@ -50,9 +50,16 @@
         .sidebar h2 {
             font-family: 'Syne', sans-serif;
             font-size: 22px;
-            margin-bottom: 28px;
+            margin-bottom: 4px;
             color: var(--accent);
             padding-left: 10px;
+        }
+        .sidebar-sync-time {
+            font-size: 11px;
+            color: var(--text2);
+            padding-left: 10px;
+            margin-bottom: 24px;
+            min-height: 14px;
         }
         .sidebar ul { list-style: none; flex: 1; }
         .sidebar li { margin-bottom: 4px; }
@@ -277,6 +284,7 @@
 
     <div class="sidebar" id="sidebar">
         <h2>Wilson</h2>
+        <div class="sidebar-sync-time" id="ultimo-sync">—</div>
         <ul>
             <li><a href="#" onclick="showPage('dashboard',event)" class="active"><span class="icon">📊</span>Dashboard</a></li>
             <li><a href="#" onclick="showPage('ordini',event)"><span class="icon">📋</span>Ordini</a></li>
@@ -868,6 +876,27 @@
             }
         }
 
+        // ── Ultimo aggiornamento dati ─────────────────────────────
+
+        async function loadUltimoSync() {
+            const el = document.getElementById('ultimo-sync');
+            try {
+                const { data, error } = await supabaseClient
+                    .from('importazioni')
+                    .select('created_at')
+                    .eq('esito', 'ok')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+                if (error || !data) { el.textContent = 'Nessun sync'; return; }
+                const d = new Date(data.created_at);
+                el.textContent = 'Agg. ' + d.toLocaleString('it-IT', {
+                    day: '2-digit', month: '2-digit', year: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            } catch { el.textContent = '—'; }
+        }
+
         // ── Trigger GitHub Actions sync ───────────────────────────
 
         async function triggerSync() {
@@ -903,11 +932,11 @@
                     icon.className = '';
                     icon.textContent = '✓';
                     btn.classList.add('success');
-                    btn.querySelector('span + span') || btn.childNodes[2] || null;
                     setTimeout(() => {
                         btn.classList.remove('success');
                         icon.textContent = '↻';
                         btn.disabled = false;
+                        loadUltimoSync();
                     }, 3000);
                 } else {
                     throw new Error(`HTTP ${res.status}`);
@@ -927,6 +956,7 @@
 
         // ── Init ──────────────────────────────────────────────────
         loadDashboard();
+        loadUltimoSync();
     </script>
 </body>
 </html>
