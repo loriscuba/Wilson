@@ -903,10 +903,12 @@
             const btn  = document.getElementById('sync-btn');
             const icon = document.getElementById('sync-icon');
 
-            const token = window.__env?.GITHUB_TOKEN;
+            let token = window.__env?.GITHUB_TOKEN || localStorage.getItem('gh_sync_token');
             if (!token) {
-                alert('GITHUB_TOKEN non configurato in env.js');
-                return;
+                token = prompt('Incolla il GitHub PAT (actions:write) — viene salvato solo in questo browser:');
+                if (!token) return;
+                localStorage.setItem('gh_sync_token', token.trim());
+                token = token.trim();
             }
 
             btn.disabled = true;
