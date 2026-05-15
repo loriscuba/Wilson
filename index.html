@@ -874,12 +874,10 @@
             const btn  = document.getElementById('sync-btn');
             const icon = document.getElementById('sync-icon');
 
-            let token = localStorage.getItem('gh_sync_token');
+            const token = window.__env?.GITHUB_TOKEN;
             if (!token) {
-                token = prompt('Incolla il tuo GitHub PAT (actions:write):\nViene salvato solo in questo browser.');
-                if (!token) return;
-                localStorage.setItem('gh_sync_token', token.trim());
-                token = token.trim();
+                alert('GITHUB_TOKEN non configurato in env.js');
+                return;
             }
 
             btn.disabled = true;
