@@ -245,6 +245,31 @@
         }
         .table-header-bar span { font-size: 13px; color: var(--text2); }
         .table-count { font-weight: 700; color: var(--text); }
+
+        /* ── Sync button ── */
+        .sync-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg);
+            color: var(--text2);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.15s, color 0.15s;
+            margin-top: 12px;
+        }
+        .sync-btn:hover:not(:disabled) { background-color: var(--border); color: var(--text); }
+        .sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .sync-btn.success { border-color: var(--green); color: var(--green); }
+        .sync-btn.error   { border-color: var(--red);   color: var(--red); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { display: inline-block; animation: spin 0.8s linear infinite; }
     </style>
 </head>
 <body>
@@ -261,6 +286,9 @@
             <li><a href="#" onclick="showPage('preventivi',event)"><span class="icon">📝</span>Preventivi</a></li>
             <li><a href="#" onclick="showPage('agenda',event)"><span class="icon">📅</span>Agenda</a></li>
         </ul>
+        <button class="sync-btn" id="sync-btn" onclick="triggerSync()">
+            <span id="sync-icon">↻</span> Aggiorna dati
+        </button>
     </div>
 
     <div class="main-content" id="main-content">
@@ -837,6 +865,65 @@
             } catch (err) {
                 console.error('Errore fatturato:', err);
                 tbody.innerHTML = `<tr><td colspan="9" class="loading">Errore: ${err.message}</td></tr>`;
+            }
+        }
+
+        // ── Trigger GitHub Actions sync ───────────────────────────
+
+        async function triggerSync() {
+            const btn  = document.getElementById('sync-btn');
+            const icon = document.getElementById('sync-icon');
+
+            let token = localStorage.getItem('gh_sync_token');
+            if (!token) {
+                token = prompt('Incolla il tuo GitHub PAT (actions:write):\nViene salvato solo in questo browser.');
+                if (!token) return;
+                localStorage.setItem('gh_sync_token', token.trim());
+                token = token.trim();
+            }
+
+            btn.disabled = true;
+            btn.classList.remove('success', 'error');
+            icon.className = 'spin';
+            icon.textContent = '↻';
+
+            try {
+                const res = await fetch(
+                    'https://api.github.com/repos/loriscuba/Wilson/actions/workflows/wilson_sync.yml/dispatches',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/vnd.github+json',
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ ref: 'main' }),
+                    }
+                );
+
+                if (res.status === 204) {
+                    icon.className = '';
+                    icon.textContent = '✓';
+                    btn.classList.add('success');
+                    btn.querySelector('span + span') || btn.childNodes[2] || null;
+                    setTimeout(() => {
+                        btn.classList.remove('success');
+                        icon.textContent = '↻';
+                        btn.disabled = false;
+                    }, 3000);
+                } else {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+            } catch (err) {
+                icon.className = '';
+                icon.textContent = '✕';
+                btn.classList.add('error');
+                console.error('Errore trigger sync:', err);
+                setTimeout(() => {
+                    btn.classList.remove('error');
+                    icon.textContent = '↻';
+                    btn.disabled = false;
+                }, 3000);
             }
         }
 
