@@ -787,12 +787,11 @@
                 const totFatt2025          = rows.reduce((s, r) => s + Number(r.fatturato_2025 || 0), 0);
                 const totConsegnato        = rows.reduce((s, r) => s + Number(r.mese_consegnato || 0), 0);
                 const totInPrep            = rows.reduce((s, r) => s + Number(r.mese_in_preparazione || 0), 0);
-                const totGTO               = rows.reduce((s, r) => s + Number(r.gto_mag_2026 || 0), 0);
                 const totFattMeseAnnoPrec  = rows.reduce((s, r) => s + Number(r.fatt_mese_anno_prec || 0), 0);
                 const totVarMeseEUR        = rows.reduce((s, r) => s + Number(r.variazione_mese || 0), 0);
                 const varMesePct           = totFattMeseAnnoPrec > 0 ? (totVarMeseEUR / totFattMeseAnnoPrec) * 100 : null;
-                const progVsGTO            = totGTO > 0 ? (totProg2026 / totGTO) * 100 : null;
-                const varProg              = totFatt2025 > 0 ? ((totProg2026 - totFatt2025) / totFatt2025) * 100 : null;
+                const totProgAnnoPrec      = rows.reduce((s, r) => s + Number(r.fatt_prog_anno_prec || 0), 0);
+                const varProg              = totProgAnnoPrec > 0 ? ((totProg2026 - totProgAnnoPrec) / totProgAnnoPrec) * 100 : null;
 
                 // CEDI
                 const totCEDI   = (cediData || []).reduce((s, r) => s + Number(r.valore_ridistribuito || 0), 0);
@@ -811,12 +810,8 @@
                     <div class="kpi-card">
                         <h3>Progressivo ${annoCorrente}</h3>
                         <div class="kpi-value">€${fmt(totProg2026)}</div>
-                        ${varProg != null ? `<div class="kpi-change ${varProg >= 0 ? 'positive' : 'negative'}">${varProg >= 0 ? '+' : ''}${varProg.toFixed(1)}% vs ${annoPrec}</div>` : ''}
-                    </div>
-                    <div class="kpi-card">
-                        <h3>Progressivo vs GTO</h3>
-                        <div class="kpi-value">${progVsGTO != null ? progVsGTO.toFixed(1) + '%' : '—'}</div>
-                        <div class="kpi-sub">GTO: €${fmt(totGTO)}</div>
+                        <div class="kpi-sub">Stesso periodo ${annoPrec}: €${fmt(totProgAnnoPrec)}</div>
+                        ${varProg != null ? `<div class="kpi-change ${varProg >= 0 ? 'positive' : 'negative'}">${varProg >= 0 ? '+' : ''}${varProg.toFixed(1)}% vs stesso periodo ${annoPrec}</div>` : ''}
                     </div>
                     <div class="kpi-card">
                         <h3>Fatturato CEDI</h3>
