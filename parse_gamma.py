@@ -24,7 +24,6 @@ import os
 from collections import Counter
 
 import pandas as pd
-from dotenv import load_dotenv
 from supabase import create_client
 
 
@@ -172,6 +171,7 @@ def main():
     )
     args = parser.parse_args()
 
+    from dotenv import load_dotenv
     load_dotenv(os.path.join(os.path.dirname(__file__), '.claude', '.env'))
     load_dotenv()
 
