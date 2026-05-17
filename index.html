@@ -239,6 +239,7 @@
             font-weight: 600;
         }
         a.shippeo-link:hover { text-decoration: underline; }
+        .eta-label { margin-left: 6px; font-size: 0.8em; color: var(--text-secondary); }
 
         .num-right { text-align: right !important; }
 
@@ -317,6 +318,35 @@
         .righe-row.open { display: table-row; }
         .righe-row > td { padding: 0 !important; background: #FAFAF8; border-bottom: 2px solid var(--border); }
         .righe-inner { padding: 10px 16px 10px 44px; }
+
+        /* ── Dettaglio cliente ── */
+        .cliente-row { cursor: pointer; }
+        .cliente-row:hover td { background: var(--bg); }
+        .cliente-detail-row { display: none; }
+        .cliente-detail-row.open { display: table-row; }
+        .cliente-detail-row > td { padding: 0 !important; background: var(--bg); border-bottom: 2px solid var(--border); }
+        .cliente-detail-inner { padding: 20px 24px 24px 44px; }
+        .cliente-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .cliente-kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+        .cliente-kpi-card h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 8px; }
+        .ckv { font-size: 22px; font-weight: 700; color: var(--text); }
+        .cks { font-size: 12px; color: var(--text2); margin-top: 3px; }
+        .ckc { font-size: 12px; font-weight: 600; margin-top: 4px; }
+        .ckc.pos { color: var(--green); }
+        .ckc.neg { color: var(--red); }
+        .btn-ordini { margin-top: 8px; display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; background: none; border: none; padding: 0; }
+        .btn-ordini:hover { text-decoration: underline; }
+        .gamma-section h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; }
+        .gamma-settori { display: flex; flex-direction: column; gap: 8px; }
+        .gamma-settore-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+        .gamma-settore-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .gamma-settore-nome { font-size: 13px; font-weight: 700; color: var(--text); }
+        .gamma-pct-badges { display: flex; gap: 8px; }
+        .gamma-pct-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+        .gamma-pct-badge.imm { background: #e8f5e9; color: #2D7D4F; }
+        .gamma-pct-badge.str { background: #fff3e0; color: #bf6000; }
+        .gamma-prodotti { display: flex; flex-wrap: wrap; gap: 4px; }
+        .gamma-prod-tag { font-size: 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; color: var(--text2); }
         .righe-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .righe-table th {
             font-size: 11px; font-weight: 700; text-transform: uppercase;
@@ -384,7 +414,7 @@
             <div class="kpi-grid" id="kpi-grid">
                 <div class="loading">Caricamento KPI…</div>
             </div>
-            <h2>Top 5 Clienti — Progressivo 2026</h2>
+            <h2>Top 10 da recuperare vs 2025</h2>
             <div class="table-wrapper">
                 <div class="table-scroll">
                     <table class="table" id="top-clienti-table">
@@ -392,14 +422,15 @@
                             <tr>
                                 <th>#</th>
                                 <th>Cliente</th>
-                                <th>Divisione</th>
-                                <th class="num-right">Progressivo 2026</th>
-                                <th class="num-right">Fatturato 2025</th>
-                                <th class="num-right">Variazione %</th>
+                                <th class="num-right">Prog. 2025</th>
+                                <th class="num-right">Prog. 2026</th>
+                                <th class="num-right">Gap €</th>
+                                <th class="num-right">Gap %</th>
+                                <th>Questo mese</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td colspan="6" class="loading">Caricamento…</td></tr>
+                            <tr><td colspan="7" class="loading">Caricamento…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -450,6 +481,12 @@
         <div id="clienti" class="page">
             <h1>Clienti</h1>
             <div class="table-wrapper">
+                <div class="filter-bar">
+                    <label>Cerca</label>
+                    <input class="filter-input" type="text" id="filtro-clienti" placeholder="Ragione sociale, città, settore…" oninput="filterClienti(this.value)">
+                    <div class="filter-sep"></div>
+                    <button class="filter-reset" onclick="document.getElementById('filtro-clienti').value=''; filterClienti('')">Azzera</button>
+                </div>
                 <div class="table-header-bar">
                     <span>Clienti attivi · <span class="table-count" id="clienti-count">—</span></span>
                 </div>
@@ -457,6 +494,7 @@
                     <table class="table" id="clienti-table">
                         <thead>
                             <tr>
+                                <th style="width:32px"></th>
                                 <th>Ragione Sociale</th>
                                 <th>Città</th>
                                 <th>Provincia</th>
@@ -466,7 +504,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td colspan="6" class="loading">Caricamento…</td></tr>
+                            <tr><td colspan="7" class="loading">Caricamento…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -707,7 +745,7 @@
             const topBody = document.querySelector('#top-clienti-table tbody');
 
             kpiGrid.innerHTML = '<div class="loading">Caricamento KPI…</div>';
-            topBody.innerHTML = '<tr><td colspan="6" class="loading">Caricamento…</td></tr>';
+            topBody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
 
             if (!SUPABASE_URL || !SUPABASE_KEY) {
                 kpiGrid.innerHTML = '<div class="loading">Configurazione Supabase mancante</div>';
@@ -720,11 +758,13 @@
                     { data: rollingData, error: rollingError },
                     { data: ordiniData, error: ordiniError },
                     { data: ddtData,    error: ddtError },
+                    { data: cediData,   error: cediError },
                 ] = await Promise.all([
                     supabaseClient.from('rolling_fatturato')
-                        .select('ragione_sociale, divisione, fatturato_2025, fatt_prog_gen_apr_2026, gto_mag_2026, mese_consegnato, mese_in_preparazione, variazione_mese, variazione_progressivo'),
+                        .select('ragione_sociale, divisione, codice_cliente, fatturato_2025, fatt_prog_gen_apr_2026, gto_mag_2026, mese_consegnato, mese_in_preparazione, variazione_mese, variazione_progressivo, fatt_mese_anno_prec, spedito_ordinato_mese, fatt_prog_anno_prec, fatt_prog_anno_corr'),
                     supabaseClient.from('ordini').select('totale_ordine, data_ordine'),
                     supabaseClient.from('ddt').select('id, stato').eq('stato', 'spedito'),
+                    supabaseClient.from('cedi_ridistribuito').select('ragione_sociale, valore_ridistribuito, data_aggiornamento').order('valore_ridistribuito', { ascending: false }),
                 ]);
 
                 if (rollingError) throw rollingError;
@@ -743,29 +783,45 @@
 
                 // KPI aggregati dal rolling
                 const rows = rollingData || [];
-                const totProg2026    = rows.reduce((s, r) => s + Number(r.fatt_prog_gen_apr_2026 || 0), 0);
-                const totFatt2025    = rows.reduce((s, r) => s + Number(r.fatturato_2025 || 0), 0);
-                const totConsegnato  = rows.reduce((s, r) => s + Number(r.mese_consegnato || 0), 0);
-                const totInPrep      = rows.reduce((s, r) => s + Number(r.mese_in_preparazione || 0), 0);
-                const totGTO         = rows.reduce((s, r) => s + Number(r.gto_mag_2026 || 0), 0);
-                const progVsGTO      = totGTO > 0 ? (totProg2026 / totGTO) * 100 : null;
-                const varProg        = totFatt2025 > 0 ? ((totProg2026 - totFatt2025) / totFatt2025) * 100 : null;
+                const totProg2026          = rows.reduce((s, r) => s + Number(r.fatt_prog_gen_apr_2026 || 0), 0);
+                const totFatt2025          = rows.reduce((s, r) => s + Number(r.fatturato_2025 || 0), 0);
+                const totConsegnato        = rows.reduce((s, r) => s + Number(r.mese_consegnato || 0), 0);
+                const totInPrep            = rows.reduce((s, r) => s + Number(r.mese_in_preparazione || 0), 0);
+                const totGTO               = rows.reduce((s, r) => s + Number(r.gto_mag_2026 || 0), 0);
+                const totFattMeseAnnoPrec  = rows.reduce((s, r) => s + Number(r.fatt_mese_anno_prec || 0), 0);
+                const totVarMeseEUR        = rows.reduce((s, r) => s + Number(r.variazione_mese || 0), 0);
+                const varMesePct           = totFattMeseAnnoPrec > 0 ? (totVarMeseEUR / totFattMeseAnnoPrec) * 100 : null;
+                const progVsGTO            = totGTO > 0 ? (totProg2026 / totGTO) * 100 : null;
+                const varProg              = totFatt2025 > 0 ? ((totProg2026 - totFatt2025) / totFatt2025) * 100 : null;
+
+                // CEDI
+                const totCEDI   = (cediData || []).reduce((s, r) => s + Number(r.valore_ridistribuito || 0), 0);
+                const cediDate  = (cediData || []).reduce((d, r) => (r.data_aggiornamento > d ? r.data_aggiornamento : d), '');
+
+                const annoCorrente = now.getFullYear();
+                const annoPrec     = annoCorrente - 1;
 
                 kpiGrid.innerHTML = `
                     <div class="kpi-card">
-                        <h3>Consegnato questo mese</h3>
-                        <div class="kpi-value">€${fmt(totConsegnato)}</div>
-                        <div class="kpi-sub">In preparazione: €${fmt(totInPrep)}</div>
+                        <h3>Fatturato del mese</h3>
+                        <div class="kpi-value">€${fmt(totConsegnato + totInPrep)}</div>
+                        <div class="kpi-sub">Consegnato €${fmt(totConsegnato)} · In prep. €${fmt(totInPrep)}</div>
+                        ${varMesePct != null ? `<div class="kpi-change ${varMesePct >= 0 ? 'positive' : 'negative'}">${varMesePct >= 0 ? '+' : ''}${varMesePct.toFixed(1)}% vs ${annoPrec}</div>` : ''}
                     </div>
                     <div class="kpi-card">
-                        <h3>Progressivo 2026</h3>
+                        <h3>Progressivo ${annoCorrente}</h3>
                         <div class="kpi-value">€${fmt(totProg2026)}</div>
-                        ${varProg != null ? `<div class="kpi-change ${varProg >= 0 ? 'positive' : 'negative'}">${varProg >= 0 ? '+' : ''}${varProg.toFixed(1)}% vs 2025</div>` : ''}
+                        ${varProg != null ? `<div class="kpi-change ${varProg >= 0 ? 'positive' : 'negative'}">${varProg >= 0 ? '+' : ''}${varProg.toFixed(1)}% vs ${annoPrec}</div>` : ''}
                     </div>
                     <div class="kpi-card">
                         <h3>Progressivo vs GTO</h3>
                         <div class="kpi-value">${progVsGTO != null ? progVsGTO.toFixed(1) + '%' : '—'}</div>
                         <div class="kpi-sub">GTO: €${fmt(totGTO)}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <h3>Fatturato CEDI</h3>
+                        <div class="kpi-value">€${fmt(totCEDI)}</div>
+                        <div class="kpi-sub">${cediDate ? 'Aggiornato ' + fmtDate(cediDate) : '—'}</div>
                     </div>
                     <div class="kpi-card">
                         <h3>Ordini del mese</h3>
@@ -779,31 +835,41 @@
                     </div>
                 `;
 
-                // Top 5 clienti per progressivo 2026
-                const top5 = [...rows]
-                    .filter(r => r.ragione_sociale)
-                    .sort((a, b) => Number(b.fatt_prog_gen_apr_2026 || 0) - Number(a.fatt_prog_gen_apr_2026 || 0))
-                    .slice(0, 5);
+                // Top 10 clienti indietro rispetto all'anno precedente
+                const top10 = [...rows]
+                    .filter(r => r.ragione_sociale && Number(r.variazione_progressivo || 0) < 0)
+                    .sort((a, b) => Number(a.variazione_progressivo || 0) - Number(b.variazione_progressivo || 0))
+                    .slice(0, 10);
 
-                if (top5.length) {
-                    topBody.innerHTML = top5.map((r, i) => `
+                if (top10.length) {
+                    topBody.innerHTML = top10.map((r, i) => {
+                        const prog25  = Number(r.fatt_prog_anno_prec || 0);
+                        const prog26  = Number(r.fatt_prog_anno_corr || 0);
+                        const gapEUR  = Number(r.variazione_progressivo || 0);
+                        const gapPct  = prog25 > 0 ? (gapEUR / prog25) * 100 : null;
+                        const hasMese = Number(r.mese_consegnato || 0) > 0 || Number(r.mese_in_preparazione || 0) > 0;
+                        const meseBadge = hasMese
+                            ? `<span class="badge badge-green">Attivo</span>`
+                            : `<span class="badge badge-red">Da chiamare</span>`;
+                        return `
                         <tr>
                             <td><strong>${i + 1}</strong></td>
-                            <td>${r.ragione_sociale || '—'}</td>
-                            <td>${r.divisione || '—'}</td>
-                            <td class="num-right"><strong>€${fmt(r.fatt_prog_gen_apr_2026)}</strong></td>
-                            <td class="num-right">€${fmt(r.fatturato_2025)}</td>
-                            <td class="num-right">${variazioneBadge(r.variazione_mese)}</td>
-                        </tr>
-                    `).join('');
+                            <td>${r.ragione_sociale}</td>
+                            <td class="num-right">€${fmt(prog25)}</td>
+                            <td class="num-right">€${fmt(prog26)}</td>
+                            <td class="num-right" style="color:var(--red);font-weight:600">€${fmt(gapEUR)}</td>
+                            <td class="num-right">${gapPct != null ? `<span style="color:var(--red);font-weight:600">${gapPct.toFixed(1)}%</span>` : '—'}</td>
+                            <td>${meseBadge}</td>
+                        </tr>`;
+                    }).join('');
                 } else {
-                    topBody.innerHTML = '<tr><td colspan="6" class="loading">Nessun dato disponibile</td></tr>';
+                    topBody.innerHTML = '<tr><td colspan="7" class="loading">Nessun dato disponibile</td></tr>';
                 }
 
             } catch (err) {
                 console.error('Errore dashboard:', err);
                 kpiGrid.innerHTML = `<div class="loading">Errore: ${err.message}</div>`;
-                topBody.innerHTML = '<tr><td colspan="6" class="loading">Errore nel caricamento</td></tr>';
+                topBody.innerHTML = '<tr><td colspan="7" class="loading">Errore nel caricamento</td></tr>';
             }
         }
 
@@ -852,7 +918,7 @@
                 }
 
                 tbody.innerHTML = data.map(o => `
-                    <tr class="ordine-row" onclick="toggleRighe('${o.id}', this)">
+                    <tr class="ordine-row" onclick="toggleRighe('${o.id}', '${o.numero_ordine}', this)">
                         <td><button class="expand-btn" id="expand-${o.id}">▶</button></td>
                         <td><strong>${o.numero_ordine || '—'}</strong></td>
                         <td>${fmtDate(o.data_ordine)}</td>
@@ -872,7 +938,7 @@
             }
         }
 
-        async function toggleRighe(ordineId, triggerEl) {
+        async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             if (triggerEl.tagName === 'BUTTON') return; // evita doppio trigger
             const righeRow  = document.getElementById('righe-' + ordineId);
             const expandBtn = document.getElementById('expand-' + ordineId);
@@ -887,12 +953,45 @@
 
             inner.innerHTML = '<div class="loading" style="padding:12px 0">Caricamento righe…</div>';
             try {
-                const { data, error } = await supabaseClient
-                    .from('righe_ordine')
-                    .select('codice_articolo, descrizione_articolo, quantita, unita_misura, prezzo_unitario, importo_eur, data_consegna_prevista')
-                    .eq('ordine_id', ordineId)
-                    .order('codice_articolo');
+                const [{ data, error }, { data: ddtData }] = await Promise.all([
+                    supabaseClient
+                        .from('righe_ordine')
+                        .select('codice_articolo, descrizione_articolo, quantita, unita_misura, prezzo_unitario, importo_eur, data_consegna_prevista')
+                        .eq('ordine_id', ordineId)
+                        .order('codice_articolo'),
+                    supabaseClient
+                        .from('ddt')
+                        .select('numero_ddt, shippeo_url, corriere, eta_shippeo, stato, data_consegna_effettiva')
+                        .eq('numero_ordine', numeroOrdine)
+                ]);
                 if (error) throw error;
+
+                const now = new Date();
+                const consegnatiDates = (ddtData || [])
+                    .filter(d => d.stato === 'consegnato')
+                    .map(d => d.data_consegna_effettiva || d.eta_shippeo)
+                    .filter(Boolean);
+                const maxConsegnaDate = consegnatiDates.length
+                    ? consegnatiDates.reduce((a, b) => new Date(a) >= new Date(b) ? a : b)
+                    : null;
+                const hasConsegnato = (ddtData || []).some(d => d.stato === 'consegnato');
+
+                const trackingLinks = [];
+                if (hasConsegnato) {
+                    trackingLinks.push(maxConsegnaDate
+                        ? `<span class="badge badge-green">Consegnato ${fmtDate(maxConsegnaDate)}</span>`
+                        : `<span class="badge badge-green">Consegnato</span>`);
+                }
+                (ddtData || []).forEach(d => {
+                    if (d.stato === 'consegnato') return;
+                    if (d.shippeo_url) {
+                        const eta = d.eta_shippeo ? new Date(d.eta_shippeo) : null;
+                        const etaStr = eta && eta > now
+                            ? `<span class="eta-label">Prev. ${fmtDate(d.eta_shippeo)}</span>`
+                            : '';
+                        trackingLinks.push(`<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaStr}`);
+                    }
+                });
 
                 if (!data?.length) {
                     inner.innerHTML = '<div class="loading" style="padding:12px 0">Nessuna riga trovata</div>';
@@ -910,6 +1009,7 @@
                             <th class="num-right">Prezzo unit.</th>
                             <th class="num-right">Importo €</th>
                             <th>Cons. prevista</th>
+                            <th>Tracking</th>
                         </tr></thead>
                         <tbody>
                         ${data.map(r => `
@@ -921,6 +1021,7 @@
                                 <td class="num-right">€${fmt(r.prezzo_unitario)}</td>
                                 <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
                                 <td>${fmtDate(r.data_consegna_prevista)}</td>
+                                <td>${trackingLinks.join(' ') || '—'}</td>
                             </tr>
                         `).join('')}
                         </tbody>
@@ -934,40 +1035,201 @@
 
         // ── Clienti ───────────────────────────────────────────────
 
+        let _clientiData = [];
+
+        function filterClienti(q) {
+            const countEl = document.getElementById('clienti-count');
+            const needle = q.trim().toLowerCase();
+            const filtered = needle
+                ? _clientiData.filter(c =>
+                    (c.ragione_sociale || '').toLowerCase().includes(needle) ||
+                    (c.citta          || '').toLowerCase().includes(needle) ||
+                    (c.provincia      || '').toLowerCase().includes(needle) ||
+                    (c.settori?.nome  || '').toLowerCase().includes(needle) ||
+                    (c.categorie?.nome|| '').toLowerCase().includes(needle) ||
+                    (c.codice_cliente || '').includes(needle)
+                  )
+                : _clientiData;
+            countEl.textContent = filtered.length;
+            renderClientiRows(filtered);
+        }
+
+        function renderClientiRows(data) {
+            const tbody = document.querySelector('#clienti-table tbody');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="loading">Nessun cliente trovato</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map(c => {
+                const cod  = c.codice_cliente || '';
+                const nome = (c.ragione_sociale || '').replace(/'/g, "\\'");
+                return `
+                <tr class="cliente-row" onclick="toggleClienteDetail('${cod}', '${nome}', this)">
+                    <td><button class="expand-btn" id="cexp-${cod}">▶</button></td>
+                    <td><strong>${c.ragione_sociale || '—'}</strong></td>
+                    <td>${c.citta || '—'}</td>
+                    <td>${c.provincia || '—'}</td>
+                    <td>${c.settori?.nome || '—'}</td>
+                    <td>${c.categorie?.nome || '—'}</td>
+                    <td>${c.giorno_visita || '—'}</td>
+                </tr>
+                <tr class="cliente-detail-row" id="cdetail-row-${cod}">
+                    <td colspan="7"><div class="cliente-detail-inner" id="cdetail-${cod}"></div></td>
+                </tr>`;
+            }).join('');
+        }
+
         async function loadClienti() {
             const tbody = document.querySelector('#clienti-table tbody');
             const countEl = document.getElementById('clienti-count');
-            tbody.innerHTML = '<tr><td colspan="6" class="loading">Caricamento…</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
 
             try {
                 const { data, error } = await supabaseClient
                     .from('clienti')
-                    .select('ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
+                    .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
                     .eq('attivo', true)
                     .order('ragione_sociale', { ascending: true });
                 if (error) throw error;
 
-                countEl.textContent = data?.length || 0;
-
-                if (!data?.length) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="loading">Nessun cliente trovato</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = data.map(c => `
-                    <tr>
-                        <td><strong>${c.ragione_sociale || '—'}</strong></td>
-                        <td>${c.citta || '—'}</td>
-                        <td>${c.provincia || '—'}</td>
-                        <td>${c.settori?.nome || '—'}</td>
-                        <td>${c.categorie?.nome || '—'}</td>
-                        <td>${c.giorno_visita || '—'}</td>
-                    </tr>
-                `).join('');
+                _clientiData = data || [];
+                countEl.textContent = _clientiData.length;
+                renderClientiRows(_clientiData);
             } catch (err) {
                 console.error('Errore clienti:', err);
-                tbody.innerHTML = `<tr><td colspan="6" class="loading">Errore: ${err.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="loading">Errore: ${err.message}</td></tr>`;
             }
+        }
+
+        async function toggleClienteDetail(codice, nome, triggerEl) {
+            if (triggerEl.tagName === 'BUTTON') return;
+            const detailRow = document.getElementById('cdetail-row-' + codice);
+            const expandBtn = document.getElementById('cexp-' + codice);
+            const isOpen    = detailRow.classList.contains('open');
+
+            detailRow.classList.toggle('open', !isOpen);
+            expandBtn.classList.toggle('open', !isOpen);
+            if (isOpen) return;
+
+            const inner = document.getElementById('cdetail-' + codice);
+            if (inner.dataset.loaded) return;
+
+            inner.innerHTML = '<div class="loading" style="padding:16px 0">Caricamento scheda…</div>';
+            await loadClienteDetail(codice, nome, inner);
+        }
+
+        async function loadClienteDetail(codice, nome, container) {
+            try {
+                const now = new Date();
+                const annoPrec = now.getFullYear() - 1;
+
+                const [
+                    { data: rolling },
+                    { data: ordiniAttivi },
+                    { data: gammaData },
+                ] = await Promise.all([
+                    supabaseClient.from('rolling_fatturato')
+                        .select('fatturato_2025, mese_consegnato, mese_in_preparazione, fatt_mese_anno_prec, fatt_prog_anno_prec, fatt_prog_anno_corr, variazione_progressivo')
+                        .eq('codice_cliente', codice)
+                        .maybeSingle(),
+                    supabaseClient.from('ordini')
+                        .select('id, totale_ordine, stato')
+                        .eq('codice_cliente', codice)
+                        .not('stato', 'in', '("consegnato","annullato")'),
+                    supabaseClient.from('gamma_penetrazione')
+                        .select('settore, pct_immancabili, pct_strategiche, fatturato_anno, prodotti_acquistati, data_aggiornamento')
+                        .eq('codice_cliente', codice)
+                        .order('settore'),
+                ]);
+
+                const r        = rolling || {};
+                const fatt2025 = Number(r.fatturato_2025 || 0);
+                const meseCons = Number(r.mese_consegnato || 0);
+                const mesePrep = Number(r.mese_in_preparazione || 0);
+                const meseVal  = meseCons + mesePrep;
+                const mesePrec = Number(r.fatt_mese_anno_prec || 0);
+                const varMese  = mesePrec > 0 ? ((meseVal - mesePrec) / mesePrec) * 100 : null;
+                const nOrdini  = ordiniAttivi?.length || 0;
+                const valOrdini = (ordiniAttivi || []).reduce((s, o) => s + Number(o.totale_ordine || 0), 0);
+
+                // Gamma section
+                const gamma = gammaData || [];
+                const gammaHTML = gamma.length
+                    ? `<div class="gamma-settori">
+                        ${gamma.map(g => {
+                            const prodotti = g.prodotti_acquistati
+                                ? Object.entries(g.prodotti_acquistati)
+                                : [];
+                            const pctImm = g.pct_immancabili != null ? (g.pct_immancabili * 100).toFixed(0) : null;
+                            const pctStr = g.pct_strategiche != null ? (g.pct_strategiche * 100).toFixed(0) : null;
+                            return `<div class="gamma-settore-card">
+                                <div class="gamma-settore-header">
+                                    <span class="gamma-settore-nome">${g.settore}</span>
+                                    <div class="gamma-pct-badges">
+                                        ${pctImm != null ? `<span class="gamma-pct-badge imm">Immancabili ${pctImm}%</span>` : ''}
+                                        ${pctStr != null ? `<span class="gamma-pct-badge str">Strategiche ${pctStr}%</span>` : ''}
+                                    </div>
+                                </div>
+                                ${prodotti.length ? `<div class="gamma-prodotti">
+                                    ${prodotti.map(([label, val]) =>
+                                        `<span class="gamma-prod-tag" title="€${fmt(val)}">✓ ${label}</span>`
+                                    ).join('')}
+                                </div>` : ''}
+                            </div>`;
+                        }).join('')}
+                    </div>`
+                    : `<div class="cks">Nessun dato gamma disponibile per questo cliente</div>`;
+
+                const gammaAggiornato = gamma.length ? fmtDate(gamma[0].data_aggiornamento) : '';
+
+                container.innerHTML = `
+                    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+                        <button class="btn-ordini" onclick="refreshClienteDetail('${codice}', '${nome.replace(/'/g,"\\'")}')">↺ Aggiorna scheda</button>
+                    </div>
+                    <div class="cliente-kpi-grid">
+                        <div class="cliente-kpi-card">
+                            <h4>Fatturato ${annoPrec}</h4>
+                            <div class="ckv">€${fmt(fatt2025)}</div>
+                        </div>
+                        <div class="cliente-kpi-card">
+                            <h4>Fatturato del mese</h4>
+                            <div class="ckv">€${fmt(meseVal)}</div>
+                            <div class="cks">Cons. €${fmt(meseCons)} · Prep. €${fmt(mesePrep)}</div>
+                            ${varMese != null ? `<div class="ckc ${varMese >= 0 ? 'pos' : 'neg'}">${varMese >= 0 ? '+' : ''}${varMese.toFixed(1)}% vs ${annoPrec}</div>` : '<div class="cks">Nessun dato anno prec.</div>'}
+                        </div>
+                        <div class="cliente-kpi-card">
+                            <h4>Ordini in corso</h4>
+                            <div class="ckv">${nOrdini}</div>
+                            <div class="cks">${nOrdini > 0 ? '€' + fmt(valOrdini) : 'Nessun ordine attivo'}</div>
+                            ${nOrdini > 0 ? `<button class="btn-ordini" onclick="goToOrdiniFiltered('${codice}')">Vedi ordini →</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="gamma-section">
+                        <h4>Penetrazione gamma${gammaAggiornato ? ' · aggiornato ' + gammaAggiornato : ''}</h4>
+                        ${gammaHTML}
+                    </div>
+                `;
+                container.dataset.loaded = '1';
+            } catch (err) {
+                container.innerHTML = `<div class="loading" style="padding:12px 0">Errore: ${err.message}</div>`;
+            }
+        }
+
+        async function refreshClienteDetail(codice, nome) {
+            const inner = document.getElementById('cdetail-' + codice);
+            if (!inner) return;
+            delete inner.dataset.loaded;
+            inner.innerHTML = '<div class="loading" style="padding:16px 0">Aggiornamento…</div>';
+            await loadClienteDetail(codice, nome, inner);
+        }
+
+        function goToOrdiniFiltered(codice) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('ordini').classList.add('active');
+            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+            document.querySelector('.sidebar a[onclick*="ordini"]')?.classList.add('active');
+            document.getElementById('filtro-cliente').value = codice;
+            loadOrdini();
         }
 
         // ── DDT & Tracking ────────────────────────────────────────

@@ -68,6 +68,8 @@ def tipo_file(filename):
             return 'rolling'
         if 'monitoraggio_cedi' in nome:
             return 'cedi'
+        if 'penetrazione_gamma_prodotti' in nome_norm or 'multipoint_report' in nome_norm:
+            return 'gamma'
         return 'sconosciuto'
 
     return 'sconosciuto'
@@ -141,6 +143,17 @@ def dispatch(filepath, client):
             log_importazione(client, filepath, t, 'skip', 'parser non disponibile')
             return False
 
+    elif t == 'gamma':
+        try:
+            from parse_gamma import importa_gamma
+            ok = importa_gamma(filepath, client)
+            log_importazione(client, filepath, t, 'ok' if ok else 'errore')
+            return ok
+        except ImportError:
+            print("  ⚠️  parse_gamma.py non ancora disponibile — file ignorato")
+            log_importazione(client, filepath, t, 'skip', 'parser non disponibile')
+            return False
+
     else:
         print(f"  ⚠️  Tipo non riconosciuto — file ignorato")
         log_importazione(client, filepath, t, 'skip', 'tipo non riconosciuto')
@@ -191,7 +204,7 @@ def main():
     # 2. DDT (collegati agli ordini)
     # 3. Tracking (collegati ai DDT)
     # 4. Excel (indipendenti)
-    ORDINE_PROCESSING = ['ordine', 'ddt', 'tracking', 'rolling', 'cedi', 'sconosciuto']
+    ORDINE_PROCESSING = ['ordine', 'ddt', 'tracking', 'rolling', 'cedi', 'gamma', 'sconosciuto']
     files_ordinati = sorted(files, key=lambda f: ORDINE_PROCESSING.index(tipo_file(f))
                             if tipo_file(f) in ORDINE_PROCESSING else 99)
 
