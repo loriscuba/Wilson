@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: main
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -49,7 +49,7 @@ jobs:
 
           # Lista file nella cartella inbox
           results = service.files().list(
-              q=f"'{folder_id}' in parents and trashed=false",
+              q=f"'{folder_id}' in parents and trashed=false and mimeType != 'application/vnd.google-apps.folder'",
               fields="files(id, name, mimeType)"
           ).execute()
 
