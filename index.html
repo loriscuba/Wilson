@@ -553,12 +553,12 @@
                             <tr>
                                 <th>Cliente</th>
                                 <th>Divisione</th>
-                                <th class="num-right">Fatt. 2025</th>
-                                <th class="num-right">Prog. 2026</th>
-                                <th class="num-right">GTO 2026</th>
-                                <th class="num-right">Var. mese %</th>
+                                <th class="num-right">Prog. gen-mag 2026</th>
+                                <th class="num-right">Prog. gen-mag 2025</th>
                                 <th class="num-right">Var. prog. %</th>
-                                <th class="num-right">Consegnato mese</th>
+                                <th class="num-right">Fatturato mese</th>
+                                <th class="num-right">Var. mese %</th>
+                                <th class="num-right">Consegnato</th>
                                 <th class="num-right">In prep.</th>
                             </tr>
                         </thead>
@@ -738,6 +738,22 @@
             }
         }
 
+        // ── Ultima data rolling ───────────────────────────────────
+
+        let _latestRollingDate = null;
+
+        async function getLatestRollingDate() {
+            if (_latestRollingDate) return _latestRollingDate;
+            const { data } = await supabaseClient
+                .from('rolling_fatturato')
+                .select('data_aggiornamento')
+                .order('data_aggiornamento', { ascending: false })
+                .limit(1)
+                .single();
+            _latestRollingDate = data?.data_aggiornamento || null;
+            return _latestRollingDate;
+        }
+
         // ── Dashboard ─────────────────────────────────────────────
 
         async function loadDashboard() {
@@ -753,6 +769,8 @@
             }
 
             try {
+                const latestDate = await getLatestRollingDate();
+
                 // Parallel fetch
                 const [
                     { data: rollingData, error: rollingError },
@@ -761,7 +779,8 @@
                     { data: cediData,   error: cediError },
                 ] = await Promise.all([
                     supabaseClient.from('rolling_fatturato')
-                        .select('ragione_sociale, divisione, codice_cliente, fatturato_2025, fatt_prog_gen_apr_2026, gto_mag_2026, mese_consegnato, mese_in_preparazione, variazione_mese, variazione_progressivo, fatt_mese_anno_prec, spedito_ordinato_mese, fatt_prog_anno_prec, fatt_prog_anno_corr'),
+                        .select('ragione_sociale, divisione, codice_cliente, fatturato_2025, mese_consegnato, mese_in_preparazione, variazione_mese, variazione_progressivo, fatt_mese_anno_prec, spedito_ordinato_mese, fatt_prog_anno_prec, fatt_prog_anno_corr')
+                        .eq('data_aggiornamento', latestDate),
                     supabaseClient.from('ordini').select('totale_ordine, data_ordine'),
                     supabaseClient.from('ddt').select('id, stato').eq('stato', 'spedito'),
                     supabaseClient.from('cedi_ridistribuito').select('ragione_sociale, valore_ridistribuito, data_aggiornamento').order('valore_ridistribuito', { ascending: false }),
@@ -783,7 +802,7 @@
 
                 // KPI aggregati dal rolling
                 const rows = rollingData || [];
-                const totProg2026          = rows.reduce((s, r) => s + Number(r.fatt_prog_gen_apr_2026 || 0), 0);
+                const totProg2026          = rows.reduce((s, r) => s + Number(r.fatt_prog_anno_corr || 0), 0);
                 const totFatt2025          = rows.reduce((s, r) => s + Number(r.fatturato_2025 || 0), 0);
                 const totConsegnato        = rows.reduce((s, r) => s + Number(r.mese_consegnato || 0), 0);
                 const totInPrep            = rows.reduce((s, r) => s + Number(r.mese_in_preparazione || 0), 0);
@@ -1119,6 +1138,8 @@
                 const now = new Date();
                 const annoPrec = now.getFullYear() - 1;
 
+                const latestDate = await getLatestRollingDate();
+
                 const [
                     { data: rolling },
                     { data: ordiniAttivi },
@@ -1127,6 +1148,7 @@
                     supabaseClient.from('rolling_fatturato')
                         .select('fatturato_2025, mese_consegnato, mese_in_preparazione, spedito_ordinato_mese, fatt_mese_anno_prec, variazione_mese, fatt_prog_anno_prec, fatt_prog_anno_corr, variazione_progressivo')
                         .eq('codice_cliente', codice)
+                        .eq('data_aggiornamento', latestDate)
                         .maybeSingle(),
                     supabaseClient.from('ordini')
                         .select('id, totale_ordine, stato')
@@ -1279,10 +1301,12 @@
             tbody.innerHTML = '<tr><td colspan="9" class="loading">Caricamento…</td></tr>';
 
             try {
+                const latestDate = await getLatestRollingDate();
                 const { data, error } = await supabaseClient
                     .from('rolling_fatturato')
-                    .select('ragione_sociale, divisione, fatturato_2025, fatt_prog_gen_apr_2026, gto_mag_2026, variazione_mese, variazione_progressivo, mese_consegnato, mese_in_preparazione')
-                    .order('fatt_prog_gen_apr_2026', { ascending: false, nullsFirst: false });
+                    .select('ragione_sociale, divisione, fatt_prog_anno_corr, fatt_prog_anno_prec, variazione_progressivo, spedito_ordinato_mese, fatt_mese_anno_prec, variazione_mese, mese_consegnato, mese_in_preparazione')
+                    .eq('data_aggiornamento', latestDate)
+                    .order('fatt_prog_anno_corr', { ascending: false, nullsFirst: false });
                 if (error) throw error;
 
                 countEl.textContent = data?.length || 0;
@@ -1292,19 +1316,28 @@
                     return;
                 }
 
-                tbody.innerHTML = data.map(r => `
+                tbody.innerHTML = data.map(r => {
+                    const progPrec   = Number(r.fatt_prog_anno_prec || 0);
+                    const progGapEUR = Number(r.variazione_progressivo || 0);
+                    const varProgPct = progPrec > 0 ? (progGapEUR / progPrec) * 100 : null;
+
+                    const mesePrec   = Number(r.fatt_mese_anno_prec || 0);
+                    const meseGapEUR = Number(r.variazione_mese || 0);
+                    const varMesePct = mesePrec > 0 ? (meseGapEUR / mesePrec) * 100 : null;
+
+                    return `
                     <tr>
                         <td><strong>${r.ragione_sociale || '—'}</strong></td>
                         <td>${r.divisione || '—'}</td>
-                        <td class="num-right">€${fmt(r.fatturato_2025)}</td>
-                        <td class="num-right"><strong>€${fmt(r.fatt_prog_gen_apr_2026)}</strong></td>
-                        <td class="num-right">€${fmt(r.gto_mag_2026)}</td>
-                        <td class="num-right">${variazioneBadge(r.variazione_mese)}</td>
-                        <td class="num-right">${variazioneBadge(r.variazione_progressivo)}</td>
+                        <td class="num-right"><strong>€${fmt(r.fatt_prog_anno_corr)}</strong></td>
+                        <td class="num-right">€${fmt(r.fatt_prog_anno_prec)}</td>
+                        <td class="num-right">${variazioneBadge(varProgPct)}</td>
+                        <td class="num-right">€${fmt(r.spedito_ordinato_mese)}</td>
+                        <td class="num-right">${variazioneBadge(varMesePct)}</td>
                         <td class="num-right">€${fmt(r.mese_consegnato)}</td>
                         <td class="num-right">€${fmt(r.mese_in_preparazione)}</td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
             } catch (err) {
                 console.error('Errore fatturato:', err);
                 tbody.innerHTML = `<tr><td colspan="9" class="loading">Errore: ${err.message}</td></tr>`;

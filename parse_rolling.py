@@ -94,16 +94,13 @@ def parse_rolling(filepath):
 
             # Confronto mese
             "fatt_mese_anno_prec":    n(row[38]),
-            "spedito_ordinato_mese":  None,  # Da verificare colonna
+            "spedito_ordinato_mese":  n(row[39]),
             "variazione_mese":        n(row[40]),
 
             # Confronto progressivo
             "fatt_prog_anno_prec":    n(row[41]),
             "fatt_prog_anno_corr":    n(row[42]),
             "variazione_progressivo": n(row[43]),
-            
-            # GTO corrente (maggio 2026)
-            "gto_mag_2026":           n(row[39]),
         })
 
     return records

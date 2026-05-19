@@ -63,14 +63,25 @@ jobs:
           # Crea cartella allegati locale
           os.makedirs('allegati', exist_ok=True)
 
+          GOOGLE_SHEETS_MIME = 'application/vnd.google-apps.spreadsheet'
+          EXPORT_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
           # Scarica ogni file
           downloaded = []
           for f in files:
               file_id = f['id']
               file_name = f['name']
-              print(f"  ⬇️  Scaricando: {file_name}")
+              mime_type = f.get('mimeType', '')
+              print(f"  ⬇️  Scaricando: {file_name} ({mime_type})")
 
-              request = service.files().get_media(fileId=file_id)
+              # Google Sheets nativi vanno esportati come xlsx
+              if mime_type == GOOGLE_SHEETS_MIME:
+                  if not file_name.endswith('.xlsx'):
+                      file_name += '.xlsx'
+                  request = service.files().export_media(fileId=file_id, mimeType=EXPORT_MIME)
+              else:
+                  request = service.files().get_media(fileId=file_id)
+
               path = os.path.join('allegati', file_name)
 
               with io.FileIO(path, 'wb') as fh:
