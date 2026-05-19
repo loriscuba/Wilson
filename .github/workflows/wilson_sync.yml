@@ -47,14 +47,35 @@ jobs:
 
           folder_id = os.environ['DRIVE_FOLDER_ID']
 
-          # Lista file nella cartella inbox
-          results = service.files().list(
-              q=f"'{folder_id}' in parents and trashed=false and mimeType != 'application/vnd.google-apps.folder'",
-              fields="files(id, name, mimeType)"
-          ).execute()
+          FOLDER_MIME = 'application/vnd.google-apps.folder'
 
-          files = results.get('files', [])
-          print(f"File trovati su Drive: {len(files)}")
+          def list_files_recursive(folder_id, path=''):
+              """Restituisce tutti i file (non cartelle) in modo ricorsivo."""
+              all_files = []
+              page_token = None
+              while True:
+                  kwargs = dict(
+                      q=f"'{folder_id}' in parents and trashed=false",
+                      fields="nextPageToken, files(id, name, mimeType)",
+                      pageSize=1000,
+                  )
+                  if page_token:
+                      kwargs['pageToken'] = page_token
+                  results = service.files().list(**kwargs).execute()
+                  for f in results.get('files', []):
+                      if f['mimeType'] == FOLDER_MIME:
+                          sub_path = f"{path}/{f['name']}" if path else f['name']
+                          print(f"  📁 Cartella: {sub_path}")
+                          all_files.extend(list_files_recursive(f['id'], sub_path))
+                      else:
+                          all_files.append(f)
+                  page_token = results.get('nextPageToken')
+                  if not page_token:
+                      break
+              return all_files
+
+          files = list_files_recursive(folder_id)
+          print(f"File trovati su Drive (incluse sottocartelle): {len(files)}")
 
           if not files:
               print("Nessun file da processare.")
