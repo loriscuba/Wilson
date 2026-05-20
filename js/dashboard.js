@@ -94,9 +94,9 @@ async function loadDashboard() {
           const gapPct = p25 > 0 ? (gapEUR / p25) * 100 : null;
           const stBadge = `<span class="badge ${statoBadgeCls(r._stato.id)}">${r._stato.label}</span>`;
           return `
-          <tr>
+          <tr class="ordine-row" onclick="apriClienteDaDashboard('${r.codice_cliente}','${(r.ragione_sociale||'').replace(/'/g,"\\'")}')" style="cursor:pointer;">
             <td><strong>${i + 1}</strong></td>
-            <td>${r.ragione_sociale}</td>
+            <td style="color:var(--accent);text-decoration:underline;">${r.ragione_sociale}</td>
             <td class="num-right">€${fmt(p25)}</td>
             <td class="num-right">€${fmt(p26)}</td>
             <td class="num-right" style="color:var(--red);font-weight:600">€${fmt(gapEUR)}</td>

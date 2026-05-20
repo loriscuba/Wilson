@@ -1,6 +1,15 @@
 let _clientiData   = [];   // raw clienti records
 let _rollingByCode = {};   // codice_cliente → enriched rolling record
 
+function apriClienteDaDashboard(codice, nome) {
+  const el = document.getElementById('filtro-clienti');
+  if (el) el.value = nome;
+  const sel = document.getElementById('filtro-stato');
+  if (sel) sel.value = '';
+  showPage('clienti', { preventDefault: () => {} });
+  document.querySelector('.sidebar a[onclick*="clienti"]')?.classList.add('active');
+}
+
 function filtraPerStato(statoId) {
   showPage('clienti', { preventDefault: () => {} });
   document.querySelector('.sidebar a[onclick*="clienti"]')?.classList.add('active');
@@ -79,7 +88,12 @@ async function loadClienti() {
     _rollingByCode = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
 
     countEl.textContent = _clientiData.length;
-    renderClientiRows(_clientiData);
+    const q = document.getElementById('filtro-clienti')?.value || '';
+    if (q || document.getElementById('filtro-stato')?.value) {
+      filterClienti(q);
+    } else {
+      renderClientiRows(_clientiData);
+    }
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
   }
@@ -195,6 +209,16 @@ async function loadClienteDetail(codice, nome, container) {
           <div class="ckv">€${fmt(meseSped)}</div>
           <div class="cks">Cons. €${fmt(meseCons)} · Prep. €${fmt(mesePrep)}</div>
           ${varMese != null ? `<div class="ckc ${varMese >= 0 ? 'pos' : 'neg'}">${varMese >= 0 ? '+' : ''}${varMese.toFixed(1)}% vs ${annoP} (€${fmt(mesePrec)})</div>` : '<div class="cks">Nessun dato anno prec.</div>'}
+        </div>
+        <div class="cliente-kpi-card">
+          <h4>GAP mese vs ${annoP}</h4>
+          <div class="ckv" style="color:${(r.variazione_mese||0) >= 0 ? 'var(--green)' : 'var(--red)'}">€${fmt(r.variazione_mese)}</div>
+          <div class="cks">${mesePrec > 0 ? `Prev. ${annoP}: €${fmt(mesePrec)}` : 'Nessun dato anno prec.'}</div>
+        </div>
+        <div class="cliente-kpi-card">
+          <h4>GAP progressivo vs ${annoP}</h4>
+          <div class="ckv" style="color:${(r.variazione_progressivo||0) >= 0 ? 'var(--green)' : 'var(--red)'}">€${fmt(r.variazione_progressivo)}</div>
+          <div class="cks">Prog. ${annoP}: €${fmt(r.fatt_prog_anno_prec)}</div>
         </div>
         <div class="cliente-kpi-card">
           <h4>Ordini in corso</h4>

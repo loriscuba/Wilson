@@ -56,8 +56,10 @@ let _rollingEnriched   = null;
 
 async function getLatestRollingDate() {
   if (_latestRollingDate) return _latestRollingDate;
+  const today = new Date().toISOString().split('T')[0];
   const { data } = await sb.from('rolling_fatturato')
     .select('data_aggiornamento')
+    .lte('data_aggiornamento', today)
     .order('data_aggiornamento', { ascending: false })
     .limit(1)
     .single();
