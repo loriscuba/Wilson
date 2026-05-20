@@ -51,7 +51,7 @@ def tipo_file(filename):
     if ext == '.pdf':
         if nome_norm.startswith('conferma_ordine_'):
             return 'ordine'
-        if nome_norm.startswith('consegna_') and '_bolla_' in nome_norm:
+        if nome_norm.startswith('consegna_') and 'bolla' in nome_norm:
             return 'ddt'
         return 'sconosciuto'
 

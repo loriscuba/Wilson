@@ -383,6 +383,43 @@
         .sync-btn.error   { border-color: var(--red);   color: var(--red); }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { display: inline-block; animation: spin 0.8s linear infinite; }
+
+        /* ── Stato mese dashboard ── */
+        .stato-mese-card {
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            margin-bottom: 32px;
+        }
+        .stato-mese-header { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; }
+        .stato-mese-total  { font-size:26px; font-weight:700; }
+        .stato-mese-pct    { font-size:18px; font-weight:700; }
+        .mese-progress-bar  { height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin:12px 0; }
+        .mese-progress-fill { height:100%; border-radius:3px; transition:width .4s ease; }
+        .stato-chips { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
+        .stato-chip {
+            display:inline-flex; align-items:center; gap:6px;
+            padding:6px 12px; border-radius:8px; border:1px solid;
+            cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px;
+            background:none; transition:opacity .15s;
+        }
+        .stato-chip:hover { opacity:.7; }
+        .stato-chip-count { font-weight:700; font-size:16px; }
+        .stato-chip-label { font-weight:600; font-size:11px; letter-spacing:.3px; }
+        .gap-row {
+            display:flex; justify-content:space-between; align-items:center;
+            padding:11px 14px; background:var(--bg); border-radius:8px;
+            border:1px solid var(--border); flex-wrap:wrap; gap:8px;
+        }
+        .gap-row-text { font-size:13px; color:var(--text2); }
+        .gap-row-btn  {
+            font-size:12px; font-weight:700; color:var(--accent);
+            background:none; border:none; cursor:pointer; padding:0;
+            font-family:'DM Sans',sans-serif;
+        }
+        .gap-row-btn:hover { text-decoration:underline; }
     </style>
 </head>
 <body>
@@ -414,7 +451,8 @@
             <div class="kpi-grid" id="kpi-grid">
                 <div class="loading">Caricamento KPI…</div>
             </div>
-            <h2>Top 10 da recuperare vs 2025</h2>
+            <div id="stato-mese"></div>
+            <h2 id="top-clienti-h2">Top 10 da recuperare vs anno scorso</h2>
             <div class="table-wrapper">
                 <div class="table-scroll">
                     <table class="table" id="top-clienti-table">
@@ -485,7 +523,19 @@
                     <label>Cerca</label>
                     <input class="filter-input" type="text" id="filtro-clienti" placeholder="Ragione sociale, città, settore…" oninput="filterClienti(this.value)">
                     <div class="filter-sep"></div>
-                    <button class="filter-reset" onclick="document.getElementById('filtro-clienti').value=''; filterClienti('')">Azzera</button>
+                    <label>Stato</label>
+                    <select class="filter-input" id="filtro-stato" onchange="filterClienti(document.getElementById('filtro-clienti').value)" style="width:auto;">
+                        <option value="">Tutti</option>
+                        <option value="da_visitare">Da visitare</option>
+                        <option value="indietro">Indietro</option>
+                        <option value="da_stimolare">Da stimolare</option>
+                        <option value="in_linea">In linea</option>
+                        <option value="ottimo">Ottimo</option>
+                        <option value="nuovo">Nuovo</option>
+                        <option value="inattivo">Inattivo</option>
+                    </select>
+                    <div class="filter-sep"></div>
+                    <button class="filter-reset" onclick="document.getElementById('filtro-clienti').value='';document.getElementById('filtro-stato').value='';filterClienti('')">Azzera</button>
                 </div>
                 <div class="table-header-bar">
                     <span>Clienti attivi · <span class="table-count" id="clienti-count">—</span></span>
@@ -501,10 +551,11 @@
                                 <th>Settore</th>
                                 <th>Categoria</th>
                                 <th>Giorno Visita</th>
+                                <th>Stato mese</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td colspan="7" class="loading">Caricamento…</td></tr>
+                            <tr><td colspan="8" class="loading">Caricamento…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -553,13 +604,13 @@
                             <tr>
                                 <th>Cliente</th>
                                 <th>Divisione</th>
-                                <th class="num-right">Prog. gen-mag 2026</th>
-                                <th class="num-right">Prog. gen-mag 2025</th>
+                                <th>Stato mese</th>
+                                <th class="num-right">Prog. 2026</th>
+                                <th class="num-right">Prog. 2025</th>
                                 <th class="num-right">Var. prog. %</th>
-                                <th class="num-right">Fatturato mese</th>
+                                <th class="num-right">Mese corrente</th>
                                 <th class="num-right">Var. mese %</th>
                                 <th class="num-right">Consegnato</th>
-                                <th class="num-right">In prep.</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -593,838 +644,16 @@
     </div><!-- /main-content -->
 
     <script src="env.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/clienti.js"></script>
+    <script src="js/ordini.js"></script>
+    <script src="js/ddt.js"></script>
+    <script src="js/fatturato.js"></script>
+    <script src="js/app.js"></script>
     <script>
-        const SUPABASE_URL = window.__env?.SUPABASE_URL || '';
-        const SUPABASE_KEY = window.__env?.SUPABASE_KEY || '';
-
-        function getSafeStorage() {
-            try {
-                const k = '__test__';
-                window.localStorage.setItem(k, k);
-                window.localStorage.removeItem(k);
-                return window.localStorage;
-            } catch {
-                return { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-            }
-        }
-
-        if (SUPABASE_KEY.startsWith('sb_secret_')) {
-            console.error('Supabase secret key used in browser; use anon/public key instead.');
-        }
-
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-            auth: { persistSession: false, storage: getSafeStorage() },
-        });
-
-        // ── Utilities ─────────────────────────────────────────────
-
-        function fmt(n) {
-            if (n == null) return '—';
-            return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-
-        function fmtDate(s) {
-            if (!s) return '—';
-            const d = new Date(s);
-            if (isNaN(d)) return s;
-            return d.toLocaleDateString('it-IT');
-        }
-
-        function variazioneBadge(v) {
-            if (v == null) return '<span class="badge badge-gray">—</span>';
-            const cls = v >= 0 ? 'badge-green' : 'badge-red';
-            const sign = v >= 0 ? '+' : '';
-            return `<span class="badge ${cls}">${sign}${Number(v).toFixed(1)}%</span>`;
-        }
-
-        function statoBadge(stato) {
-            if (!stato) return '<span class="badge badge-gray">—</span>';
-            const map = {
-                confermato:   'badge-blue',
-                spedito:      'badge-green',
-                consegnato:   'badge-green',
-                annullato:    'badge-red',
-                'in preparazione': 'badge-orange',
-            };
-            const cls = map[stato.toLowerCase()] || 'badge-gray';
-            return `<span class="badge ${cls}">${stato}</span>`;
-        }
-
-        function formatDateToMonthKey(dateString) {
-            const d = new Date(dateString);
-            if (isNaN(d.getTime())) return null;
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        }
-
-        function monthKeyToDate(k) {
-            const [y, m] = k.split('-').map(Number);
-            return `${y}-${String(m).padStart(2, '0')}-01`;
-        }
-
-        // ── Sidebar / navigation ───────────────────────────────────
-
-        let sidebarOpen = false;
-
-        function toggleSidebar() {
-            sidebarOpen = !sidebarOpen;
-            document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
-            document.getElementById('main-content').classList.toggle('shifted', sidebarOpen);
-        }
-
-        const pageLoaders = {
-            dashboard:  loadDashboard,
-            ordini:     loadOrdini,
-            clienti:    loadClienti,
-            ddt:        loadDDT,
-            fatturato:  loadFatturato,
-        };
-
-        function showPage(pageId, event) {
-            event.preventDefault();
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.getElementById(pageId).classList.add('active');
-            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-            if (event?.currentTarget) event.currentTarget.classList.add('active');
-            if (pageLoaders[pageId]) pageLoaders[pageId]();
-        }
-
-        // ── Seed rolling_fatturato ────────────────────────────────
-
-        async function seedRollingFatturato() {
-            const kpiGrid = document.getElementById('kpi-grid');
-            kpiGrid.innerHTML = '<div class="loading">Popolamento rolling_fatturato in corso…</div>';
-            try {
-                const { data: ordiniData, error: ordiniError } = await supabaseClient
-                    .from('ordini')
-                    .select('data_ordine, totale_ordine')
-                    .order('data_ordine', { ascending: true });
-                if (ordiniError) throw ordiniError;
-                if (!ordiniData?.length) throw new Error('Nessun ordine disponibile per popolare rolling_fatturato.');
-
-                const monthTotals = (ordiniData || []).reduce((acc, o) => {
-                    const k = formatDateToMonthKey(o.data_ordine);
-                    if (!k) return acc;
-                    acc[k] = (acc[k] || 0) + Number(o.totale_ordine || 0);
-                    return acc;
-                }, {});
-
-                const monthKeys = Object.keys(monthTotals).sort();
-                const records = monthKeys.map(k => {
-                    const [year, month] = k.split('-').map(Number);
-                    const current = monthTotals[k];
-                    const lastYearKey = `${year - 1}-${String(month).padStart(2, '0')}`;
-                    const lastYear = monthTotals[lastYearKey] || 0;
-                    const variation = lastYear === 0 ? 0 : ((current - lastYear) / lastYear) * 100;
-                    const ytd = monthKeys
-                        .filter(key => key.startsWith(`${year}-`) && key <= k)
-                        .reduce((s, key) => s + monthTotals[key], 0);
-                    return {
-                        data_aggiornamento: monthKeyToDate(k),
-                        mese_consegnato: Number(current.toFixed(2)),
-                        fatt_mese_anno_prec: Number(lastYear.toFixed(2)),
-                        variazione_mese: Number(variation.toFixed(2)),
-                        fatt_prog_anno_corr: Number(ytd.toFixed(2)),
-                        gto_mag_2026: year === 2026 ? Number(ytd.toFixed(2)) : 0,
-                    };
-                });
-
-                const { error: insertError } = await supabaseClient.from('rolling_fatturato').insert(records);
-                if (insertError) throw insertError;
-
-                await loadDashboard();
-            } catch (error) {
-                console.error('Errore seeding rolling_fatturato:', error);
-                kpiGrid.innerHTML = `<div class="loading">Errore nel popolamento: ${error.message || error}</div>`;
-            }
-        }
-
-        // ── Ultima data rolling ───────────────────────────────────
-
-        let _latestRollingDate = null;
-
-        async function getLatestRollingDate() {
-            if (_latestRollingDate) return _latestRollingDate;
-            const { data } = await supabaseClient
-                .from('rolling_fatturato')
-                .select('data_aggiornamento')
-                .order('data_aggiornamento', { ascending: false })
-                .limit(1)
-                .single();
-            _latestRollingDate = data?.data_aggiornamento || null;
-            return _latestRollingDate;
-        }
-
-        // ── Dashboard ─────────────────────────────────────────────
-
-        async function loadDashboard() {
-            const kpiGrid = document.getElementById('kpi-grid');
-            const topBody = document.querySelector('#top-clienti-table tbody');
-
-            kpiGrid.innerHTML = '<div class="loading">Caricamento KPI…</div>';
-            topBody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
-
-            if (!SUPABASE_URL || !SUPABASE_KEY) {
-                kpiGrid.innerHTML = '<div class="loading">Configurazione Supabase mancante</div>';
-                return;
-            }
-
-            try {
-                const latestDate = await getLatestRollingDate();
-
-                // Parallel fetch
-                const [
-                    { data: rollingData, error: rollingError },
-                    { data: ordiniData, error: ordiniError },
-                    { data: ddtData,    error: ddtError },
-                    { data: cediData,   error: cediError },
-                ] = await Promise.all([
-                    supabaseClient.from('rolling_fatturato')
-                        .select('ragione_sociale, divisione, codice_cliente, fatturato_2025, mese_consegnato, mese_in_preparazione, variazione_mese, variazione_progressivo, fatt_mese_anno_prec, spedito_ordinato_mese, fatt_prog_anno_prec, fatt_prog_anno_corr')
-                        .eq('data_aggiornamento', latestDate),
-                    supabaseClient.from('ordini').select('totale_ordine, data_ordine'),
-                    supabaseClient.from('ddt').select('id, stato').eq('stato', 'spedito'),
-                    supabaseClient.from('cedi_ridistribuito').select('ragione_sociale, valore_ridistribuito, data_aggiornamento').order('valore_ridistribuito', { ascending: false }),
-                ]);
-
-                if (rollingError) throw rollingError;
-                if (ordiniError) throw ordiniError;
-                if (ddtError) throw ddtError;
-
-                // Ordini del mese corrente
-                const now = new Date();
-                const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-                const endDate   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-                const ordiniMese = (ordiniData || []).filter(o => o.data_ordine >= startDate && o.data_ordine <= endDate);
-                const ordiniCount = ordiniMese.length;
-                const ordiniValue = ordiniMese.reduce((s, o) => s + Number(o.totale_ordine || 0), 0);
-
-                const ddtCount = ddtData?.length || 0;
-
-                // KPI aggregati dal rolling
-                const rows = rollingData || [];
-                const totProg2026          = rows.reduce((s, r) => s + Number(r.fatt_prog_anno_corr || 0), 0);
-                const totFatt2025          = rows.reduce((s, r) => s + Number(r.fatturato_2025 || 0), 0);
-                const totConsegnato        = rows.reduce((s, r) => s + Number(r.mese_consegnato || 0), 0);
-                const totInPrep            = rows.reduce((s, r) => s + Number(r.mese_in_preparazione || 0), 0);
-                const totSpeditoMese       = rows.reduce((s, r) => s + Number(r.spedito_ordinato_mese || 0), 0);
-                const totFattMeseAnnoPrec  = rows.reduce((s, r) => s + Number(r.fatt_mese_anno_prec || 0), 0);
-                const totVarMeseEUR        = rows.reduce((s, r) => s + Number(r.variazione_mese || 0), 0);
-                const varMesePct           = totFattMeseAnnoPrec > 0 ? (totVarMeseEUR / totFattMeseAnnoPrec) * 100 : null;
-                const totProgAnnoPrec      = rows.reduce((s, r) => s + Number(r.fatt_prog_anno_prec || 0), 0);
-                const varProg              = totProgAnnoPrec > 0 ? ((totProg2026 - totProgAnnoPrec) / totProgAnnoPrec) * 100 : null;
-
-                // CEDI
-                const totCEDI   = (cediData || []).reduce((s, r) => s + Number(r.valore_ridistribuito || 0), 0);
-                const cediDate  = (cediData || []).reduce((d, r) => (r.data_aggiornamento > d ? r.data_aggiornamento : d), '');
-
-                const annoCorrente = now.getFullYear();
-                const annoPrec     = annoCorrente - 1;
-
-                kpiGrid.innerHTML = `
-                    <div class="kpi-card">
-                        <h3>Fatturato del mese</h3>
-                        <div class="kpi-value">€${fmt(totSpeditoMese)}</div>
-                        <div class="kpi-sub">Cons. €${fmt(totConsegnato)} · Sped. €${fmt(totSpeditoMese - totConsegnato - totInPrep > 0 ? totSpeditoMese - totConsegnato - totInPrep : 0)} · Prep. €${fmt(totInPrep)}</div>
-                        ${varMesePct != null ? `<div class="kpi-change ${varMesePct >= 0 ? 'positive' : 'negative'}">${varMesePct >= 0 ? '+' : ''}${varMesePct.toFixed(1)}% vs ${annoPrec}</div>` : ''}
-                    </div>
-                    <div class="kpi-card">
-                        <h3>Progressivo ${annoCorrente}</h3>
-                        <div class="kpi-value">€${fmt(totProg2026)}</div>
-                        <div class="kpi-sub">Stesso periodo ${annoPrec}: €${fmt(totProgAnnoPrec)}</div>
-                        ${varProg != null ? `<div class="kpi-change ${varProg >= 0 ? 'positive' : 'negative'}">${varProg >= 0 ? '+' : ''}${varProg.toFixed(1)}% vs stesso periodo ${annoPrec}</div>` : ''}
-                    </div>
-                    <div class="kpi-card">
-                        <h3>Fatturato CEDI</h3>
-                        <div class="kpi-value">€${fmt(totCEDI)}</div>
-                        <div class="kpi-sub">${cediDate ? 'Aggiornato ' + fmtDate(cediDate) : '—'}</div>
-                    </div>
-                    <div class="kpi-card">
-                        <h3>Ordini del mese</h3>
-                        <div class="kpi-value">${ordiniCount}</div>
-                        <div class="kpi-sub">€${fmt(ordiniValue)}</div>
-                    </div>
-                    <div class="kpi-card">
-                        <h3>DDT in transito</h3>
-                        <div class="kpi-value">${ddtCount}</div>
-                        <div class="kpi-sub">Stato: spedito</div>
-                    </div>
-                `;
-
-                // Top 10 clienti indietro rispetto all'anno precedente
-                const top10 = [...rows]
-                    .filter(r => r.ragione_sociale && Number(r.variazione_progressivo || 0) < 0)
-                    .sort((a, b) => Number(a.variazione_progressivo || 0) - Number(b.variazione_progressivo || 0))
-                    .slice(0, 10);
-
-                if (top10.length) {
-                    topBody.innerHTML = top10.map((r, i) => {
-                        const prog25  = Number(r.fatt_prog_anno_prec || 0);
-                        const prog26  = Number(r.fatt_prog_anno_corr || 0);
-                        const gapEUR  = Number(r.variazione_progressivo || 0);
-                        const gapPct  = prog25 > 0 ? (gapEUR / prog25) * 100 : null;
-                        const hasMese = Number(r.mese_consegnato || 0) > 0 || Number(r.mese_in_preparazione || 0) > 0;
-                        const meseBadge = hasMese
-                            ? `<span class="badge badge-green">Attivo</span>`
-                            : `<span class="badge badge-red">Da chiamare</span>`;
-                        return `
-                        <tr>
-                            <td><strong>${i + 1}</strong></td>
-                            <td>${r.ragione_sociale}</td>
-                            <td class="num-right">€${fmt(prog25)}</td>
-                            <td class="num-right">€${fmt(prog26)}</td>
-                            <td class="num-right" style="color:var(--red);font-weight:600">€${fmt(gapEUR)}</td>
-                            <td class="num-right">${gapPct != null ? `<span style="color:var(--red);font-weight:600">${gapPct.toFixed(1)}%</span>` : '—'}</td>
-                            <td>${meseBadge}</td>
-                        </tr>`;
-                    }).join('');
-                } else {
-                    topBody.innerHTML = '<tr><td colspan="7" class="loading">Nessun dato disponibile</td></tr>';
-                }
-
-            } catch (err) {
-                console.error('Errore dashboard:', err);
-                kpiGrid.innerHTML = `<div class="loading">Errore: ${err.message}</div>`;
-                topBody.innerHTML = '<tr><td colspan="7" class="loading">Errore nel caricamento</td></tr>';
-            }
-        }
-
-        // ── Ordini ────────────────────────────────────────────────
-
-        let _ordiniDebounceTimer = null;
-        function debounceOrdini() {
-            clearTimeout(_ordiniDebounceTimer);
-            _ordiniDebounceTimer = setTimeout(loadOrdini, 350);
-        }
-
-        function resetFiltriOrdini() {
-            document.getElementById('filtro-da').value = '';
-            document.getElementById('filtro-a').value = '';
-            document.getElementById('filtro-cliente').value = '';
-            loadOrdini();
-        }
-
-        async function loadOrdini() {
-            const tbody = document.querySelector('#ordini-table tbody');
-            const countEl = document.getElementById('ordini-count');
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
-
-            const da      = document.getElementById('filtro-da')?.value;
-            const a       = document.getElementById('filtro-a')?.value;
-            const cliente = document.getElementById('filtro-cliente')?.value?.trim();
-
-            try {
-                let q = supabaseClient
-                    .from('ordini')
-                    .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
-                    .order('data_ordine', { ascending: false });
-
-                if (da)      q = q.gte('data_ordine', da);
-                if (a)       q = q.lte('data_ordine', a);
-                if (cliente) q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%`);
-
-                const { data, error } = await q;
-                if (error) throw error;
-
-                countEl.textContent = data?.length || 0;
-
-                if (!data?.length) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun ordine trovato</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = data.map(o => `
-                    <tr class="ordine-row" onclick="toggleRighe('${o.id}', '${o.numero_ordine}', this)">
-                        <td><button class="expand-btn" id="expand-${o.id}">▶</button></td>
-                        <td><strong>${o.numero_ordine || '—'}</strong></td>
-                        <td>${fmtDate(o.data_ordine)}</td>
-                        <td>${o.codice_cliente || '—'}</td>
-                        <td>${o.destinazione_ragione_sociale || '—'}</td>
-                        <td>${o.tipo_ordine || '—'}</td>
-                        <td class="num-right"><strong>€${fmt(o.totale_ordine)}</strong></td>
-                        <td>${statoBadge(o.stato)}</td>
-                    </tr>
-                    <tr class="righe-row" id="righe-${o.id}">
-                        <td colspan="8"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>
-                    </tr>
-                `).join('');
-            } catch (err) {
-                console.error('Errore ordini:', err);
-                tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
-            }
-        }
-
-        async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
-            if (triggerEl.tagName === 'BUTTON') return; // evita doppio trigger
-            const righeRow  = document.getElementById('righe-' + ordineId);
-            const expandBtn = document.getElementById('expand-' + ordineId);
-            const isOpen    = righeRow.classList.contains('open');
-
-            righeRow.classList.toggle('open', !isOpen);
-            expandBtn.classList.toggle('open', !isOpen);
-            if (isOpen) return;
-
-            const inner = document.getElementById('righe-inner-' + ordineId);
-            if (inner.dataset.loaded) return;
-
-            inner.innerHTML = '<div class="loading" style="padding:12px 0">Caricamento righe…</div>';
-            try {
-                const [{ data, error }, { data: ddtData }] = await Promise.all([
-                    supabaseClient
-                        .from('righe_ordine')
-                        .select('codice_articolo, descrizione_articolo, quantita, unita_misura, prezzo_unitario, importo_eur, data_consegna_prevista')
-                        .eq('ordine_id', ordineId)
-                        .order('codice_articolo'),
-                    supabaseClient
-                        .from('ddt')
-                        .select('numero_ddt, shippeo_url, corriere, eta_shippeo, stato, data_consegna_effettiva')
-                        .eq('numero_ordine', numeroOrdine)
-                ]);
-                if (error) throw error;
-
-                const now = new Date();
-                const consegnatiDates = (ddtData || [])
-                    .filter(d => d.stato === 'consegnato')
-                    .map(d => d.data_consegna_effettiva || d.eta_shippeo)
-                    .filter(Boolean);
-                const maxConsegnaDate = consegnatiDates.length
-                    ? consegnatiDates.reduce((a, b) => new Date(a) >= new Date(b) ? a : b)
-                    : null;
-                const hasConsegnato = (ddtData || []).some(d => d.stato === 'consegnato');
-
-                const trackingLinks = [];
-                if (hasConsegnato) {
-                    trackingLinks.push(maxConsegnaDate
-                        ? `<span class="badge badge-green">Consegnato ${fmtDate(maxConsegnaDate)}</span>`
-                        : `<span class="badge badge-green">Consegnato</span>`);
-                }
-                (ddtData || []).forEach(d => {
-                    if (d.stato === 'consegnato') return;
-                    if (d.shippeo_url) {
-                        const eta = d.eta_shippeo ? new Date(d.eta_shippeo) : null;
-                        const etaStr = eta && eta > now
-                            ? `<span class="eta-label">Prev. ${fmtDate(d.eta_shippeo)}</span>`
-                            : '';
-                        trackingLinks.push(`<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaStr}`);
-                    }
-                });
-
-                if (!data?.length) {
-                    inner.innerHTML = '<div class="loading" style="padding:12px 0">Nessuna riga trovata</div>';
-                    inner.dataset.loaded = '1';
-                    return;
-                }
-
-                inner.innerHTML = `
-                    <table class="righe-table">
-                        <thead><tr>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th class="num-right">Qtà</th>
-                            <th>U.M.</th>
-                            <th class="num-right">Prezzo unit.</th>
-                            <th class="num-right">Importo €</th>
-                            <th>Cons. prevista</th>
-                            <th>Tracking</th>
-                        </tr></thead>
-                        <tbody>
-                        ${data.map(r => `
-                            <tr>
-                                <td><strong>${r.codice_articolo || '—'}</strong></td>
-                                <td>${r.descrizione_articolo || '—'}</td>
-                                <td class="num-right">${r.quantita != null ? r.quantita : '—'}</td>
-                                <td>${r.unita_misura || '—'}</td>
-                                <td class="num-right">€${fmt(r.prezzo_unitario)}</td>
-                                <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
-                                <td>${fmtDate(r.data_consegna_prevista)}</td>
-                                <td>${trackingLinks.join(' ') || '—'}</td>
-                            </tr>
-                        `).join('')}
-                        </tbody>
-                    </table>
-                `;
-                inner.dataset.loaded = '1';
-            } catch (err) {
-                inner.innerHTML = `<div class="loading" style="padding:12px 0">Errore: ${err.message}</div>`;
-            }
-        }
-
-        // ── Clienti ───────────────────────────────────────────────
-
-        let _clientiData = [];
-
-        function filterClienti(q) {
-            const countEl = document.getElementById('clienti-count');
-            const needle = q.trim().toLowerCase();
-            const filtered = needle
-                ? _clientiData.filter(c =>
-                    (c.ragione_sociale || '').toLowerCase().includes(needle) ||
-                    (c.citta          || '').toLowerCase().includes(needle) ||
-                    (c.provincia      || '').toLowerCase().includes(needle) ||
-                    (c.settori?.nome  || '').toLowerCase().includes(needle) ||
-                    (c.categorie?.nome|| '').toLowerCase().includes(needle) ||
-                    (c.codice_cliente || '').includes(needle)
-                  )
-                : _clientiData;
-            countEl.textContent = filtered.length;
-            renderClientiRows(filtered);
-        }
-
-        function renderClientiRows(data) {
-            const tbody = document.querySelector('#clienti-table tbody');
-            if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="loading">Nessun cliente trovato</td></tr>';
-                return;
-            }
-            tbody.innerHTML = data.map(c => {
-                const cod  = c.codice_cliente || '';
-                const nome = (c.ragione_sociale || '').replace(/'/g, "\\'");
-                return `
-                <tr class="cliente-row" onclick="toggleClienteDetail('${cod}', '${nome}', this)">
-                    <td><button class="expand-btn" id="cexp-${cod}">▶</button></td>
-                    <td><strong>${c.ragione_sociale || '—'}</strong></td>
-                    <td>${c.citta || '—'}</td>
-                    <td>${c.provincia || '—'}</td>
-                    <td>${c.settori?.nome || '—'}</td>
-                    <td>${c.categorie?.nome || '—'}</td>
-                    <td>${c.giorno_visita || '—'}</td>
-                </tr>
-                <tr class="cliente-detail-row" id="cdetail-row-${cod}">
-                    <td colspan="7"><div class="cliente-detail-inner" id="cdetail-${cod}"></div></td>
-                </tr>`;
-            }).join('');
-        }
-
-        async function loadClienti() {
-            const tbody = document.querySelector('#clienti-table tbody');
-            const countEl = document.getElementById('clienti-count');
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
-
-            try {
-                const { data, error } = await supabaseClient
-                    .from('clienti')
-                    .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
-                    .eq('attivo', true)
-                    .order('ragione_sociale', { ascending: true });
-                if (error) throw error;
-
-                _clientiData = data || [];
-                countEl.textContent = _clientiData.length;
-                renderClientiRows(_clientiData);
-            } catch (err) {
-                console.error('Errore clienti:', err);
-                tbody.innerHTML = `<tr><td colspan="7" class="loading">Errore: ${err.message}</td></tr>`;
-            }
-        }
-
-        async function toggleClienteDetail(codice, nome, triggerEl) {
-            if (triggerEl.tagName === 'BUTTON') return;
-            const detailRow = document.getElementById('cdetail-row-' + codice);
-            const expandBtn = document.getElementById('cexp-' + codice);
-            const isOpen    = detailRow.classList.contains('open');
-
-            detailRow.classList.toggle('open', !isOpen);
-            expandBtn.classList.toggle('open', !isOpen);
-            if (isOpen) return;
-
-            const inner = document.getElementById('cdetail-' + codice);
-            if (inner.dataset.loaded) return;
-
-            inner.innerHTML = '<div class="loading" style="padding:16px 0">Caricamento scheda…</div>';
-            await loadClienteDetail(codice, nome, inner);
-        }
-
-        async function loadClienteDetail(codice, nome, container) {
-            try {
-                const now = new Date();
-                const annoPrec = now.getFullYear() - 1;
-
-                const latestDate = await getLatestRollingDate();
-
-                const [
-                    { data: rolling },
-                    { data: ordiniAttivi },
-                    { data: gammaData },
-                ] = await Promise.all([
-                    supabaseClient.from('rolling_fatturato')
-                        .select('fatturato_2025, mese_consegnato, mese_in_preparazione, spedito_ordinato_mese, fatt_mese_anno_prec, variazione_mese, fatt_prog_anno_prec, fatt_prog_anno_corr, variazione_progressivo')
-                        .eq('codice_cliente', codice)
-                        .eq('data_aggiornamento', latestDate)
-                        .maybeSingle(),
-                    supabaseClient.from('ordini')
-                        .select('id, totale_ordine, stato')
-                        .eq('codice_cliente', codice)
-                        .not('stato', 'in', '("consegnato","annullato")'),
-                    supabaseClient.from('gamma_penetrazione')
-                        .select('settore, pct_immancabili, pct_strategiche, fatturato_anno, prodotti_acquistati, data_aggiornamento')
-                        .eq('codice_cliente', codice)
-                        .order('settore'),
-                ]);
-
-                const r        = rolling || {};
-                const fatt2025 = Number(r.fatturato_2025 || 0);
-                const meseCons = Number(r.mese_consegnato || 0);
-                const mesePrep = Number(r.mese_in_preparazione || 0);
-                const meseSped = Number(r.spedito_ordinato_mese || 0);
-                const meseVal  = meseSped || (meseCons + mesePrep);
-                const mesePrec = Number(r.fatt_mese_anno_prec || 0);
-                const varMeseEUR = Number(r.variazione_mese ?? (meseVal - mesePrec));
-                const varMese  = mesePrec > 0 ? (varMeseEUR / mesePrec) * 100 : null;
-                const nOrdini  = ordiniAttivi?.length || 0;
-                const valOrdini = (ordiniAttivi || []).reduce((s, o) => s + Number(o.totale_ordine || 0), 0);
-
-                // Gamma section
-                const gamma = gammaData || [];
-                const gammaHTML = gamma.length
-                    ? `<div class="gamma-settori">
-                        ${gamma.map(g => {
-                            const prodotti = g.prodotti_acquistati
-                                ? Object.entries(g.prodotti_acquistati)
-                                : [];
-                            const pctImm = g.pct_immancabili != null ? (g.pct_immancabili * 100).toFixed(0) : null;
-                            const pctStr = g.pct_strategiche != null ? (g.pct_strategiche * 100).toFixed(0) : null;
-                            return `<div class="gamma-settore-card">
-                                <div class="gamma-settore-header">
-                                    <span class="gamma-settore-nome">${g.settore}</span>
-                                    <div class="gamma-pct-badges">
-                                        ${pctImm != null ? `<span class="gamma-pct-badge imm">Immancabili ${pctImm}%</span>` : ''}
-                                        ${pctStr != null ? `<span class="gamma-pct-badge str">Strategiche ${pctStr}%</span>` : ''}
-                                    </div>
-                                </div>
-                                ${prodotti.length ? `<div class="gamma-prodotti">
-                                    ${prodotti.map(([label, val]) =>
-                                        `<span class="gamma-prod-tag" title="€${fmt(val)}">✓ ${label}</span>`
-                                    ).join('')}
-                                </div>` : ''}
-                            </div>`;
-                        }).join('')}
-                    </div>`
-                    : `<div class="cks">Nessun dato gamma disponibile per questo cliente</div>`;
-
-                const gammaAggiornato = gamma.length ? fmtDate(gamma[0].data_aggiornamento) : '';
-
-                container.innerHTML = `
-                    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-                        <button class="btn-ordini" onclick="refreshClienteDetail('${codice}', '${nome.replace(/'/g,"\\'")}')">↺ Aggiorna scheda</button>
-                    </div>
-                    <div class="cliente-kpi-grid">
-                        <div class="cliente-kpi-card">
-                            <h4>Fatturato ${annoPrec}</h4>
-                            <div class="ckv">€${fmt(fatt2025)}</div>
-                        </div>
-                        <div class="cliente-kpi-card">
-                            <h4>Fatturato del mese</h4>
-                            <div class="ckv">€${fmt(meseVal)}</div>
-                            <div class="cks">Cons. €${fmt(meseCons)}${meseSped > meseCons + mesePrep ? ` · Sped. €${fmt(meseSped - meseCons - mesePrep)}` : ''} · Prep. €${fmt(mesePrep)}</div>
-                            ${varMese != null ? `<div class="ckc ${varMese >= 0 ? 'pos' : 'neg'}">${varMese >= 0 ? '+' : ''}${varMese.toFixed(1)}% vs ${annoPrec} (€${fmt(mesePrec)})</div>` : '<div class="cks">Nessun dato anno prec.</div>'}
-                        </div>
-                        <div class="cliente-kpi-card">
-                            <h4>Ordini in corso</h4>
-                            <div class="ckv">${nOrdini}</div>
-                            <div class="cks">${nOrdini > 0 ? '€' + fmt(valOrdini) : 'Nessun ordine attivo'}</div>
-                            ${nOrdini > 0 ? `<button class="btn-ordini" onclick="goToOrdiniFiltered('${codice}')">Vedi ordini →</button>` : ''}
-                        </div>
-                    </div>
-                    <div class="gamma-section">
-                        <h4>Penetrazione gamma${gammaAggiornato ? ' · aggiornato ' + gammaAggiornato : ''}</h4>
-                        ${gammaHTML}
-                    </div>
-                `;
-                container.dataset.loaded = '1';
-            } catch (err) {
-                container.innerHTML = `<div class="loading" style="padding:12px 0">Errore: ${err.message}</div>`;
-            }
-        }
-
-        async function refreshClienteDetail(codice, nome) {
-            const inner = document.getElementById('cdetail-' + codice);
-            if (!inner) return;
-            delete inner.dataset.loaded;
-            inner.innerHTML = '<div class="loading" style="padding:16px 0">Aggiornamento…</div>';
-            await loadClienteDetail(codice, nome, inner);
-        }
-
-        function goToOrdiniFiltered(codice) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.getElementById('ordini').classList.add('active');
-            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-            document.querySelector('.sidebar a[onclick*="ordini"]')?.classList.add('active');
-            document.getElementById('filtro-cliente').value = codice;
-            loadOrdini();
-        }
-
-        // ── DDT & Tracking ────────────────────────────────────────
-
-        async function loadDDT() {
-            const tbody = document.querySelector('#ddt-table tbody');
-            const countEl = document.getElementById('ddt-count');
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
-
-            try {
-                const { data, error } = await supabaseClient
-                    .from('ddt')
-                    .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, shippeo_url')
-                    .order('data_ddt', { ascending: false });
-                if (error) throw error;
-
-                countEl.textContent = data?.length || 0;
-
-                if (!data?.length) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun DDT trovato</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = data.map(d => `
-                    <tr>
-                        <td><strong>${d.numero_consegna || '—'}</strong></td>
-                        <td>${d.numero_ddt || '—'}</td>
-                        <td>${fmtDate(d.data_ddt)}</td>
-                        <td>${d.codice_cliente || '—'}</td>
-                        <td>${d.numero_ordine || '—'}</td>
-                        <td>${d.corriere || '—'}</td>
-                        <td>${statoBadge(d.stato)}</td>
-                        <td>${d.shippeo_url
-                            ? `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>`
-                            : '—'}</td>
-                    </tr>
-                `).join('');
-            } catch (err) {
-                console.error('Errore DDT:', err);
-                tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
-            }
-        }
-
-        // ── Fatturato Rolling ─────────────────────────────────────
-
-        async function loadFatturato() {
-            const tbody = document.querySelector('#fatturato-table tbody');
-            const countEl = document.getElementById('fatturato-count');
-            tbody.innerHTML = '<tr><td colspan="9" class="loading">Caricamento…</td></tr>';
-
-            try {
-                const latestDate = await getLatestRollingDate();
-                const { data, error } = await supabaseClient
-                    .from('rolling_fatturato')
-                    .select('ragione_sociale, divisione, fatt_prog_anno_corr, fatt_prog_anno_prec, variazione_progressivo, spedito_ordinato_mese, fatt_mese_anno_prec, variazione_mese, mese_consegnato, mese_in_preparazione')
-                    .eq('data_aggiornamento', latestDate)
-                    .order('fatt_prog_anno_corr', { ascending: false, nullsFirst: false });
-                if (error) throw error;
-
-                countEl.textContent = data?.length || 0;
-
-                if (!data?.length) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="loading">Nessun dato disponibile</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = data.map(r => {
-                    const progPrec   = Number(r.fatt_prog_anno_prec || 0);
-                    const progGapEUR = Number(r.variazione_progressivo || 0);
-                    const varProgPct = progPrec > 0 ? (progGapEUR / progPrec) * 100 : null;
-
-                    const mesePrec   = Number(r.fatt_mese_anno_prec || 0);
-                    const meseGapEUR = Number(r.variazione_mese || 0);
-                    const varMesePct = mesePrec > 0 ? (meseGapEUR / mesePrec) * 100 : null;
-
-                    return `
-                    <tr>
-                        <td><strong>${r.ragione_sociale || '—'}</strong></td>
-                        <td>${r.divisione || '—'}</td>
-                        <td class="num-right"><strong>€${fmt(r.fatt_prog_anno_corr)}</strong></td>
-                        <td class="num-right">€${fmt(r.fatt_prog_anno_prec)}</td>
-                        <td class="num-right">${variazioneBadge(varProgPct)}</td>
-                        <td class="num-right">€${fmt(r.spedito_ordinato_mese)}</td>
-                        <td class="num-right">${variazioneBadge(varMesePct)}</td>
-                        <td class="num-right">€${fmt(r.mese_consegnato)}</td>
-                        <td class="num-right">€${fmt(r.mese_in_preparazione)}</td>
-                    </tr>`;
-                }).join('');
-            } catch (err) {
-                console.error('Errore fatturato:', err);
-                tbody.innerHTML = `<tr><td colspan="9" class="loading">Errore: ${err.message}</td></tr>`;
-            }
-        }
-
-        // ── Ultimo aggiornamento dati ─────────────────────────────
-
-        async function loadUltimoSync() {
-            const el = document.getElementById('ultimo-sync');
-            try {
-                const { data, error } = await supabaseClient
-                    .from('importazioni')
-                    .select('created_at')
-                    .eq('esito', 'ok')
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .single();
-                if (error || !data) { el.textContent = 'Nessun sync'; return; }
-                const d = new Date(data.created_at);
-                el.textContent = 'Agg. ' + d.toLocaleString('it-IT', {
-                    day: '2-digit', month: '2-digit', year: '2-digit',
-                    hour: '2-digit', minute: '2-digit'
-                });
-            } catch { el.textContent = '—'; }
-        }
-
-        // ── Trigger GitHub Actions sync ───────────────────────────
-
-        async function triggerSync() {
-            const btn  = document.getElementById('sync-btn');
-            const icon = document.getElementById('sync-icon');
-
-            const token = window.__env?.GITHUB_TOKEN;
-            if (!token) {
-                alert('GITHUB_TOKEN non configurato in env.js');
-                return;
-            }
-
-            btn.disabled = true;
-            btn.classList.remove('success', 'error');
-            icon.className = 'spin';
-            icon.textContent = '↻';
-
-            try {
-                const res = await fetch(
-                    'https://api.github.com/repos/loriscuba/Wilson/actions/workflows/wilson_sync.yml/dispatches',
-                    {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Accept': 'application/vnd.github+json',
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ ref: 'main' }),
-                    }
-                );
-
-                if (res.status === 204) {
-                    icon.className = '';
-                    icon.textContent = '✓';
-                    btn.classList.add('success');
-                    setTimeout(() => {
-                        btn.classList.remove('success');
-                        icon.textContent = '↻';
-                        btn.disabled = false;
-                        loadUltimoSync();
-                    }, 3000);
-                } else {
-                    throw new Error(`HTTP ${res.status}`);
-                }
-            } catch (err) {
-                icon.className = '';
-                icon.textContent = '✕';
-                btn.classList.add('error');
-                console.error('Errore trigger sync:', err);
-                setTimeout(() => {
-                    btn.classList.remove('error');
-                    icon.textContent = '↻';
-                    btn.disabled = false;
-                }, 3000);
-            }
-        }
-
-        // ── Init ──────────────────────────────────────────────────
-        loadDashboard();
-        loadUltimoSync();
+        // placeholder — tutto il codice è nei moduli js/
     </script>
 </body>
 </html>
