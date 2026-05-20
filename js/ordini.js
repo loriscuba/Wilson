@@ -81,47 +81,76 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
         .eq('ordine_id', ordineId)
         .order('codice_articolo'),
       sb.from('ddt')
-        .select('numero_ddt, shippeo_url, corriere, eta_shippeo, stato, data_consegna_effettiva')
-        .eq('numero_ordine', numeroOrdine),
+        .select('numero_ddt, numero_consegna, shippeo_url, corriere, eta_shippeo, stato, data_consegna_effettiva')
+        .eq('numero_ordine', numeroOrdine)
+        .order('numero_ddt'),
     ]);
     if (error) throw error;
 
     const now = new Date();
-    const consegnatiDates = (ddtData || [])
-      .filter(d => d.stato === 'consegnato')
-      .map(d => d.data_consegna_effettiva || d.eta_shippeo)
-      .filter(Boolean);
-    const maxCons       = consegnatiDates.length
-      ? consegnatiDates.reduce((a, b) => new Date(a) >= new Date(b) ? a : b) : null;
-    const hasConsegnato = (ddtData || []).some(d => d.stato === 'consegnato');
+    const ddts = ddtData || [];
 
-    const trackingLinks = [];
-    if (hasConsegnato)
-      trackingLinks.push(maxCons
-        ? `<span class="badge badge-green">Consegnato ${fmtDate(maxCons)}</span>`
-        : `<span class="badge badge-green">Consegnato</span>`);
-    (ddtData || []).forEach(d => {
-      if (d.stato === 'consegnato') return;
-      if (d.shippeo_url) {
-        const eta    = d.eta_shippeo ? new Date(d.eta_shippeo) : null;
-        const etaStr = eta && eta > now ? `<span class="eta-label">Prev. ${fmtDate(d.eta_shippeo)}</span>` : '';
-        trackingLinks.push(`<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaStr}`);
+    // Inferisci stato effettivo ordine dai DDT e aggiorna il badge nella riga padre
+    const tuttiConsegnati = ddts.length > 0 && ddts.every(d => d.stato === 'consegnato');
+    const almenoSpedito   = ddts.some(d => d.stato === 'spedito' || d.stato === 'consegnato');
+    if (tuttiConsegnati) {
+      const badge = document.querySelector(`#righe-${ordineId}`
+        + ` ~ tr .badge, tr[id="righe-${ordineId}"]`);
+      const parentRow = document.getElementById('righe-' + ordineId)?.previousElementSibling;
+      if (parentRow) {
+        const badgeEl = parentRow.querySelector('.badge');
+        if (badgeEl && badgeEl.textContent.trim() === 'confermato') {
+          badgeEl.className = 'badge badge-green';
+          badgeEl.textContent = 'consegnato';
+        }
       }
-    });
+    } else if (almenoSpedito) {
+      const parentRow = document.getElementById('righe-' + ordineId)?.previousElementSibling;
+      if (parentRow) {
+        const badgeEl = parentRow.querySelector('.badge');
+        if (badgeEl && badgeEl.textContent.trim() === 'confermato') {
+          badgeEl.className = 'badge badge-blue';
+          badgeEl.textContent = 'spedito';
+        }
+      }
+    }
+
+    // Sezione spedizioni DDT
+    const spedizioniHTML = ddts.length ? `
+      <div class="spedizioni-bar">
+        ${ddts.map(d => {
+          const isConsegnato = d.stato === 'consegnato';
+          const eta = d.eta_shippeo ? new Date(d.eta_shippeo) : null;
+          const etaStr = eta ? (eta < now
+            ? `<span class="eta-label" style="color:var(--text2);">ETA ${fmtDate(d.eta_shippeo)}</span>`
+            : `<span class="eta-label">Prev. ${fmtDate(d.eta_shippeo)}</span>`) : '';
+          const consData = d.data_consegna_effettiva || (isConsegnato ? d.eta_shippeo : null);
+          const trackHTML = isConsegnato
+            ? `<span class="badge badge-green">Consegnato${consData ? ' ' + fmtDate(consData) : ''}</span>`
+            : d.shippeo_url
+              ? `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaStr}`
+              : `<span class="badge badge-gray">${d.stato || 'in attesa'}</span>`;
+          return `<span class="spedizione-chip">
+            <strong>${d.numero_ddt || d.numero_consegna || '—'}</strong>
+            ${d.corriere ? `<span style="color:var(--text2);">${d.corriere}</span>` : ''}
+            ${trackHTML}
+          </span>`;
+        }).join('')}
+      </div>` : '';
 
     if (!data?.length) {
-      inner.innerHTML = '<div class="loading" style="padding:12px 0">Nessuna riga trovata</div>';
+      inner.innerHTML = spedizioniHTML + '<div class="loading" style="padding:12px 0">Nessuna riga trovata</div>';
       inner.dataset.loaded = '1';
       return;
     }
 
-    inner.innerHTML = `
+    inner.innerHTML = spedizioniHTML + `
       <table class="righe-table">
         <thead><tr>
           <th>Codice</th><th>Descrizione</th>
           <th class="num-right">Qtà</th><th>U.M.</th>
           <th class="num-right">Prezzo unit.</th><th class="num-right">Importo €</th>
-          <th>Cons. prevista</th><th>Tracking</th>
+          <th>Cons. prevista</th>
         </tr></thead>
         <tbody>${data.map(r => `
           <tr>
@@ -132,7 +161,6 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             <td class="num-right">€${fmt(r.prezzo_unitario)}</td>
             <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
             <td>${fmtDate(r.data_consegna_prevista)}</td>
-            <td>${trackingLinks.join(' ') || '—'}</td>
           </tr>`).join('')}
         </tbody>
       </table>`;

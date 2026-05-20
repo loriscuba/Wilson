@@ -71,11 +71,20 @@ def importa_tracking(filepath, client):
 
     try:
         # Aggiorna il DDT corrispondente con i dati tracking
-        client.table("ddt").update({
+        res_ddt = client.table("ddt").update({
             "shippeo_token": result["shippeo_token"],
             "shippeo_url":   result["shippeo_url"],
             "stato":         "spedito",
         }).eq("numero_consegna", result["numero_consegna"]).execute()
+
+        # Aggiorna anche ordini.stato → spedito se ancora confermato
+        if res_ddt.data:
+            numero_ordine = res_ddt.data[0].get("numero_ordine")
+            if numero_ordine:
+                client.table("ordini").update({"stato": "spedito"}) \
+                    .eq("numero_ordine", numero_ordine) \
+                    .eq("stato", "confermato") \
+                    .execute()
 
         # Inserisce anche nella tabella tracking
         client.table("tracking").upsert({

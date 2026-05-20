@@ -1,0 +1,33 @@
+name: Wilson - Shippeo Tracking Sync
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # ogni mattina alle 7
+  workflow_dispatch:
+
+jobs:
+  shippeo-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installa dipendenze
+        run: |
+          npm init -y
+          npm install puppeteer @supabase/supabase-js
+          sudo apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
+
+      - name: Esegui scraper Shippeo
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: node shippeo_scraper.js
