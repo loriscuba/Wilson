@@ -43,7 +43,7 @@ function statoBadgeOrdine(stato) {
 
 // Maps analytics stato id → badge CSS class (warm palette)
 function statoBadgeCls(id) {
-  return { ottimo: 'badge-green', in_linea: 'badge-green', da_stimolare: 'badge-orange',
+  return { ottimo: 'badge-blue', in_linea: 'badge-green', da_stimolare: 'badge-orange',
            indietro: 'badge-red', da_visitare: 'badge-gray', nuovo: 'badge-blue',
            inattivo: 'badge-gray' }[id] || 'badge-gray';
 }

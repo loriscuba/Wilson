@@ -14,10 +14,10 @@ const GTO_2026_KEYS = [
 const MESI_LABEL = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
 const STATI = {
-  ottimo:       { id: 'ottimo',       label: 'Ottimo',       desc: '≥ 120% anno scorso' },
-  in_linea:     { id: 'in_linea',     label: 'In linea',     desc: '80–119% anno scorso' },
+  ottimo:       { id: 'ottimo',       label: 'Ottimo',       desc: '≥ 100% anno scorso' },
+  in_linea:     { id: 'in_linea',     label: 'In linea',     desc: '80–99% anno scorso'  },
   da_stimolare: { id: 'da_stimolare', label: 'Da stimolare', desc: '40–79% anno scorso' },
-  indietro:     { id: 'indietro',     label: 'Indietro',     desc: '< 40% anno scorso'  },
+  indietro:     { id: 'indietro',     label: 'Indietro',     desc: '1–39% anno scorso'   },
   da_visitare:  { id: 'da_visitare',  label: 'Da visitare',  desc: '0% questo mese'     },
   nuovo:        { id: 'nuovo',        label: 'Nuovo',        desc: 'nessuno storico 2025'},
   inattivo:     { id: 'inattivo',     label: 'Inattivo',     desc: 'nessun fatturato'   },
@@ -38,7 +38,7 @@ function statoCliente(rec) {
   }
   const r = ord / target;
   if (ord === 0)  return { ...STATI.da_visitare,  pct: 0,  target };
-  if (r >= 1.20)  return { ...STATI.ottimo,       pct: r,  target };
+  if (r >= 1.00)  return { ...STATI.ottimo,       pct: r,  target };
   if (r >= 0.80)  return { ...STATI.in_linea,     pct: r,  target };
   if (r >= 0.40)  return { ...STATI.da_stimolare, pct: r,  target };
   return            { ...STATI.indietro,     pct: r,  target };

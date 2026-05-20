@@ -132,9 +132,9 @@ function renderStatoMese(rows) {
     const info = ries.byStato[id];
     if (!info?.count) return '';
     const cls   = statoBadgeCls(id);
-    const color = { 'badge-green': 'var(--green)', 'badge-orange': '#D97706',
-                    'badge-red': 'var(--red)', 'badge-gray': '#6B6860',
-                    'badge-blue': '#1A56DB' }[cls] || '#6B6860';
+    const color = { 'badge-blue': '#1A56DB', 'badge-green': 'var(--green)',
+                    'badge-orange': '#D97706', 'badge-red': 'var(--red)',
+                    'badge-gray': '#6B6860' }[cls] || '#6B6860';
     return `<button class="stato-chip" style="color:${color};border-color:${color};"
         onclick="filtraPerStato('${id}')" title="${STATI[id].desc}">
       <span class="stato-chip-count">${info.count}</span>
