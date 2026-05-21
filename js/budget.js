@@ -16,7 +16,7 @@ function swBudget(tab, btn) {
 }
 
 async function loadBudget() {
-  await Promise.all([loadBudgetMensile(), loadBudgetClienti()]);
+  await Promise.all([loadBudgetMensile(), loadBudgetClienti(), loadBudgetPremio()]);
 }
 
 // ── Helpers formatters ────────────────────────────────────────────────────────
@@ -33,6 +33,236 @@ const _nomeMese = s => {
                 'luglio','agosto','settembre','ottobre','novembre','dicembre'];
   const d = new Date(s); return isNaN(d) ? '' : nomi[d.getMonth()] + ' ' + d.getFullYear();
 };
+
+// ── TAB PREMIO ────────────────────────────────────────────────────────────────
+
+const PR_BASE  = 833.3333333333334;
+const PR_FASCE = [
+  { label: 'minima',    delta: -0.2, mult: 0   },
+  { label: 'bassa',     delta: -0.1, mult: 0.5 },
+  { label: 'obiettivo', delta:  0,   mult: 1   },
+  { label: 'alta',      delta:  0.1, mult: 1.5 },
+  { label: 'massima',   delta:  0.2, mult: 2   },
+];
+const PR_C4C_FISSO = PR_BASE * 0.20 * 2;  // €333 fisso max
+
+let _prObjFat = 0;
+let _prObjStr = 0;
+
+function _prInterpola(val, obj) {
+  if (obj <= 0) return 0;
+  const ratio = (val - obj) / obj;
+  if (ratio <= -0.2) return 0;
+  if (ratio >= 0.2)  return 2;
+  for (let i = 1; i < PR_FASCE.length; i++) {
+    if (ratio <= PR_FASCE[i].delta) {
+      const t = (ratio - PR_FASCE[i-1].delta) / (PR_FASCE[i].delta - PR_FASCE[i-1].delta);
+      return PR_FASCE[i-1].mult + t * (PR_FASCE[i].mult - PR_FASCE[i-1].mult);
+    }
+  }
+  return 0;
+}
+
+function prCalc() {
+  const fat    = parseFloat(document.getElementById('pr-inp-fat')?.value) || 0;
+  const str    = parseFloat(document.getElementById('pr-inp-str')?.value) || 0;
+  const newCli = parseFloat(document.getElementById('pr-inp-new')?.value) || 0;
+
+  const mFat = _prInterpola(fat, _prObjFat);
+  const mStr = _prInterpola(str, _prObjStr);
+
+  const pFat = PR_BASE * 0.65 * mFat;
+  const pStr = PR_BASE * 0.15 * mStr;
+  const pNew = newCli * 0.02;
+  const tot  = pFat + pStr + PR_C4C_FISSO + pNew;
+  const rag  = PR_BASE > 0 ? tot / PR_BASE : 0;
+
+  const pctFat = _prObjFat > 0 ? fat / _prObjFat : 0;
+  const pctStr = _prObjStr > 0 ? str / _prObjStr : 0;
+  const _fmtPct = n => (n * 100).toFixed(1).replace('.', ',') + '%';
+  const _barClr = pct => pct >= 1 ? '#2D7D4F' : pct >= 0.8 ? '#378ADD' : '#C84B2F';
+  const el = id => document.getElementById(id);
+  if (!el('pr-pct-fat')) return;
+
+  el('pr-pct-fat').textContent      = _fmtPct(pctFat) + ' obj';
+  el('pr-pct-str').textContent      = _fmtPct(pctStr) + ' obj';
+  el('pr-bar-fat').style.width      = Math.min(pctFat * 100, 100) + '%';
+  el('pr-bar-fat').style.background = _barClr(pctFat);
+  el('pr-bar-str').style.width      = Math.min(pctStr * 100, 100) + '%';
+  el('pr-bar-str').style.background = _barClr(pctStr);
+  el('pr-bar-new').style.width      = Math.min(newCli / 5000 * 100, 100) + '%';
+  el('pr-val-fat').textContent      = _eur(pFat);
+  el('pr-val-fat').style.color      = pFat > 0 ? '#2D7D4F' : '#C84B2F';
+  el('pr-val-str').textContent      = _eur(pStr);
+  el('pr-val-str').style.color      = pStr > 0 ? '#2D7D4F' : '#C84B2F';
+  el('pr-val-new').textContent      = _eur(pNew);
+  el('pr-tot-val').textContent      = _eur(tot);
+  el('pr-tot-val').style.color      = rag >= 1 ? '#2D7D4F' : rag >= 0.5 ? '#D97706' : '#C84B2F';
+  el('pr-tot-pct').textContent      = Math.round(rag * 100) + '%';
+
+  let fascia = '—';
+  if      (rag >= 2)    fascia = 'fascia massima (+20%)';
+  else if (rag >= 1.5)  fascia = 'fascia alta (+10%)';
+  else if (rag >= 1)    fascia = 'fascia obiettivo';
+  else if (rag >= 0.5)  fascia = 'fascia intermedia (–10%)';
+  else                  fascia = 'sotto soglia minima';
+  el('pr-tot-fascia').textContent = fascia;
+
+  // Tabella fasce
+  const tbody = el('pr-fascia-tbody');
+  if (!tbody) return;
+  const ratioFat = _prObjFat > 0 ? (fat - _prObjFat) / _prObjFat : -1;
+  tbody.innerHTML = PR_FASCE.map(f => {
+    const pF    = PR_BASE * 0.65 * f.mult;
+    const pS    = PR_BASE * 0.15 * f.mult;
+    const totF  = pF + pS + PR_C4C_FISSO;
+    const isAct = ratioFat >= f.delta - 0.05 && ratioFat < f.delta + 0.05;
+    return `<tr class="${isAct ? 'pr-active' : ''}">
+      <td>${f.label}</td>
+      <td>${f.delta >= 0 ? '+' : ''}${(f.delta * 100).toFixed(0)}%</td>
+      <td>${f.mult}x</td>
+      <td>${_eur(pF)}</td>
+      <td>${_eur(pS)}</td>
+      <td>${_eur(PR_C4C_FISSO)}</td>
+      <td>${_eur(totF)}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadBudgetPremio() {
+  const root = document.getElementById('bpane-premio');
+  if (!root) return;
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const [{ data: bArr }, { data: focus }] = await Promise.all([
+      sb.from('budget').select('budget_mese,evaso,data_aggiornamento')
+        .lte('data_aggiornamento', today)
+        .order('data_aggiornamento', { ascending: false }).limit(1),
+      sb.from('budget_focus').select('*')
+        .lte('data_aggiornamento', today)
+        .order('data_aggiornamento', { ascending: false }),
+    ]);
+
+    const b         = bArr?.[0];
+    const g1        = focus?.find(f => f.gruppo_prodotti.startsWith('Gruppo 1'));
+    const meseNome  = _nomeMese(b?.data_aggiornamento);
+
+    _prObjFat = b?.budget_mese    || 117192;
+    _prObjStr = g1?.target_eur    || 4217.75;
+    const initFat = b?.evaso          || 0;
+    const initStr = g1?.consegnato_eur || 0;
+
+    root.innerHTML = `
+      <p class="b-sec">simulatore premio variabile — Cubaiu Loris 400542</p>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:1rem">
+        Premio annuo: <strong>€ 10.000</strong> · mensile base: <strong>€ 833</strong> ·
+        Fatturato zona e prodotti strategici precompilati da Supabase (${meseNome || '—'}) e modificabili.
+        C4C e task fissi al massimo (20%).
+      </p>
+
+      <div class="b-panel">
+        <div class="pr-row">
+          <div class="pr-row-name">
+            <div class="pr-row-title">fatturato zona di competenza</div>
+            <div class="pr-row-sub">obiettivo ${_eur(_prObjFat)} · peso 65%</div>
+          </div>
+          <div class="pr-row-input">
+            <input type="number" id="pr-inp-fat" value="${initFat}" step="100" min="0" oninput="prCalc()">
+            <span class="pr-row-pct" id="pr-pct-fat">—</span>
+          </div>
+          <div class="pr-bbg"><div class="pr-bfill" id="pr-bar-fat" style="background:#378ADD;width:0%"></div></div>
+          <div class="pr-val" id="pr-val-fat">€ 0</div>
+        </div>
+
+        <div class="pr-row">
+          <div class="pr-row-name">
+            <div class="pr-row-title">prodotti strategici (focus)</div>
+            <div class="pr-row-sub">DUOBLADE · DuoHM · FBS II · HybridPower · FIS EM Plus · FIS A · PowerFast II · PowerFull II · obiettivo ${_eur(_prObjStr)} · peso 15%</div>
+          </div>
+          <div class="pr-row-input">
+            <input type="number" id="pr-inp-str" value="${initStr}" step="100" min="0" oninput="prCalc()">
+            <span class="pr-row-pct" id="pr-pct-str">—</span>
+          </div>
+          <div class="pr-bbg"><div class="pr-bfill" id="pr-bar-str" style="background:#378ADD;width:0%"></div></div>
+          <div class="pr-val" id="pr-val-str">€ 0</div>
+        </div>
+
+        <div class="pr-row">
+          <div class="pr-row-name">
+            <div class="pr-row-title">note visite C4C <span class="pr-fisso">fisso max</span></div>
+            <div class="pr-row-sub">obiettivo 90% · peso 10% · valore fisso: 100%</div>
+          </div>
+          <div class="pr-row-input"><span style="font-size:13px;color:var(--text2)">100%</span></div>
+          <div class="pr-bbg"><div class="pr-bfill" style="background:#2D7D4F;width:100%"></div></div>
+          <div class="pr-val" style="color:#2D7D4F">€ 167</div>
+        </div>
+
+        <div class="pr-row">
+          <div class="pr-row-name">
+            <div class="pr-row-title">task C4C quantità <span class="pr-fisso">fisso max</span></div>
+            <div class="pr-row-sub">obiettivo 10 task · peso 5% · valore fisso: 18</div>
+          </div>
+          <div class="pr-row-input"><span style="font-size:13px;color:var(--text2)">18</span></div>
+          <div class="pr-bbg"><div class="pr-bfill" style="background:#2D7D4F;width:100%"></div></div>
+          <div class="pr-val" style="color:#2D7D4F">€ 83</div>
+        </div>
+
+        <div class="pr-row">
+          <div class="pr-row-name">
+            <div class="pr-row-title">task C4C qualità <span class="pr-fisso">fisso max</span></div>
+            <div class="pr-row-sub">obiettivo 90% · peso 5% · valore fisso: 100%</div>
+          </div>
+          <div class="pr-row-input"><span style="font-size:13px;color:var(--text2)">100%</span></div>
+          <div class="pr-bbg"><div class="pr-bfill" style="background:#2D7D4F;width:100%"></div></div>
+          <div class="pr-val" style="color:#2D7D4F">€ 83</div>
+        </div>
+
+        <div class="pr-row">
+          <div class="pr-row-name">
+            <div class="pr-row-title">clienti nuovi</div>
+            <div class="pr-row-sub">peso 2% sul fatturato · clienti senza fatturato 2024/2025</div>
+          </div>
+          <div class="pr-row-input">
+            <input type="number" id="pr-inp-new" value="0" step="100" min="0" oninput="prCalc()">
+            <span class="pr-row-pct">fat. clienti nuovi</span>
+          </div>
+          <div class="pr-bbg"><div class="pr-bfill" id="pr-bar-new" style="background:#378ADD;width:0%"></div></div>
+          <div class="pr-val" id="pr-val-new">€ 0</div>
+        </div>
+      </div>
+
+      <div class="pr-totale">
+        <div>
+          <div class="pr-tot-label">premio stimato ${meseNome || '—'}</div>
+          <div class="pr-tot-val" id="pr-tot-val">€ 0</div>
+          <div class="pr-tot-sub">base mensile: € 833 · annuo: € 10.000</div>
+        </div>
+        <div style="text-align:right">
+          <div class="pr-tot-label">raggiungimento obiettivo</div>
+          <div class="pr-tot-pct" id="pr-tot-pct">0%</div>
+          <div class="pr-fascia" id="pr-tot-fascia">—</div>
+        </div>
+      </div>
+
+      <p class="b-sec" style="margin-top:1.5rem">tabella fasce premio mensile</p>
+      <div class="b-panel">
+        <table class="pr-ftbl">
+          <thead><tr>
+            <th>fascia</th><th>scostamento obj</th><th>moltiplicatore</th>
+            <th>fatturato zona (65%)</th><th>prod. strategici (15%)</th>
+            <th>C4C + task (20%)</th><th>totale premio</th>
+          </tr></thead>
+          <tbody id="pr-fascia-tbody"></tbody>
+        </table>
+      </div>`;
+
+    prCalc();
+
+  } catch(err) {
+    document.getElementById('bpane-premio').innerHTML =
+      `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
 
 // ── TAB MENSILE ───────────────────────────────────────────────────────────────
 async function loadBudgetMensile() {

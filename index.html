@@ -518,6 +518,39 @@
         .bc-det-sped  { background:#eff8ff; color:#378ADD; }
         .bc-det-oltre { background:#f0fdf4; color:#2D7D4F; }
         .bc-row:hover td { background:var(--bg); }
+
+        /* ── Premio variabile ── */
+        .pr-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:.5px solid var(--border); }
+        .pr-row:first-child { border-top:none; padding-top:0; }
+        .pr-row-name  { flex:1; }
+        .pr-row-title { font-size:13px; color:var(--text); }
+        .pr-row-sub   { font-size:11px; color:var(--text2); margin-top:2px; }
+        .pr-row-input { display:flex; flex-direction:column; align-items:flex-end; gap:3px; min-width:130px; }
+        .pr-row-input input { width:120px; text-align:right; font-size:13px; padding:5px 8px;
+                              border:1px solid var(--border); border-radius:8px;
+                              background:var(--surface); color:var(--text); outline:none;
+                              font-family:'DM Sans',sans-serif; }
+        .pr-row-input input:focus { border-color:#378ADD; }
+        .pr-row-pct   { font-size:11px; color:var(--text2); }
+        .pr-bbg       { height:5px; background:var(--border); border-radius:3px; overflow:hidden; width:80px; flex-shrink:0; }
+        .pr-bfill     { height:100%; border-radius:3px; transition:width .3s; }
+        .pr-val       { font-size:13px; font-weight:500; min-width:72px; text-align:right; }
+        .pr-fisso     { background:var(--bg); color:var(--text2); font-size:11px; padding:2px 6px; border-radius:6px; }
+        .pr-totale    { background:var(--bg); border-radius:12px; padding:1.25rem 1.5rem;
+                        display:flex; justify-content:space-between; align-items:center; margin-top:.5rem; }
+        .pr-tot-val   { font-size:28px; font-weight:500; }
+        .pr-tot-label { font-size:13px; color:var(--text2); margin-bottom:4px; }
+        .pr-tot-sub   { font-size:12px; color:var(--text2); margin-top:2px; }
+        .pr-tot-pct   { font-size:22px; font-weight:500; }
+        .pr-fascia    { font-size:11px; color:var(--text2); margin-top:4px; }
+        .pr-ftbl      { width:100%; border-collapse:collapse; font-size:12px; }
+        .pr-ftbl th   { font-size:11px; font-weight:600; color:var(--text2); padding:0 8px 8px 0;
+                        text-align:left; border-bottom:1px solid var(--border); }
+        .pr-ftbl th:not(:first-child) { text-align:right; }
+        .pr-ftbl td   { padding:6px 8px 6px 0; border-bottom:1px solid var(--border); color:var(--text); }
+        .pr-ftbl td:not(:first-child) { text-align:right; }
+        .pr-ftbl tr:last-child td { border-bottom:none; }
+        .pr-active td { font-weight:600; background:#edf7ed; }
     </style>
 </head>
 <body>
@@ -696,11 +729,15 @@
             <div class="budget-tabs">
                 <button class="budget-tab on" onclick="swBudget('mensile',this)">budget mensile</button>
                 <button class="budget-tab" onclick="swBudget('clienti',this)">budget clienti</button>
+                <button class="budget-tab" onclick="swBudget('premio',this)">premio</button>
             </div>
             <div id="bpane-mensile" class="budget-pane on">
                 <div class="loading">Caricamento…</div>
             </div>
             <div id="bpane-clienti" class="budget-pane">
+                <div class="loading">Caricamento…</div>
+            </div>
+            <div id="bpane-premio" class="budget-pane">
                 <div class="loading">Caricamento…</div>
             </div>
         </div>
