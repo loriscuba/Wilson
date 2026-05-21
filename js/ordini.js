@@ -81,7 +81,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
         .eq('ordine_id', ordineId)
         .order('codice_articolo'),
       sb.from('ddt')
-        .select('numero_ddt, numero_consegna, shippeo_url, corriere, eta_shippeo, stato, data_consegna_effettiva')
+        .select('numero_ddt, numero_consegna, data_ddt, shippeo_url, corriere, eta_shippeo, stato, stato_shippeo, data_consegna_effettiva, righe_ddt(codice_articolo)')
         .eq('numero_ordine', numeroOrdine)
         .order('numero_ddt'),
     ]);
@@ -115,28 +115,72 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
       }
     }
 
+    // Mappa stato_shippeo raw → etichetta italiana
+    const SHIPPEO_LABEL = {
+      deliveryCompliant:      'Consegnato',
+      deliveryLate:           'Consegnato in ritardo',
+      deliveryAttemptFailed:  'Tentativo fallito',
+      inTransit:              'In transito',
+      loading:                'In carico',
+      pickup:                 'Ritiro in corso',
+      exception:              'Anomalia',
+    };
+    function corriereBreve(c) {
+      if (!c) return '—';
+      return c.replace(/\s+(S\.?R\.?L\.?|S\.?P\.?A\.?|S\.?A\.?S\.?)\.?\s*$/i, '').trim();
+    }
+
     // Sezione spedizioni DDT
     const spedizioniHTML = ddts.length ? `
       <div class="spedizioni-bar">
         ${ddts.map(d => {
           const isConsegnato = d.stato === 'consegnato';
-          const eta = d.eta_shippeo ? new Date(d.eta_shippeo) : null;
-          const etaStr = eta ? (eta < now
-            ? `<span class="eta-label" style="color:var(--text2);">ETA ${fmtDate(d.eta_shippeo)}</span>`
-            : `<span class="eta-label">Prev. ${fmtDate(d.eta_shippeo)}</span>`) : '';
-          const consData = d.data_consegna_effettiva || (isConsegnato ? d.eta_shippeo : null);
-          const trackHTML = isConsegnato
-            ? `<span class="badge badge-green">Consegnato${consData ? ' ' + fmtDate(consData) : ''}</span>`
-            : d.shippeo_url
-              ? `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaStr}`
-              : `<span class="badge badge-gray">${d.stato || 'in attesa'}</span>`;
-          return `<span class="spedizione-chip">
-            <strong>${d.numero_ddt || d.numero_consegna || '—'}</strong>
-            ${d.corriere ? `<span style="color:var(--text2);">${d.corriere}</span>` : ''}
-            ${trackHTML}
-          </span>`;
+          const eta  = d.eta_shippeo ? new Date(d.eta_shippeo) : null;
+          const etaOk = eta && !isNaN(eta);
+          const etaFutura = etaOk && eta > now;
+          const statoLabel = SHIPPEO_LABEL[d.stato_shippeo] || null;
+
+          let statusHTML;
+          if (isConsegnato) {
+            const quando = d.data_consegna_effettiva || d.eta_shippeo;
+            statusHTML = `<span class="badge badge-green">✓ ${statoLabel || 'Consegnato'}${quando ? ' · ' + fmtDate(quando) : ''}</span>`;
+          } else if (d.shippeo_url) {
+            const etaChip = etaOk
+              ? `<span class="eta-chip ${etaFutura ? 'eta-future' : 'eta-past'}">ETA ${fmtDate(d.eta_shippeo)}</span>`
+              : '';
+            const statoChip = statoLabel
+              ? `<span class="badge badge-blue" style="font-size:11px;">${statoLabel}</span>`
+              : '';
+            statusHTML = `${statoChip}<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaChip}`;
+          } else {
+            statusHTML = `<span class="badge badge-gray">${statoLabel || d.stato || 'in attesa'}</span>`;
+          }
+
+          return `<div class="spedizione-chip">
+            <div class="sped-meta">
+              <strong class="sped-ddt">DDT ${d.numero_ddt || d.numero_consegna || '—'}</strong>
+              <span class="sped-corriere">${corriereBreve(d.corriere)}</span>
+              ${d.data_ddt ? `<span class="sped-data">Spedito il ${fmtDate(d.data_ddt)}</span>` : ''}
+            </div>
+            <div class="sped-status">${statusHTML}</div>
+          </div>`;
         }).join('')}
       </div>` : '';
+
+    // Mappa codice_articolo (senza zeri iniziali) → DDT con priorità a "consegnato"
+    const articoloDDT = {};
+    for (const ddt of ddts) {
+      for (const riga of (ddt.righe_ddt || [])) {
+        const key = String(riga.codice_articolo || '').replace(/^0+/, '') || String(riga.codice_articolo);
+        if (!articoloDDT[key] || ddt.stato === 'consegnato') {
+          articoloDDT[key] = ddt;
+        }
+      }
+    }
+    function getDDTArticolo(codice) {
+      const key = String(codice || '').replace(/^0+/, '') || String(codice);
+      return articoloDDT[key] || null;
+    }
 
     if (!data?.length) {
       inner.innerHTML = spedizioniHTML + '<div class="loading" style="padding:12px 0">Nessuna riga trovata</div>';
@@ -150,10 +194,36 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
           <th>Codice</th><th>Descrizione</th>
           <th class="num-right">Qtà</th><th>U.M.</th>
           <th class="num-right">Prezzo unit.</th><th class="num-right">Importo €</th>
-          <th>Cons. prevista</th>
+          <th>Cons. prevista</th><th>Shippeo</th>
         </tr></thead>
-        <tbody>${data.map(r => `
-          <tr>
+        <tbody>${data.map(r => {
+          const ddt = getDDTArticolo(r.codice_articolo);
+          let rowCls = '';
+          let shippeoCell = '<span style="color:var(--text2)">—</span>';
+
+          if (ddt) {
+            const eta = ddt.eta_shippeo ? new Date(ddt.eta_shippeo) : null;
+            const etaOk = eta && !isNaN(eta);
+            const statoLabel = SHIPPEO_LABEL[ddt.stato_shippeo] || null;
+
+            if (ddt.stato === 'consegnato') {
+              rowCls = 'riga-consegnata';
+              const quando = ddt.data_consegna_effettiva || ddt.eta_shippeo;
+              shippeoCell = `<span class="badge badge-green">✓ ${statoLabel || 'Consegnato'}${quando ? ' · ' + fmtDate(quando) : ''}</span>`;
+            } else if (ddt.shippeo_url || etaOk) {
+              rowCls = 'riga-in-transito';
+              const etaChip = etaOk ? ` · ETA ${fmtDate(ddt.eta_shippeo)}` : '';
+              const label = statoLabel || 'In transito';
+              if (ddt.shippeo_url) {
+                shippeoCell = `<a class="shippeo-link" href="${ddt.shippeo_url}" target="_blank" rel="noopener">${label}${etaChip} →</a>`;
+              } else {
+                shippeoCell = `<span class="badge badge-orange">${label}${etaChip}</span>`;
+              }
+            }
+          }
+
+          return `
+          <tr class="${rowCls}">
             <td><strong>${r.codice_articolo || '—'}</strong></td>
             <td>${r.descrizione_articolo || '—'}</td>
             <td class="num-right">${r.quantita ?? '—'}</td>
@@ -161,7 +231,9 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             <td class="num-right">€${fmt(r.prezzo_unitario)}</td>
             <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
             <td>${fmtDate(r.data_consegna_prevista)}</td>
-          </tr>`).join('')}
+            <td>${shippeoCell}</td>
+          </tr>`;
+        }).join('')}
         </tbody>
       </table>`;
     inner.dataset.loaded = '1';

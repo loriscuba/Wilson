@@ -357,10 +357,19 @@
         }
         .righe-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
         .righe-table tr:last-child td { border-bottom: none; }
+        .righe-table tr.riga-consegnata td { background: #E8F5EE; }
+        .righe-table tr.riga-in-transito td { background: #FFFBEB; }
         .ordine-row { cursor: pointer; }
-        .spedizioni-bar { display:flex; flex-wrap:wrap; gap:10px; padding:8px 0 12px; border-bottom:1px solid var(--border); margin-bottom:8px; }
-        .spedizione-chip { display:flex; align-items:center; gap:8px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:5px 10px; font-size:12px; }
-        .eta-label { font-size:11px; color:#D97706; }
+        .spedizioni-bar { display:flex; flex-wrap:wrap; gap:10px; padding:8px 0 14px; border-bottom:1px solid var(--border); margin-bottom:10px; }
+        .spedizione-chip { display:flex; align-items:center; gap:12px; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:8px 14px; font-size:12px; flex-wrap:wrap; }
+        .sped-meta { display:flex; flex-direction:column; gap:2px; }
+        .sped-ddt  { font-size:13px; color:var(--text); }
+        .sped-corriere { color:var(--text2); font-size:11px; text-transform:uppercase; letter-spacing:.3px; }
+        .sped-data { color:var(--text2); font-size:11px; }
+        .sped-status { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+        .eta-chip { font-size:11px; padding:2px 7px; border-radius:4px; font-weight:600; }
+        .eta-chip.eta-future { background:#FEF3C7; color:#92400E; }
+        .eta-chip.eta-past   { background:var(--bg); color:var(--text2); border:1px solid var(--border); }
 
         /* ── Sync button ── */
         .sync-btn {
