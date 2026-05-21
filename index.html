@@ -433,6 +433,48 @@
             font-family:'DM Sans',sans-serif;
         }
         .gap-row-btn:hover { text-decoration:underline; }
+
+        /* ── Budget page ── */
+        .budget-tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
+        .budget-tab  { font-size:13px; padding:8px 18px; cursor:pointer; color:var(--text2);
+                       border-bottom:2px solid transparent; margin-bottom:-1px;
+                       background:none; border-top:none; border-left:none; border-right:none;
+                       font-family:'DM Sans',sans-serif; }
+        .budget-tab.on { color:var(--text); border-bottom-color:var(--text); font-weight:500; }
+        .budget-pane { display:none; } .budget-pane.on { display:block; }
+        .b-g4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:1rem; }
+        .b-g2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:1rem; }
+        .b-kcard { background:var(--bg); border-radius:8px; padding:.85rem 1rem; }
+        .b-klabel { font-size:12px; color:var(--text2); margin-bottom:4px; }
+        .b-kval { font-size:19px; font-weight:500; }
+        .b-ksub { font-size:11px; margin-top:2px; }
+        .b-sec { font-size:11px; font-weight:700; color:var(--text2); letter-spacing:.06em;
+                 text-transform:uppercase; margin:1.25rem 0 .5rem; }
+        .b-panel { background:var(--surface); border:1px solid var(--border);
+                   border-radius:12px; padding:1rem 1.25rem; margin-bottom:1rem; }
+        .b-bbg  { height:5px; background:var(--border); border-radius:3px; overflow:hidden; }
+        .b-bfill { height:100%; border-radius:3px; transition:width .4s; }
+        .b-prow { display:flex; justify-content:space-between; align-items:baseline;
+                  margin-bottom:6px; font-size:13px; }
+        .b-prow-label { color:var(--text2); }
+        .b-prow-val { font-weight:500; }
+        .b-prow-val span { color:var(--text2); font-weight:400; }
+        .b-hint { display:flex; justify-content:space-between; font-size:11px; color:var(--text2); margin-top:6px; }
+        .b-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+        .b-tbl th { font-size:11px; font-weight:600; color:var(--text2); padding:0 8px 8px 0;
+                    text-align:left; border-bottom:1px solid var(--border); }
+        .b-tbl td { padding:8px 8px 8px 0; border-bottom:1px solid var(--border); vertical-align:middle; }
+        .b-tbl tr:last-child td { border-bottom:none; }
+        .b-srch { width:100%; margin-bottom:12px; font-size:13px; padding:6px 10px;
+                  border:1px solid var(--border); border-radius:8px;
+                  background:var(--surface); color:var(--text); outline:none;
+                  font-family:'DM Sans',sans-serif; }
+        .b-srch:focus { border-color:var(--accent); }
+        .b-inline-bar { display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+        .b-mini-bg   { width:50px; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+        .b-mini-fill { height:100%; border-radius:2px; }
+        .pos { color:#2D7D4F; } .neg { color:#C84B2F; }
+        @media(max-width:600px) { .b-g4 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     </style>
 </head>
 <body>
@@ -447,6 +489,7 @@
             <li><a href="#" onclick="showPage('clienti',event)"><span class="icon">👥</span>Clienti</a></li>
             <li><a href="#" onclick="showPage('ddt',event)"><span class="icon">🚚</span>DDT & Tracking</a></li>
             <li><a href="#" onclick="showPage('fatturato',event)"><span class="icon">💶</span>Fatturato</a></li>
+            <li><a href="#" onclick="showPage('budget',event)"><span class="icon">🎯</span>Budget</a></li>
             <li><a href="#" onclick="showPage('preventivi',event)"><span class="icon">📝</span>Preventivi</a></li>
             <li><a href="#" onclick="showPage('agenda',event)"><span class="icon">📅</span>Agenda</a></li>
         </ul>
@@ -635,6 +678,21 @@
         </div>
 
         <!-- ── PREVENTIVI ── -->
+        <!-- ── BUDGET ── -->
+        <div id="budget" class="page">
+            <h1>Budget</h1>
+            <div class="budget-tabs">
+                <button class="budget-tab on" onclick="swBudget('mensile',this)">budget mensile</button>
+                <button class="budget-tab" onclick="swBudget('clienti',this)">budget clienti</button>
+            </div>
+            <div id="bpane-mensile" class="budget-pane on">
+                <div class="loading">Caricamento…</div>
+            </div>
+            <div id="bpane-clienti" class="budget-pane">
+                <div class="loading">Caricamento…</div>
+            </div>
+        </div>
+
         <div id="preventivi" class="page">
             <h1>Preventivi</h1>
             <div class="placeholder">
@@ -664,6 +722,7 @@
     <script src="js/ordini.js?v=13"></script>
     <script src="js/ddt.js?v=10"></script>
     <script src="js/fatturato.js?v=10"></script>
+    <script src="js/budget.js?v=1"></script>
     <script src="js/app.js?v=10"></script>
     <script>
         // placeholder — tutto il codice è nei moduli js/

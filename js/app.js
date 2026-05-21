@@ -14,6 +14,7 @@ const PAGE_LOADERS = {
   clienti:   loadClienti,
   ddt:       loadDDT,
   fatturato: loadFatturato,
+  budget:    loadBudget,
 };
 
 function showPage(pageId, event) {
