@@ -1,4 +1,3 @@
-const puppeteer = require('puppeteer');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -13,18 +12,12 @@ const MESI_IT = {
     jul:7, aug:8, sep:9, oct:10, nov:11, dec:12,
 };
 
-// Converte "22 maggio 2026" o "22/05/2026" in ISO string
 function parseDataIT(s) {
     if (!s) return null;
     s = s.trim();
-
-    // ISO già pronta
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-
-    // "22/05/2026" o "22.05.2026"
     const slashM = s.match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})/);
     if (slashM) return `${slashM[3]}-${slashM[2].padStart(2,'0')}-${slashM[1].padStart(2,'0')}`;
-
     // "22 maggio 2026" o "22 maggio" (anno corrente)
     const wordM = s.match(/(\d{1,2})\s+([a-zéè]+)\s*(\d{4})?/i);
     if (wordM) {
@@ -34,15 +27,24 @@ function parseDataIT(s) {
             return `${anno}-${String(mese).padStart(2,'0')}-${wordM[1].padStart(2,'0')}`;
         }
     }
-
+    // "22/05" senza anno → anno corrente
+    const shortSlash = s.match(/^(\d{1,2})[\/\.](\d{2})$/);
+    if (shortSlash) {
+        const anno = new Date().getFullYear();
+        return `${anno}-${shortSlash[2].padStart(2,'0')}-${shortSlash[1].padStart(2,'0')}`;
+    }
     return null;
 }
 
-// Normalizza URL Shippeo al formato /road/orderPublic/TOKEN/overview
 function normalizeShippeoUrl(url) {
     const tokenM = url.match(/orderPublic\/([A-Z0-9]+)/i);
     if (!tokenM) return url;
     return `https://view.shippeo.com/road/orderPublic/${tokenM[1]}/overview`;
+}
+
+function extractToken(url) {
+    const m = url.match(/orderPublic\/([A-Z0-9]+)/i);
+    return m ? m[1] : null;
 }
 
 function mapStatus(s) {
@@ -72,7 +74,6 @@ function etaDaStops(stops) {
     );
 }
 
-// Ricerca ricorsiva di campi data in oggetti JSON
 function findField(obj, keys, depth = 0) {
     if (depth > 5 || !obj || typeof obj !== 'object') return null;
     for (const k of Object.keys(obj)) {
@@ -89,81 +90,128 @@ function findField(obj, keys, depth = 0) {
     return null;
 }
 
+// Tenta di leggere lo stato direttamente dalle API Shippeo senza browser
+async function tryDirectApi(token) {
+    const endpoints = [
+        `https://view.shippeo.com/api/road/orderPublic/${token}`,
+        `https://view.shippeo.com/api/orderPublic/${token}`,
+        `https://api.shippeo.com/road/orderPublic/${token}`,
+    ];
+    const headers = {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    };
+    for (const url of endpoints) {
+        try {
+            const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+            if (!res.ok) continue;
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('json')) continue;
+            const body = await res.json();
+            const s = body?.status?.currentStatus || body?.currentStatus ||
+                      (typeof body?.status === 'string' ? body.status : null);
+            const da = findField(body, ['occurredon','deliveredat','actualdelivery']);
+            const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
+                        etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
+            if (s || eta) {
+                console.log(`  [direct-api] ${url} → status=${s} eta=${eta}`);
+                return { status: s, etaRaw: eta, deliveredAt: da };
+            }
+        } catch (_) {}
+    }
+    return null;
+}
+
 async function getShippeoData(rawUrl) {
     const shippeoUrl = normalizeShippeoUrl(rawUrl);
-    if (process.env.DEBUG) console.log(`  [url] ${shippeoUrl}`);
+    const token = extractToken(rawUrl);
+    console.log(`  [url] ${shippeoUrl}`);
+
+    // Prova prima senza browser (più veloce, aggira Cloudflare per alcune rotte)
+    if (token) {
+        const direct = await tryDirectApi(token);
+        if (direct) return direct;
+    }
+
+    // Fallback: Puppeteer con stealth
+    let puppeteer;
+    try {
+        const extra = require('puppeteer-extra');
+        const Stealth = require('puppeteer-extra-plugin-stealth');
+        extra.use(Stealth());
+        puppeteer = extra;
+    } catch (_) {
+        puppeteer = require('puppeteer');
+    }
 
     const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+               '--disable-blink-features=AutomationControlled'],
         headless: 'new',
     });
     const page = await browser.newPage();
 
+    // Simula un browser reale
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8' });
+
     const captured = [];
     page.on('response', async res => {
         const url = res.url();
-        if (!url.includes('shippeo')) return;
         const ct = res.headers()['content-type'] || '';
         if (!ct.includes('json')) return;
         try {
             const body = await res.json();
             captured.push({ url, body });
-            if (process.env.DEBUG) {
-                console.log(`  [api] ${url}`);
-                console.log(`  [api] ${JSON.stringify(body).slice(0, 500)}`);
-            }
         } catch (_) {}
     });
 
     try {
-        await page.goto(shippeoUrl, { waitUntil: 'networkidle0', timeout: 50000 });
+        await page.goto(shippeoUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     } catch (_) {}
 
-    // Attende che il contenuto sia visibile (max 5s extra)
-    await page.waitForSelector('body', { timeout: 5000 }).catch(() => {});
-    const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+    // Attendi che il contenuto dinamico si carichi (max 8s)
+    await new Promise(r => setTimeout(r, 8000));
 
+    const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
     await browser.close();
 
-    // Analizza risposte API
     let status = null, etaRaw = null, deliveredAt = null;
 
     for (const { body } of captured) {
         const s = body?.status?.currentStatus || body?.currentStatus ||
                   (typeof body?.status === 'string' ? body.status : null);
         if (s && !status) status = s;
-
         const da = findField(body, ['occurredon','deliveredat','actualdelivery','consegnato']);
         if (da && !deliveredAt) deliveredAt = da;
-
         const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
                     etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
         if (eta && !etaRaw) etaRaw = eta;
     }
 
-    // Fallback: estrai dal testo visibile della pagina
     if (!status || !etaRaw) {
         const t = pageText;
         const tl = t.toLowerCase();
 
-        // Cerca "Consegnato il 20 maggio" o "Consegnato il 20/05"
-        const consM = t.match(/consegnat\w{0,2}\s+(?:il\s+)?(\d{1,2}[\/\s\.][a-z]+[\/\s\.]\d{0,4}|\d{1,2}[\/\.]\d{2}[\/\.]\d{2,4})/i);
+        // "Consegnato il 20 maggio" / "Consegnato il 20/05" / "Consegnato il 20/05/2026"
+        const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
         if (consM) {
             if (!status) status = 'deliveryCompliant';
-            if (!deliveredAt) deliveredAt = parseDataIT(consM[1]);
+            if (!deliveredAt) deliveredAt = parseDataIT(consM[1].trim());
         } else if (tl.includes('consegnat') || tl.includes('delivered')) {
             if (!status) status = 'deliveryCompliant';
         }
 
-        // Cerca "Prevista il 22 maggio" o "Consegna prevista 22/05"
-        const etaM = t.match(/(?:prevista?|stimata?|estimated?)\s*(?:il\s+)?(\d{1,2}[\/\s\.][a-z]+[\/\s\.]\d{0,4}|\d{1,2}[\/\.]\d{2}[\/\.]\d{2,4})/i);
-        if (etaM && !etaRaw) etaRaw = parseDataIT(etaM[1]);
+        // "Prevista il 22 maggio" / "Consegna prevista 22/05"
+        const etaM = t.match(/(?:prevista?|stimata?|estimated?)\s*(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
+        if (etaM && !etaRaw) etaRaw = parseDataIT(etaM[1].trim());
+
+        if (process.env.DEBUG) {
+            console.log(`  [pageText excerpt] ${t.slice(0, 300)}`);
+        }
     }
 
-    if (process.env.DEBUG) {
-        console.log(`  [result] status=${status} eta=${etaRaw} deliveredAt=${deliveredAt} (${captured.length} API)`);
-    }
-
+    console.log(`  [result] status=${status} eta=${etaRaw} deliveredAt=${deliveredAt} (${captured.length} API)`);
     return { status, etaRaw, deliveredAt };
 }
 

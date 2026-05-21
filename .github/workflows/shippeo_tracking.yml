@@ -23,7 +23,7 @@ jobs:
       - name: Installa dipendenze
         run: |
           npm init -y
-          npm install puppeteer @supabase/supabase-js
+          npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth @supabase/supabase-js
           sudo apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64
 
       - name: Esegui scraper Shippeo
