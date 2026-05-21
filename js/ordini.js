@@ -75,20 +75,37 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
 
   inner.innerHTML = '<div class="loading" style="padding:12px 0">Caricamento righe…</div>';
   try {
-    const [{ data, error }, { data: ddtData }] = await Promise.all([
+    const [{ data, error }, { data: ddtRaw, error: ddtErr }] = await Promise.all([
       sb.from('righe_ordine')
         .select('codice_articolo, descrizione_articolo, quantita, unita_misura, prezzo_unitario, importo_eur, data_consegna_prevista')
         .eq('ordine_id', ordineId)
         .order('codice_articolo'),
       sb.from('ddt')
-        .select('numero_ddt, numero_consegna, data_ddt, shippeo_url, corriere, eta_shippeo, stato, stato_shippeo, data_consegna_effettiva, righe_ddt(codice_articolo)')
+        .select('id, numero_ddt, numero_consegna, data_ddt, shippeo_url, corriere, eta_shippeo, stato, stato_shippeo, data_consegna_effettiva')
         .eq('numero_ordine', numeroOrdine)
         .order('numero_ddt'),
     ]);
     if (error) throw error;
+    if (ddtErr) throw ddtErr;
 
     const now = new Date();
-    const ddts = ddtData || [];
+    const ddtList = ddtRaw || [];
+
+    // Fetch righe_ddt separately to avoid PostgREST relationship issues
+    let righeDdt = [];
+    if (ddtList.length) {
+      const ddtIds = ddtList.map(d => d.id);
+      const { data: rd } = await sb.from('righe_ddt')
+        .select('ddt_id, codice_articolo')
+        .in('ddt_id', ddtIds);
+      righeDdt = rd || [];
+    }
+
+    // Attach righe_ddt to each DDT
+    const ddts = ddtList.map(d => ({
+      ...d,
+      righe_ddt: righeDdt.filter(r => r.ddt_id === d.id),
+    }));
 
     // Calcola stato ordine a livello di singolo articolo
     const ordineSet = new Set(
