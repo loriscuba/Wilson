@@ -13,7 +13,6 @@ const PAGE_LOADERS = {
   ordini:    loadOrdini,
   clienti:   loadClienti,
   ddt:       loadDDT,
-  fatturato: loadFatturato,
   budget:    loadBudget,
 };
 

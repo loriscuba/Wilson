@@ -475,6 +475,49 @@
         .b-mini-fill { height:100%; border-radius:2px; }
         .pos { color:#2D7D4F; } .neg { color:#C84B2F; }
         @media(max-width:600px) { .b-g4 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+        /* ── Budget Clienti ── */
+        .bc-kpi-strip { display:flex; gap:10px; margin-bottom:1rem; flex-wrap:wrap; }
+        .bc-kpi { background:var(--bg); border-radius:8px; padding:.7rem 1rem; flex:1; min-width:140px; }
+        .bc-kpi-label { font-size:11px; color:var(--text2); margin-bottom:3px; }
+        .bc-kpi-val   { font-size:18px; font-weight:500; }
+        .bc-kpi-sub   { font-size:11px; margin-top:2px; }
+        .bc-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:.75rem; }
+        .bc-chip  { font-size:12px; padding:4px 10px; border-radius:20px; cursor:pointer;
+                    border:1px solid var(--border); background:var(--surface);
+                    color:var(--text2); font-family:'DM Sans',sans-serif; }
+        .bc-chip.on { background:var(--chip-c,var(--accent)); color:#fff; border-color:transparent; }
+        .bc-chip:hover:not(.on) { border-color:var(--chip-c,var(--accent)); color:var(--chip-c,var(--accent)); }
+        .bc-chip-cnt  { font-weight:600; }
+        .bc-toolbar   { margin-bottom:.75rem; }
+        .bc-tbl th    { white-space:nowrap; }
+        .bc-th-stato  { width:110px; }
+        .bc-th-cliente{ min-width:170px; }
+        .bc-th-num    { width:160px; text-align:right !important; }
+        .bc-th-narrow { width:90px;  text-align:right !important; }
+        .bc-th-detail { width:200px; }
+        .bc-srt       { cursor:pointer; user-select:none; }
+        .bc-srt:hover { color:var(--text); }
+        .bc-stato { display:inline-block; font-size:11px; font-weight:600;
+                    padding:3px 8px; border-radius:12px; border:1px solid; white-space:nowrap; }
+        .bc-badge { font-size:11px; font-weight:600; padding:2px 7px; border-radius:4px; white-space:nowrap; }
+        .bc-bdg-pos { background:#edf7ed; color:#2D7D4F; }
+        .bc-bdg-neu { background:#fff7ed; color:#D97706; }
+        .bc-bdg-neg { background:#fef2f2; color:#C84B2F; }
+        .bc-bdg-gray{ background:var(--bg); color:var(--text2); }
+        .bc-cliente-nome { font-weight:500; font-size:13px; }
+        .bc-cliente-div  { font-size:11px; color:var(--text2); margin-top:1px; }
+        .bc-bar-wrap  { display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+        .bc-barline   { width:100%; }
+        .bc-bar-vals  { font-size:13px; font-weight:500; white-space:nowrap; }
+        .bc-bud       { color:var(--text2); font-weight:400; font-size:12px; }
+        .bc-det       { display:flex; flex-wrap:wrap; gap:4px; }
+        .bc-det-item  { font-size:11px; padding:1px 5px; border-radius:3px;
+                        background:var(--bg); color:var(--text2); white-space:nowrap; }
+        .bc-det-prep  { background:#fff7ed; color:#D97706; }
+        .bc-det-sped  { background:#eff8ff; color:#378ADD; }
+        .bc-det-oltre { background:#f0fdf4; color:#2D7D4F; }
+        .bc-row:hover td { background:var(--bg); }
     </style>
 </head>
 <body>
@@ -488,7 +531,6 @@
             <li><a href="#" onclick="showPage('ordini',event)"><span class="icon">📋</span>Ordini</a></li>
             <li><a href="#" onclick="showPage('clienti',event)"><span class="icon">👥</span>Clienti</a></li>
             <li><a href="#" onclick="showPage('ddt',event)"><span class="icon">🚚</span>DDT & Tracking</a></li>
-            <li><a href="#" onclick="showPage('fatturato',event)"><span class="icon">💶</span>Fatturato</a></li>
             <li><a href="#" onclick="showPage('budget',event)"><span class="icon">🎯</span>Budget</a></li>
             <li><a href="#" onclick="showPage('preventivi',event)"><span class="icon">📝</span>Preventivi</a></li>
             <li><a href="#" onclick="showPage('agenda',event)"><span class="icon">📅</span>Agenda</a></li>
@@ -641,36 +683,6 @@
                         </thead>
                         <tbody>
                             <tr><td colspan="8" class="loading">Caricamento…</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- ── FATTURATO ── -->
-        <div id="fatturato" class="page">
-            <h1>Fatturato Rolling</h1>
-            <div class="table-wrapper">
-                <div class="table-header-bar">
-                    <span>Clienti · <span class="table-count" id="fatturato-count">—</span></span>
-                </div>
-                <div class="table-scroll">
-                    <table class="table" id="fatturato-table">
-                        <thead>
-                            <tr>
-                                <th>Cliente</th>
-                                <th>Divisione</th>
-                                <th>Stato mese</th>
-                                <th class="num-right">Prog. 2026</th>
-                                <th class="num-right">Prog. 2025</th>
-                                <th class="num-right">Var. prog. %</th>
-                                <th class="num-right">Mese corrente</th>
-                                <th class="num-right">Var. mese %</th>
-                                <th class="num-right">Consegnato</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr><td colspan="9" class="loading">Caricamento…</td></tr>
                         </tbody>
                     </table>
                 </div>
