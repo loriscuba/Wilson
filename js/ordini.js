@@ -201,6 +201,8 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
           let rowCls = '';
           let shippeoCell = '<span style="color:var(--text2)">—</span>';
 
+          let dataConsegna = r.data_consegna_prevista; // default: data da ordine
+
           if (ddt) {
             const eta = ddt.eta_shippeo ? new Date(ddt.eta_shippeo) : null;
             const etaOk = eta && !isNaN(eta);
@@ -209,15 +211,17 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             if (ddt.stato === 'consegnato') {
               rowCls = 'riga-consegnata';
               const quando = ddt.data_consegna_effettiva || ddt.eta_shippeo;
-              shippeoCell = `<span class="badge badge-green">✓ ${statoLabel || 'Consegnato'}${quando ? ' · ' + fmtDate(quando) : ''}</span>`;
+              if (quando) dataConsegna = quando;
+              shippeoCell = `<span class="badge badge-green">✓ ${statoLabel || 'Consegnato'}</span>`;
             } else if (ddt.shippeo_url || etaOk) {
               rowCls = 'riga-in-transito';
-              const etaChip = etaOk ? ` · ETA ${fmtDate(ddt.eta_shippeo)}` : '';
+              // Se c'è l'ETA Shippeo, sovrascrive la data prevista dell'ordine
+              if (etaOk) dataConsegna = ddt.eta_shippeo;
               const label = statoLabel || 'In transito';
               if (ddt.shippeo_url) {
-                shippeoCell = `<a class="shippeo-link" href="${ddt.shippeo_url}" target="_blank" rel="noopener">${label}${etaChip} →</a>`;
+                shippeoCell = `<a class="shippeo-link" href="${ddt.shippeo_url}" target="_blank" rel="noopener">${label} →</a>`;
               } else {
-                shippeoCell = `<span class="badge badge-orange">${label}${etaChip}</span>`;
+                shippeoCell = `<span class="badge badge-orange">${label}</span>`;
               }
             }
           }
@@ -230,7 +234,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             <td>${r.unita_misura || '—'}</td>
             <td class="num-right">€${fmt(r.prezzo_unitario)}</td>
             <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
-            <td>${fmtDate(r.data_consegna_prevista)}</td>
+            <td>${fmtDate(dataConsegna)}</td>
             <td>${shippeoCell}</td>
           </tr>`;
         }).join('')}

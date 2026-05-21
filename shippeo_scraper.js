@@ -6,6 +6,45 @@ const supabase = createClient(
     process.env.SUPABASE_KEY
 );
 
+const MESI_IT = {
+    gennaio:1, febbraio:2, marzo:3, aprile:4, maggio:5, giugno:6,
+    luglio:7, agosto:8, settembre:9, ottobre:10, novembre:11, dicembre:12,
+    jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+    jul:7, aug:8, sep:9, oct:10, nov:11, dec:12,
+};
+
+// Converte "22 maggio 2026" o "22/05/2026" in ISO string
+function parseDataIT(s) {
+    if (!s) return null;
+    s = s.trim();
+
+    // ISO già pronta
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+    // "22/05/2026" o "22.05.2026"
+    const slashM = s.match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})/);
+    if (slashM) return `${slashM[3]}-${slashM[2].padStart(2,'0')}-${slashM[1].padStart(2,'0')}`;
+
+    // "22 maggio 2026" o "22 maggio" (anno corrente)
+    const wordM = s.match(/(\d{1,2})\s+([a-zéè]+)\s*(\d{4})?/i);
+    if (wordM) {
+        const mese = MESI_IT[wordM[2].toLowerCase()];
+        if (mese) {
+            const anno = wordM[3] || new Date().getFullYear();
+            return `${anno}-${String(mese).padStart(2,'0')}-${wordM[1].padStart(2,'0')}`;
+        }
+    }
+
+    return null;
+}
+
+// Normalizza URL Shippeo al formato /road/orderPublic/TOKEN/overview
+function normalizeShippeoUrl(url) {
+    const tokenM = url.match(/orderPublic\/([A-Z0-9]+)/i);
+    if (!tokenM) return url;
+    return `https://view.shippeo.com/road/orderPublic/${tokenM[1]}/overview`;
+}
+
 function mapStatus(s) {
     if (!s) return null;
     const l = s.toLowerCase();
@@ -20,10 +59,8 @@ function mapStatus(s) {
 function etaDaStops(stops) {
     if (!Array.isArray(stops)) return null;
     const dest = stops.find(s =>
-        s.stopType === 'delivery' ||
-        s.stopType === 'unloading' ||
-        s.type     === 'delivery' ||
-        s.role     === 'delivery'
+        s.stopType === 'delivery' || s.stopType === 'unloading' ||
+        s.type     === 'delivery' || s.role      === 'delivery'
     );
     if (!dest) return null;
     return (
@@ -31,33 +68,37 @@ function etaDaStops(stops) {
         dest.dates?.plannedArrivalEndDate   ||
         dest.dates?.estimatedArrivalDate    ||
         dest.etas?.[0]?.value               ||
-        dest.eta                            ||
-        dest.estimatedArrivalDate           ||
-        null
+        dest.eta || dest.estimatedArrivalDate || null
     );
 }
 
-// Cerca una data valida in un oggetto JSON in modo ricorsivo (max 3 livelli)
-function findDate(obj, depth = 0) {
-    if (depth > 3 || !obj || typeof obj !== 'object') return null;
-    for (const [k, v] of Object.entries(obj)) {
-        if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v;
-        if (typeof v === 'object') {
-            const found = findDate(v, depth + 1);
+// Ricerca ricorsiva di campi data in oggetti JSON
+function findField(obj, keys, depth = 0) {
+    if (depth > 5 || !obj || typeof obj !== 'object') return null;
+    for (const k of Object.keys(obj)) {
+        if (keys.some(kk => k.toLowerCase().includes(kk))) {
+            const v = obj[k];
+            if (typeof v === 'string' && /\d{4}-\d{2}-\d{2}/.test(v)) return v;
+            if (typeof v === 'number' && v > 1e12) return new Date(v).toISOString();
+        }
+        if (typeof obj[k] === 'object') {
+            const found = findField(obj[k], keys, depth + 1);
             if (found) return found;
         }
     }
     return null;
 }
 
-async function getShippeoData(shippeoUrl) {
+async function getShippeoData(rawUrl) {
+    const shippeoUrl = normalizeShippeoUrl(rawUrl);
+    if (process.env.DEBUG) console.log(`  [url] ${shippeoUrl}`);
+
     const browser = await puppeteer.launch({
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         headless: 'new',
     });
     const page = await browser.newPage();
 
-    // Cattura TUTTE le risposte JSON da domini shippeo
     const captured = [];
     page.on('response', async res => {
         const url = res.url();
@@ -68,69 +109,59 @@ async function getShippeoData(shippeoUrl) {
             const body = await res.json();
             captured.push({ url, body });
             if (process.env.DEBUG) {
-                console.log(`  [DEBUG] ${url}`);
-                console.log(`  [DEBUG] ${JSON.stringify(body).slice(0, 500)}`);
+                console.log(`  [api] ${url}`);
+                console.log(`  [api] ${JSON.stringify(body).slice(0, 500)}`);
             }
         } catch (_) {}
     });
 
     try {
-        await page.goto(shippeoUrl, { waitUntil: 'networkidle2', timeout: 45000 });
-    } catch (_) {
-        // networkidle2 può scadere su pagine con polling; va bene lo stesso
-    }
+        await page.goto(shippeoUrl, { waitUntil: 'networkidle0', timeout: 50000 });
+    } catch (_) {}
 
-    // Estrai testo visibile come fallback
+    // Attende che il contenuto sia visibile (max 5s extra)
+    await page.waitForSelector('body', { timeout: 5000 }).catch(() => {});
     const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
 
     await browser.close();
 
-    // Analizza tutte le risposte catturate
+    // Analizza risposte API
     let status = null, etaRaw = null, deliveredAt = null;
 
     for (const { body } of captured) {
-        // Status: prova percorsi multipli
-        const s = body?.status?.currentStatus
-               || body?.currentStatus
-               || body?.status
-               || null;
-        if (s && typeof s === 'string' && !status) status = s;
+        const s = body?.status?.currentStatus || body?.currentStatus ||
+                  (typeof body?.status === 'string' ? body.status : null);
+        if (s && !status) status = s;
 
-        // Data consegna effettiva
-        const da = body?.status?.occurredOn
-                || body?.occurredOn
-                || body?.deliveredAt
-                || body?.actualDeliveryDate
-                || null;
+        const da = findField(body, ['occurredon','deliveredat','actualdelivery','consegnato']);
         if (da && !deliveredAt) deliveredAt = da;
 
-        // ETA
-        const eta = body?.estimatedDeliveryDate
-                 || body?.eta
-                 || body?.estimatedArrival
-                 || etaDaStops(body?.stops)
-                 || (body && Object.keys(body).length === 1 ? Object.values(body)[0] : null)
-                 || null;
-        if (eta && typeof eta === 'string' && !etaRaw) etaRaw = eta;
+        const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
+                    etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
+        if (eta && !etaRaw) etaRaw = eta;
     }
 
-    // Fallback DOM: se la pagina mostra "consegnato"/"delivered" nel testo visibile
-    if (!status) {
-        const t = pageText.toLowerCase();
-        if (t.includes('consegnat') || t.includes('delivered') || t.includes('delivery')) {
-            status = 'deliveryCompliant';
-            // Cerca una data nel testo tipo "20/05" o "20 mag"
-            const m = pageText.match(/(\d{1,2})[\/\s](\d{2})[\/\s]?(\d{2,4})?/);
-            if (m && !deliveredAt) {
-                const year = m[3] ? (m[3].length === 2 ? '20' + m[3] : m[3]) : new Date().getFullYear();
-                deliveredAt = `${year}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
-            }
+    // Fallback: estrai dal testo visibile della pagina
+    if (!status || !etaRaw) {
+        const t = pageText;
+        const tl = t.toLowerCase();
+
+        // Cerca "Consegnato il 20 maggio" o "Consegnato il 20/05"
+        const consM = t.match(/consegnat\w{0,2}\s+(?:il\s+)?(\d{1,2}[\/\s\.][a-z]+[\/\s\.]\d{0,4}|\d{1,2}[\/\.]\d{2}[\/\.]\d{2,4})/i);
+        if (consM) {
+            if (!status) status = 'deliveryCompliant';
+            if (!deliveredAt) deliveredAt = parseDataIT(consM[1]);
+        } else if (tl.includes('consegnat') || tl.includes('delivered')) {
+            if (!status) status = 'deliveryCompliant';
         }
+
+        // Cerca "Prevista il 22 maggio" o "Consegna prevista 22/05"
+        const etaM = t.match(/(?:prevista?|stimata?|estimated?)\s*(?:il\s+)?(\d{1,2}[\/\s\.][a-z]+[\/\s\.]\d{0,4}|\d{1,2}[\/\.]\d{2}[\/\.]\d{2,4})/i);
+        if (etaM && !etaRaw) etaRaw = parseDataIT(etaM[1]);
     }
 
     if (process.env.DEBUG) {
-        console.log(`  [result] status=${status} eta=${etaRaw} deliveredAt=${deliveredAt}`);
-        console.log(`  [result] captured ${captured.length} risposte JSON`);
+        console.log(`  [result] status=${status} eta=${etaRaw} deliveredAt=${deliveredAt} (${captured.length} API)`);
     }
 
     return { status, etaRaw, deliveredAt };
@@ -159,10 +190,10 @@ async function main() {
         console.log(`  ETA        : ${etaRaw || '—'}`);
         console.log(`  Consegnato : ${deliveredAt || '—'}`);
 
-        const now        = new Date();
-        const etaDate    = etaRaw ? new Date(etaRaw) : null;
-        const etaOk      = etaDate && !isNaN(etaDate);
-        const etaPassed  = etaOk && etaDate < now;
+        const now       = new Date();
+        const etaDate   = etaRaw ? new Date(etaRaw) : null;
+        const etaOk     = etaDate && !isNaN(etaDate);
+        const etaPassed = etaOk && etaDate < now;
         const isConsegnato = statoMapped === 'consegnato' || etaPassed;
 
         const update = {};
