@@ -90,28 +90,37 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
     const now = new Date();
     const ddts = ddtData || [];
 
-    // Inferisci stato effettivo ordine dai DDT e aggiorna il badge nella riga padre
-    const tuttiConsegnati = ddts.length > 0 && ddts.every(d => d.stato === 'consegnato');
-    const almenoSpedito   = ddts.some(d => d.stato === 'spedito' || d.stato === 'consegnato');
-    if (tuttiConsegnati) {
-      const badge = document.querySelector(`#righe-${ordineId}`
-        + ` ~ tr .badge, tr[id="righe-${ordineId}"]`);
-      const parentRow = document.getElementById('righe-' + ordineId)?.previousElementSibling;
-      if (parentRow) {
-        const badgeEl = parentRow.querySelector('.badge');
-        if (badgeEl && badgeEl.textContent.trim() === 'confermato') {
-          badgeEl.className = 'badge badge-green';
-          badgeEl.textContent = 'consegnato';
-        }
+    // Calcola stato ordine a livello di singolo articolo
+    const ordineSet = new Set(
+      (data || []).map(r => (String(r.codice_articolo || '').replace(/^0+/, '') || String(r.codice_articolo))).filter(Boolean)
+    );
+    const speditiSet    = new Set();
+    const consegnatiSet = new Set();
+    for (const d of ddts) {
+      for (const riga of (d.righe_ddt || [])) {
+        const key = String(riga.codice_articolo || '').replace(/^0+/, '') || String(riga.codice_articolo);
+        if (!key) continue;
+        speditiSet.add(key);
+        if (d.stato === 'consegnato') consegnatiSet.add(key);
       }
-    } else if (almenoSpedito) {
-      const parentRow = document.getElementById('righe-' + ordineId)?.previousElementSibling;
-      if (parentRow) {
-        const badgeEl = parentRow.querySelector('.badge');
-        if (badgeEl && badgeEl.textContent.trim() === 'confermato') {
-          badgeEl.className = 'badge badge-blue';
-          badgeEl.textContent = 'spedito';
-        }
+    }
+    const tot        = ordineSet.size;
+    const spediti    = [...ordineSet].filter(k => speditiSet.has(k)).length;
+    const consegnati = [...ordineSet].filter(k => consegnatiSet.has(k)).length;
+
+    let nuovoStato;
+    if (tot > 0 && consegnati === tot)    nuovoStato = 'consegnato';
+    else if (tot > 0 && spediti === tot)  nuovoStato = 'spedito';
+    else if (spediti > 0)                 nuovoStato = 'parzialmente spedito';
+    else                                  nuovoStato = 'confermato';
+
+    // Aggiorna badge UI e Supabase se lo stato è cambiato
+    const parentRow = document.getElementById('righe-' + ordineId)?.previousElementSibling;
+    if (parentRow) {
+      const badgeEl = parentRow.querySelector('.badge');
+      if (badgeEl && badgeEl.textContent.trim() !== nuovoStato) {
+        badgeEl.outerHTML = statoBadgeOrdine(nuovoStato);
+        sb.from('ordini').update({ stato: nuovoStato }).eq('id', ordineId).then(() => {});
       }
     }
 

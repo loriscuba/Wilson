@@ -36,8 +36,14 @@ function variazioneBadge(v) {
 
 function statoBadgeOrdine(stato) {
   if (!stato) return '<span class="badge badge-gray">—</span>';
-  const map = { confermato: 'badge-blue', spedito: 'badge-green', consegnato: 'badge-green',
-                annullato: 'badge-red', 'in preparazione': 'badge-orange' };
+  const map = {
+    'confermato':           'badge-blue',
+    'parzialmente spedito': 'badge-yellow',
+    'spedito':              'badge-orange',
+    'consegnato':           'badge-green',
+    'annullato':            'badge-red',
+    'in preparazione':      'badge-yellow',
+  };
   return `<span class="badge ${map[stato.toLowerCase()] || 'badge-gray'}">${stato}</span>`;
 }
 
