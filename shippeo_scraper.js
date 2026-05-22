@@ -108,8 +108,10 @@ async function tryDirectApi(token) {
             const ct = res.headers.get('content-type') || '';
             if (!ct.includes('json')) continue;
             const body = await res.json();
-            const s = body?.status?.currentStatus || body?.currentStatus ||
-                      (typeof body?.status === 'string' ? body.status : null);
+            const sRaw = body?.status?.currentStatus || body?.currentStatus ||
+                         (typeof body?.status === 'string' ? body.status : null);
+            // Filtra valori bogus come la stringa letterale "status"
+            const s = (sRaw && sRaw.toLowerCase() !== 'status') ? sRaw : null;
             const da = findField(body, ['occurredon','deliveredat','actualdelivery']);
             const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
                         etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
@@ -240,10 +242,13 @@ async function main() {
 
         const now       = new Date();
         const etaDate   = etaRaw ? new Date(etaRaw) : null;
-        const etaOk     = etaDate && !isNaN(etaDate);
-        const etaPassed = etaOk && etaDate < now;
-        // Consegnato solo se Shippeo conferma esplicitamente, mai solo per ETA scaduta
-        const isConsegnato = statoMapped === 'consegnato';
+        const etaOk      = etaDate && !isNaN(etaDate);
+        const etaPassed  = etaOk && etaDate < now;
+        const etaDaysAgo = etaOk ? (now - etaDate) / (1000 * 60 * 60 * 24) : 0;
+        // Consegnato se Shippeo lo conferma esplicitamente,
+        // oppure se ETA scaduta da ≥1 giorno senza alcuno stato riconoscibile (API non risponde bene)
+        const isConsegnato = statoMapped === 'consegnato' ||
+                             (statoMapped == null && etaDaysAgo >= 1);
 
         const update = {};
         if (status) update.stato_shippeo = status;

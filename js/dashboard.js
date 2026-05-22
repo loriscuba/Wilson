@@ -55,10 +55,11 @@ async function loadDashboard() {
     const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
     const budgetColor  = budgetPct == null ? 'var(--text2)' : budgetPct >= 100 ? 'var(--green)' : budgetPct >= 80 ? '#378ADD' : budgetPct >= 40 ? '#D97706' : 'var(--red)';
 
-    const varOrdinatoPct    = totMese25 > 0 ? ((totOrdinato - totMese25) / totMese25) * 100 : null;
-    const varConsPct        = totMese25 > 0 ? ((totCons     - totMese25) / totMese25) * 100 : null;
-    const budgetOrdinatoPct = budget?.budget_mese > 0 ? (totOrdinato / budget.budget_mese) * 100 : null;
-    const budgetConsPct     = budget?.budget_mese > 0 ? (totCons     / budget.budget_mese) * 100 : null;
+    const totConsConCedi    = totCons + totCEDI;
+    const varOrdinatoPct    = totMese25 > 0 ? ((totOrdinato    - totMese25) / totMese25) * 100 : null;
+    const varConsPct        = totMese25 > 0 ? ((totConsConCedi - totMese25) / totMese25) * 100 : null;
+    const budgetOrdinatoPct = budget?.budget_mese > 0 ? (totOrdinato    / budget.budget_mese) * 100 : null;
+    const budgetConsPct     = budget?.budget_mese > 0 ? (totConsConCedi / budget.budget_mese) * 100 : null;
 
     kpiGrid.innerHTML = `
       <div class="kpi-card">
@@ -72,7 +73,8 @@ async function loadDashboard() {
       </div>
       <div class="kpi-card">
         <h3>Consegnato del mese</h3>
-        <div class="kpi-value">€${fmt(totCons)}</div>
+        <div class="kpi-value">€${fmt(totConsConCedi)}</div>
+        ${totCEDI > 0 ? `<div class="kpi-sub" style="font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
           ${varConsPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varConsPct >= 0 ? '+' : ''}${varConsPct.toFixed(1)}% vs ${annoP}</span>` : ''}
           ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
@@ -84,13 +86,6 @@ async function loadDashboard() {
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
         ${varProgPct != null ? `<div class="kpi-change ${varProgPct >= 0 ? 'positive' : 'negative'}">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</div>` : ''}
       </div>
-      ${budget ? `
-      <div class="kpi-card">
-        <h3>vs Budget mese</h3>
-        <div class="kpi-value" style="color:${budgetColor}">${budgetPct != null ? budgetPct.toFixed(1) + '%' : '—'}</div>
-        <div class="kpi-sub">Evaso €${fmt(budget.evaso)} / €${fmt(budget.budget_mese)}</div>
-        <div class="kpi-sub" style="font-size:11px">Giorno ${budget.giorno_lavorativo ?? '?'}/${budget.giorni_totali ?? '?'} · ${fmtDate(budget.data_aggiornamento)}</div>
-      </div>` : ''}
       <div class="kpi-card">
         <h3>Ordini del mese</h3>
         <div class="kpi-value">${ordiniCount}</div>
