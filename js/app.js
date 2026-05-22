@@ -93,17 +93,24 @@ async function loadUltimoSync() {
 async function triggerSync() {
   const btn  = document.getElementById('sync-btn');
   const icon = document.getElementById('sync-icon');
-  const token = window.__env?.GITHUB_TOKEN;
-
-  if (!token) { alert('GITHUB_TOKEN non configurato in env.js'); return; }
 
   btn.disabled = true;
   btn.classList.remove('success', 'error');
   icon.className   = 'spin';
   icon.textContent = '↻';
 
-  try {
-    const res = await fetch(
+  // Reset rolling cache e ricarica subito la pagina attiva
+  _latestRollingDate = null;
+  _rollingEnriched   = null;
+
+  const activePage = document.querySelector('.page.active')?.id;
+  if (activePage && PAGE_LOADERS[activePage]) PAGE_LOADERS[activePage]();
+  loadUltimoSync();
+
+  // Lancia il workflow GitHub in background (silenzioso se token assente)
+  const token = window.__env?.GITHUB_TOKEN;
+  if (token) {
+    fetch(
       'https://api.github.com/repos/loriscuba/Wilson/actions/workflows/wilson_sync.yml/dispatches',
       {
         method: 'POST',
@@ -114,30 +121,17 @@ async function triggerSync() {
         },
         body: JSON.stringify({ ref: 'main' }),
       }
-    );
-    if (res.status !== 204) throw new Error(`HTTP ${res.status}`);
-
-    icon.className = '';
-    icon.textContent = '✓';
-    btn.classList.add('success');
-    setTimeout(() => {
-      btn.classList.remove('success');
-      icon.textContent = '↻';
-      btn.disabled = false;
-      _latestRollingDate = null;
-      _rollingEnriched   = null;
-      loadUltimoSync();
-    }, 3000);
-  } catch (err) {
-    icon.className   = '';
-    icon.textContent = '✕';
-    btn.classList.add('error');
-    setTimeout(() => {
-      btn.classList.remove('error');
-      icon.textContent = '↻';
-      btn.disabled = false;
-    }, 3000);
+    ).catch(() => {});
   }
+
+  icon.className = '';
+  icon.textContent = '✓';
+  btn.classList.add('success');
+  setTimeout(() => {
+    btn.classList.remove('success');
+    icon.textContent = '↻';
+    btn.disabled = false;
+  }, 2000);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
