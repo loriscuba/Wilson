@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/tabler-icons.min.css">
     <script src="js/supabase.min.js"></script>
     <style>
         :root {
@@ -551,6 +552,129 @@
         .pr-ftbl td:not(:first-child) { text-align:right; }
         .pr-ftbl tr:last-child td { border-bottom:none; }
         .pr-active td { font-weight:600; background:#edf7ed; }
+
+        @media (max-width: 768px) {
+            .sidebar,
+            .hamburger {
+                display: none !important;
+            }
+            .main-content {
+                padding-bottom: 90px;
+            }
+            .bottom-nav {
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                height: 70px;
+                padding: 8px 10px 10px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 6px;
+                background: rgba(255,255,255,0.98);
+                border-top: 1px solid var(--border);
+                box-shadow: 0 -10px 24px rgba(0,0,0,0.08);
+                backdrop-filter: blur(10px);
+                z-index: 1200;
+            }
+            .bottom-nav-item {
+                flex: 1;
+                border: none;
+                background: transparent;
+                color: var(--text2);
+                text-align: center;
+                font: inherit;
+                cursor: pointer;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                padding: 6px 4px;
+                border-radius: 14px;
+                min-width: 0;
+            }
+            .bottom-nav-item:hover,
+            .bottom-nav-item:focus-visible {
+                background: rgba(26,86,219,0.1);
+                outline: none;
+            }
+            .bottom-nav-icon {
+                width: 24px;
+                height: 24px;
+                stroke: var(--text2);
+                stroke-width: 1.8;
+                fill: none;
+            }
+            .bottom-nav-label {
+                font-size: 11px;
+                line-height: 1.2;
+                white-space: nowrap;
+            }
+            .bottom-nav-item.active {
+                color: #1A56DB;
+            }
+            .bottom-nav-item.active .bottom-nav-icon {
+                stroke: #1A56DB;
+            }
+            .mobile-drawer-overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.35);
+                display: none;
+                align-items: flex-end;
+                justify-content: center;
+                z-index: 1300;
+            }
+            .mobile-drawer-overlay.open {
+                display: flex;
+            }
+            .mobile-drawer {
+                width: 100%;
+                max-width: 100%;
+                background: var(--surface);
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
+                padding: 14px 16px 22px;
+                box-shadow: 0 -12px 30px rgba(0,0,0,0.12);
+            }
+            .drawer-handle {
+                width: 44px;
+                height: 4px;
+                margin: 0 auto 14px;
+                border-radius: 999px;
+                background: var(--border);
+            }
+            .drawer-links {
+                display: grid;
+                gap: 10px;
+            }
+            .drawer-links button {
+                width: 100%;
+                text-align: left;
+                border: 1px solid var(--border);
+                background: var(--bg);
+                border-radius: 12px;
+                padding: 14px 16px;
+                font-weight: 600;
+                color: var(--text);
+                cursor: pointer;
+                font-family: 'DM Sans', sans-serif;
+            }
+            .drawer-links button:hover {
+                background: #F5F7FF;
+                border-color: rgba(26,86,219,0.18);
+            }
+        }
+
+        @media (min-width: 769px) {
+            .bottom-nav,
+            .mobile-drawer-overlay,
+            .mobile-drawer {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -762,6 +886,40 @@
         </div>
 
     </div><!-- /main-content -->
+
+    <div class="bottom-nav" id="bottom-nav" aria-label="Navigazione mobile">
+        <button class="bottom-nav-item active" data-page="dashboard" type="button" onclick="mobileNavSelect('dashboard', event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 19h16M8 19V9M12 19V5M16 19V13" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="bottom-nav-label">Dashboard</span>
+        </button>
+        <button class="bottom-nav-item" data-page="ordini" type="button" onclick="mobileNavSelect('ordini', event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="bottom-nav-label">Ordini</span>
+        </button>
+        <button class="bottom-nav-item" data-page="clienti" type="button" onclick="mobileNavSelect('clienti', event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 19v-2a4 4 0 0 0-3-3.87" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="bottom-nav-label">Clienti</span>
+        </button>
+        <button class="bottom-nav-item" data-page="fatturato" type="button" onclick="mobileNavSelect('fatturato', event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M6 20v-6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 20v-10" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 20v-4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="bottom-nav-label">Fatturato</span>
+        </button>
+        <button class="bottom-nav-item" type="button" id="mobile-drawer-toggle" onclick="toggleMobileDrawer(event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 6h.01" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 12h.01" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 18h.01" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="bottom-nav-label">Altro</span>
+        </button>
+    </div>
+    <div class="mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="handleMobileDrawerOverlay(event)">
+        <div class="mobile-drawer" role="dialog" aria-modal="true" aria-label="Altro">
+            <div class="drawer-handle"></div>
+            <div class="drawer-links">
+                <button type="button" onclick="showPage('ddt', event); closeMobileDrawer()">DDT</button>
+                <button type="button" onclick="showPage('budget', event); closeMobileDrawer()">Budget</button>
+                <button type="button" onclick="showPage('agenda', event); closeMobileDrawer()">Agenda</button>
+                <button type="button" onclick="showPage('preventivi', event); closeMobileDrawer()">Preventivi</button>
+            </div>
+        </div>
+    </div>
 
     <script src="env.js?v=10"></script>
     <script src="js/config.js?v=10"></script>

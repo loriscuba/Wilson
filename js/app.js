@@ -8,6 +8,35 @@ function toggleSidebar() {
   document.getElementById('main-content').classList.toggle('shifted', _sidebarOpen);
 }
 
+function updateMobileNavActive(pageId) {
+  document.querySelectorAll('.bottom-nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.page === pageId);
+  });
+}
+
+function mobileNavSelect(pageId, event) {
+  event.preventDefault();
+  showPage(pageId, event);
+  updateMobileNavActive(pageId);
+  closeMobileDrawer();
+  document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function toggleMobileDrawer(event) {
+  event?.stopPropagation();
+  document.getElementById('mobile-drawer-overlay')?.classList.toggle('open');
+}
+
+function closeMobileDrawer() {
+  document.getElementById('mobile-drawer-overlay')?.classList.remove('open');
+}
+
+function handleMobileDrawerOverlay(event) {
+  if (event.target.id === 'mobile-drawer-overlay') {
+    closeMobileDrawer();
+  }
+}
+
 const PAGE_LOADERS = {
   dashboard: loadDashboard,
   ordini:    loadOrdini,
@@ -22,7 +51,26 @@ function showPage(pageId, event) {
   document.getElementById(pageId)?.classList.add('active');
   document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
   if (event?.currentTarget?.classList) event.currentTarget.classList.add('active');
+  updateMobileNavActive(pageId);
   PAGE_LOADERS[pageId]?.();
+}
+
+function initMobileSectionObserver() {
+  const root = document.getElementById('main-content');
+  if (!root || !window.IntersectionObserver) return;
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const id = entry.target.id;
+      if (!id) return;
+      if (entry.isIntersecting && entry.intersectionRatio > 0.35) {
+        updateMobileNavActive(id);
+      }
+    });
+  }, {
+    root,
+    threshold: [0.35],
+  });
+  document.querySelectorAll('.page').forEach(page => observer.observe(page));
 }
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
