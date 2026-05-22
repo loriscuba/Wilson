@@ -51,6 +51,7 @@ async function loadDashboard() {
     const ddtCount     = ddtData?.length || 0;
     const totCEDI      = (cediData || []).reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
     const cediDate     = (cediData || []).reduce((d, r) => (r.data_aggiornamento > d ? r.data_aggiornamento : d), '');
+    const totConsConCedi = totCons + totCEDI;
     const budget       = budgetArr?.[0] || null;
     const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
     const budgetColor  = budgetPct == null ? 'var(--text2)' : budgetPct >= 100 ? 'var(--green)' : budgetPct >= 80 ? '#378ADD' : budgetPct >= 40 ? '#D97706' : 'var(--red)';
@@ -63,7 +64,7 @@ async function loadDashboard() {
       <div class="kpi-card">
         <h3>Fatturato del mese</h3>
         <div class="kpi-value">€${fmt(totMese26)}</div>
-        <div class="kpi-sub">Cons. €${fmt(totCons)} · Prep. €${fmt(totPrep)}</div>
+        <div class="kpi-sub">Cons. €${fmt(totConsConCedi)} · Prep. €${fmt(totPrep)}</div>
         ${cediSub}
         ${varMesePct != null ? `<div class="kpi-change ${varMesePct >= 0 ? 'positive' : 'negative'}">${varMesePct >= 0 ? '+' : ''}${varMesePct.toFixed(1)}% vs ${annoP}</div>` : ''}
       </div>
