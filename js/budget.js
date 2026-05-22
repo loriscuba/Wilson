@@ -386,7 +386,9 @@ async function loadBudgetClienti() {
       oltre:      r.ordinato_oltre_mese    || 0,
       prog26:     r.fatt_prog_anno_corr    || 0,
       prog25:     r.fatt_prog_anno_prec    || 0,
-      varProg:    r.variazione_progressivo,
+      varProg:    r.fatt_prog_anno_prec > 0
+                    ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100
+                    : null,
       gap:        r._gap                  || 0,    // max(0, bud - ord)
       priority:   STATO_ORDER[r._stato?.id] || 9,
     }));
