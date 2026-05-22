@@ -92,9 +92,10 @@ async function loadUltimoSync() {
 }
 
 function _reloadActivePage() {
-  _latestRollingDate = null;
-  _rollingEnriched   = null;
-  _clientiEsclusi    = null;
+  _latestRollingDate  = null;
+  _rollingEnriched    = null;
+  _clientiEsclusi     = null;
+  _ordinaDiPersonaSet = null;
   const activePage = document.querySelector('.page.active')?.id;
   if (activePage && PAGE_LOADERS[activePage]) PAGE_LOADERS[activePage]();
   loadUltimoSync();

@@ -99,34 +99,30 @@ async function loadDashboard() {
 
     renderStatoMese(rows);
 
-    // Top 10 gap progressivo
+    // Top 15 da ordinare nel mese
     const meseCorrLabel = MESI_LABEL[now.getMonth()];
-    document.getElementById('top-clienti-h2').textContent = `Top 10 da recuperare vs ${annoP}`;
+    document.getElementById('top-clienti-h2').textContent = `Top 15 da ordinare nel mese`;
 
-    const top10 = [...rows]
-      .filter(r => !r._escluso && r.ragione_sociale && (r.variazione_progressivo || 0) < 0)
-      .sort((a, b) => (a.variazione_progressivo || 0) - (b.variazione_progressivo || 0))
-      .slice(0, 10);
+    const top15 = [...rows]
+      .filter(r => !r._escluso && r.ragione_sociale && (r.fatt_mese_anno_prec || 0) > 0 && (r.spedito_ordinato_mese || 0) === 0)
+      .sort((a, b) => (b.fatt_mese_anno_prec || 0) - (a.fatt_mese_anno_prec || 0))
+      .slice(0, 15);
 
-    topBody.innerHTML = top10.length
-      ? top10.map((r, i) => {
-          const p25    = r.fatt_prog_anno_prec || 0;
-          const p26    = r.fatt_prog_anno_corr || 0;
-          const gapEUR = r.variazione_progressivo || 0;
-          const gapPct = p25 > 0 ? (gapEUR / p25) * 100 : null;
+    topBody.innerHTML = top15.length
+      ? top15.map((r, i) => {
+          const m25     = r.fatt_mese_anno_prec   || 0;
+          const m26     = r.spedito_ordinato_mese  || 0;
           const stBadge = `<span class="badge ${statoBadgeCls(r._stato.id)}">${r._stato.label}</span>`;
           return `
           <tr class="ordine-row" onclick="apriClienteDaDashboard('${r.codice_cliente}','${(r.ragione_sociale||'').replace(/'/g,"\\'")}')" style="cursor:pointer;">
             <td><strong>${i + 1}</strong></td>
             <td style="color:var(--accent);text-decoration:underline;">${r.ragione_sociale}</td>
-            <td class="num-right">€${fmt(p25)}</td>
-            <td class="num-right">€${fmt(p26)}</td>
-            <td class="num-right" style="color:var(--red);font-weight:600">€${fmt(gapEUR)}</td>
-            <td class="num-right">${gapPct != null ? `<span style="color:var(--red);font-weight:600">${gapPct.toFixed(1)}%</span>` : '—'}</td>
+            <td class="num-right">€${fmt(m25)}</td>
+            <td class="num-right" style="color:var(--red);font-weight:600">€${fmt(m26)}</td>
             <td>${stBadge}</td>
           </tr>`;
         }).join('')
-      : '<tr><td colspan="7" class="loading">Nessun dato disponibile</td></tr>';
+      : '<tr><td colspan="5" class="loading">Nessun dato disponibile</td></tr>';
 
   } catch (err) {
     console.error('Errore dashboard:', err);

@@ -15,7 +15,7 @@ async function loadImpostazioni() {
         .select('codice_cliente, ragione_sociale')
         .eq('data_aggiornamento', await getLatestRollingDate())
         .order('ragione_sociale'),
-      sb.from('clienti_config').select('codice_cliente, ragione_sociale, attivo, note'),
+      sb.from('clienti_config').select('codice_cliente, ragione_sociale, attivo, note, ordina_di_persona'),
     ]);
 
     const cfgMap = Object.fromEntries(
@@ -30,19 +30,21 @@ async function loadImpostazioni() {
       ...(rollingRes.data || []).map(r => {
         const cfg = cfgMap[String(r.codice_cliente)];
         return {
-          codice:  String(r.codice_cliente),
-          nome:    cfg?.ragione_sociale || r.ragione_sociale || '—',
-          attivo:  cfg ? cfg.attivo : true,
-          note:    cfg?.note || '',
-          inCfg:   !!cfg,
+          codice:          String(r.codice_cliente),
+          nome:            cfg?.ragione_sociale || r.ragione_sociale || '—',
+          attivo:          cfg ? cfg.attivo : true,
+          note:            cfg?.note || '',
+          ordinaDiPersona: cfg?.ordina_di_persona || false,
+          inCfg:           !!cfg,
         };
       }),
       ...onlyCfg.map(r => ({
-        codice: String(r.codice_cliente),
-        nome:   r.ragione_sociale || '—',
-        attivo: r.attivo,
-        note:   r.note || '',
-        inCfg:  true,
+        codice:          String(r.codice_cliente),
+        nome:            r.ragione_sociale || '—',
+        attivo:          r.attivo,
+        note:            r.note || '',
+        ordinaDiPersona: r.ordina_di_persona || false,
+        inCfg:           true,
       })),
     ];
 
@@ -54,12 +56,14 @@ async function loadImpostazioni() {
 }
 
 function _renderImpostazioni(root) {
-  const esclusi = _cfgRows.filter(r => !r.attivo).length;
+  const esclusi  = _cfgRows.filter(r => !r.attivo).length;
+  const diPersona = _cfgRows.filter(r => r.ordinaDiPersona).length;
   root.innerHTML = `
     <p class="b-sec">gestione clienti — inclusi/esclusi da dashboard e budget</p>
     <p style="font-size:12px;color:var(--text2);margin-bottom:1rem">
-      Clienti con <strong>Attivo = NO</strong> non compaiono nel top-10 da recuperare né nel budget clienti.
+      Clienti con <strong>Attivo = NO</strong> non compaiono nel top-15 da ordinare né nel budget clienti.
       · <strong>${esclusi}</strong> esclusi · <strong>${_cfgRows.length - esclusi}</strong> attivi
+      · <strong>${diPersona}</strong> ordinano di persona
     </p>
     <div class="cfg-toolbar">
       <input type="text" class="b-srch" id="cfg-srch" placeholder="cerca cliente…"
@@ -71,6 +75,7 @@ function _renderImpostazioni(root) {
           <th>Codice</th>
           <th>Ragione sociale</th>
           <th style="text-align:center">Attivo</th>
+          <th style="text-align:center">Di persona</th>
           <th>Note</th>
         </tr></thead>
         <tbody id="cfg-tbody"></tbody>
@@ -88,7 +93,7 @@ function _renderCfgRows() {
     : _cfgRows;
 
   if (!visible.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
     return;
   }
 
@@ -103,6 +108,13 @@ function _renderCfgRows() {
           <span class="cfg-slider"></span>
         </label>
       </td>
+      <td style="text-align:center">
+        <label class="cfg-toggle" title="${r.ordinaDiPersona ? 'Ordina di persona (clicca per rimuovere)' : 'Clicca per segnare come ordina di persona'}">
+          <input type="checkbox" ${r.ordinaDiPersona ? 'checked' : ''}
+            onchange="toggleOrdinaDiPersona('${r.codice}', this.checked)">
+          <span class="cfg-slider"></span>
+        </label>
+      </td>
       <td>
         <input class="cfg-note-inp" type="text" value="${r.note}"
           placeholder="es. filiale, intercompany…"
@@ -112,30 +124,57 @@ function _renderCfgRows() {
 }
 
 async function toggleClienteAttivo(codice, attivo) {
-  // Aggiorna localmente
   const row = _cfgRows.find(r => r.codice === codice);
   if (row) { row.attivo = attivo; row.inCfg = true; }
 
-  // Aggiorna contatori header
   const root = document.getElementById('cfg-clienti-root');
-  const esclusi = _cfgRows.filter(r => !r.attivo).length;
+  const esclusi   = _cfgRows.filter(r => !r.attivo).length;
+  const diPersona = _cfgRows.filter(r => r.ordinaDiPersona).length;
   const info = root?.querySelector('p:nth-child(2)');
   if (info) info.innerHTML = `
-    Clienti con <strong>Attivo = NO</strong> non compaiono nel top-10 da recuperare né nel budget clienti.
-    · <strong>${esclusi}</strong> esclusi · <strong>${_cfgRows.length - esclusi}</strong> attivi`;
+    Clienti con <strong>Attivo = NO</strong> non compaiono nel top-15 da ordinare né nel budget clienti.
+    · <strong>${esclusi}</strong> esclusi · <strong>${_cfgRows.length - esclusi}</strong> attivi
+    · <strong>${diPersona}</strong> ordinano di persona`;
 
   _renderCfgRows();
 
-  // Persiste su Supabase (upsert)
   try {
     const nome = row?.nome && row.nome !== '—' ? row.nome : null;
     await sb.from('clienti_config').upsert(
-      { codice_cliente: codice, ragione_sociale: nome, attivo, note: row?.note || null },
+      { codice_cliente: codice, ragione_sociale: nome, attivo, note: row?.note || null,
+        ordina_di_persona: row?.ordinaDiPersona || false },
       { onConflict: 'codice_cliente' }
     );
-    // Invalida cache rolling
-    _clientiEsclusi = null;
-    _rollingEnriched = null;
+    _clientiEsclusi     = null;
+    _ordinaDiPersonaSet = null;
+    _rollingEnriched    = null;
+  } catch (err) {
+    console.error('Errore salvataggio:', err.message);
+  }
+}
+
+async function toggleOrdinaDiPersona(codice, val) {
+  const row = _cfgRows.find(r => r.codice === codice);
+  if (row) { row.ordinaDiPersona = val; row.inCfg = true; }
+
+  const root = document.getElementById('cfg-clienti-root');
+  const esclusi   = _cfgRows.filter(r => !r.attivo).length;
+  const diPersona = _cfgRows.filter(r => r.ordinaDiPersona).length;
+  const info = root?.querySelector('p:nth-child(2)');
+  if (info) info.innerHTML = `
+    Clienti con <strong>Attivo = NO</strong> non compaiono nel top-15 da ordinare né nel budget clienti.
+    · <strong>${esclusi}</strong> esclusi · <strong>${_cfgRows.length - esclusi}</strong> attivi
+    · <strong>${diPersona}</strong> ordinano di persona`;
+
+  try {
+    const nome = row?.nome && row.nome !== '—' ? row.nome : null;
+    await sb.from('clienti_config').upsert(
+      { codice_cliente: codice, ragione_sociale: nome, attivo: row?.attivo ?? true,
+        note: row?.note || null, ordina_di_persona: val },
+      { onConflict: 'codice_cliente' }
+    );
+    _ordinaDiPersonaSet = null;
+    _rollingEnriched    = null;
   } catch (err) {
     console.error('Errore salvataggio:', err.message);
   }
@@ -146,7 +185,8 @@ async function saveClienteNote(codice, note) {
   if (row) row.note = note;
   try {
     await sb.from('clienti_config').upsert(
-      { codice_cliente: codice, note: note || null, attivo: row?.attivo ?? true },
+      { codice_cliente: codice, note: note || null, attivo: row?.attivo ?? true,
+        ordina_di_persona: row?.ordinaDiPersona || false },
       { onConflict: 'codice_cliente' }
     );
   } catch (err) {

@@ -56,20 +56,26 @@ function statoBadgeCls(id) {
 
 // ── Shared rolling cache ──────────────────────────────────────────────────────
 
-let _latestRollingDate = null;
-let _rollingEnriched   = null;
-let _clientiEsclusi    = null;  // Set caricato da clienti_config
+let _latestRollingDate  = null;
+let _rollingEnriched    = null;
+let _clientiEsclusi     = null;  // Set codici esclusi
+let _ordinaDiPersonaSet = null;  // Set codici che ordinano di persona
 
-async function loadClientiEsclusi() {
-  if (_clientiEsclusi) return _clientiEsclusi;
+async function _loadClientiConfigCache() {
+  if (_clientiEsclusi) return;
   try {
     const { data } = await sb.from('clienti_config')
-      .select('codice_cliente')
-      .eq('attivo', false);
-    _clientiEsclusi = new Set((data || []).map(r => String(r.codice_cliente)));
+      .select('codice_cliente, attivo, ordina_di_persona');
+    _clientiEsclusi     = new Set((data || []).filter(r => r.attivo === false).map(r => String(r.codice_cliente)));
+    _ordinaDiPersonaSet = new Set((data || []).filter(r => r.ordina_di_persona).map(r => String(r.codice_cliente)));
   } catch {
-    _clientiEsclusi = new Set();
+    _clientiEsclusi     = new Set();
+    _ordinaDiPersonaSet = new Set();
   }
+}
+
+async function loadClientiEsclusi() {
+  await _loadClientiConfigCache();
   return _clientiEsclusi;
 }
 
@@ -88,7 +94,8 @@ async function getLatestRollingDate() {
 
 async function loadRollingEnriched(force) {
   if (_rollingEnriched && !force) return _rollingEnriched;
-  const [date, esclusi] = await Promise.all([getLatestRollingDate(), loadClientiEsclusi()]);
+  await _loadClientiConfigCache();
+  const date = await getLatestRollingDate();
   if (!date) return [];
   const { data, error } = await sb.from('rolling_fatturato')
     .select([
@@ -105,6 +112,10 @@ async function loadRollingEnriched(force) {
     .order('ragione_sociale', { ascending: true });
   if (error) throw error;
   _rollingEnriched = (data || [])
-    .map(r => enrichRecord({ ...r, _escluso: esclusi.has(String(r.codice_cliente)) }));
+    .map(r => enrichRecord({
+      ...r,
+      _escluso:         _clientiEsclusi.has(String(r.codice_cliente)),
+      _ordinaDiPersona: _ordinaDiPersonaSet.has(String(r.codice_cliente)),
+    }));
   return _rollingEnriched;
 }

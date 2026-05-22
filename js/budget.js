@@ -360,7 +360,22 @@ async function loadBudgetMensile() {
 
 // ── TAB CLIENTI ───────────────────────────────────────────────────────────────
 
-const STATO_ORDER = { indietro: 1, da_visitare: 2, da_stimolare: 3, in_linea: 4, ottimo: 5, nuovo: 6, inattivo: 7 };
+// Priorità visita/stimolo: 0=massima urgenza
+// 0 ordina_di_persona + non ha ancora ordinato
+// 1 non ha ordinato questo mese ma lo scorso anno sì
+// 2 indietro (ha ordinato ma < 40% anno scorso)
+// 3 non ha ordinato, nessuno storico mensile
+// 4 da_stimolare (40-79%)
+// 5 in_linea  6 ottimo  7 nuovo  8 inattivo
+function _bcPriority(r) {
+  const statoId = r._stato?.id || 'inattivo';
+  if (statoId === 'da_visitare') {
+    if (r._ordinaDiPersona) return 0;
+    if (r.bud > 0)          return 1;
+    return 3;
+  }
+  return { indietro: 2, da_stimolare: 4, in_linea: 5, ottimo: 6, nuovo: 7, inattivo: 8 }[statoId] ?? 9;
+}
 const STATO_COLOR = { ottimo: '#2D7D4F', in_linea: '#378ADD', da_stimolare: '#D97706', indietro: '#C84B2F', da_visitare: '#9B9B97', nuovo: '#378ADD', inattivo: '#9B9B97' };
 
 async function loadBudgetClienti() {
@@ -374,24 +389,29 @@ async function loadBudgetClienti() {
       return;
     }
 
-    _bcRows = rows.filter(r => !r._escluso).map(r => ({
-      cliente:    r.ragione_sociale || '—',
-      divisione:  r.divisione || '',
-      stato:      r._stato,
-      bud:        r.fatt_mese_anno_prec    || 0,
-      ord:        r.spedito_ordinato_mese  || 0,   // evaso+prep+da spedire
-      cons:       r.mese_consegnato        || 0,
-      prep:       r.mese_in_preparazione   || 0,
-      sped:       r.mese_da_spedire        || 0,
-      oltre:      r.ordinato_oltre_mese    || 0,
-      prog26:     r.fatt_prog_anno_corr    || 0,
-      prog25:     r.fatt_prog_anno_prec    || 0,
-      varProg:    r.fatt_prog_anno_prec > 0
-                    ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100
-                    : null,
-      gap:        r._gap                  || 0,    // max(0, bud - ord)
-      priority:   STATO_ORDER[r._stato?.id] || 9,
-    }));
+    _bcRows = rows.filter(r => !r._escluso).map(r => {
+      const row = {
+        cliente:         r.ragione_sociale || '—',
+        codice:          r.codice_cliente  || '',
+        divisione:       r.divisione || '',
+        stato:           r._stato,
+        _ordinaDiPersona: r._ordinaDiPersona || false,
+        bud:        r.fatt_mese_anno_prec    || 0,
+        ord:        r.spedito_ordinato_mese  || 0,
+        cons:       r.mese_consegnato        || 0,
+        prep:       r.mese_in_preparazione   || 0,
+        sped:       r.mese_da_spedire        || 0,
+        oltre:      r.ordinato_oltre_mese    || 0,
+        prog26:     r.fatt_prog_anno_corr    || 0,
+        prog25:     r.fatt_prog_anno_prec    || 0,
+        varProg:    r.fatt_prog_anno_prec > 0
+                      ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100
+                      : null,
+        gap:        r._gap || 0,
+      };
+      row.priority = _bcPriority(row);
+      return row;
+    });
 
     _bcFilter = null;
     _bcQuery  = '';
@@ -547,7 +567,7 @@ function _renderBcRows() {
     return `<tr class="bc-row bc-row-${statoId}">
       <td>${statoBadge}</td>
       <td>
-        <div class="bc-cliente-nome">${r.cliente}</div>
+        <div class="bc-cliente-nome">${r.cliente}${r._ordinaDiPersona ? ' <span class="bc-persona-tag">&#9734; di persona</span>' : ''}</div>
         ${r.divisione ? `<div class="bc-cliente-div">${r.divisione}</div>` : ''}
       </td>
       <td>

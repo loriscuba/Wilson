@@ -14,13 +14,13 @@ const GTO_2026_KEYS = [
 const MESI_LABEL = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
 const STATI = {
-  ottimo:       { id: 'ottimo',       label: 'Ottimo',       desc: '≥ 100% anno scorso' },
-  in_linea:     { id: 'in_linea',     label: 'In linea',     desc: '80–99% anno scorso'  },
-  da_stimolare: { id: 'da_stimolare', label: 'Da stimolare', desc: '40–79% anno scorso' },
-  indietro:     { id: 'indietro',     label: 'Indietro',     desc: '1–39% anno scorso'   },
-  da_visitare:  { id: 'da_visitare',  label: 'Da visitare',  desc: '0% questo mese'     },
-  nuovo:        { id: 'nuovo',        label: 'Nuovo',        desc: 'nessuno storico 2025'},
-  inattivo:     { id: 'inattivo',     label: 'Inattivo',     desc: 'nessun fatturato'   },
+  ottimo:       { id: 'ottimo',       label: 'Ottimo',       desc: '≥ 100% vs anno scorso' },
+  in_linea:     { id: 'in_linea',     label: 'In linea',     desc: '80–99% vs anno scorso'  },
+  da_stimolare: { id: 'da_stimolare', label: 'Da stimolare', desc: '40–79% vs anno scorso' },
+  indietro:     { id: 'indietro',     label: 'Indietro',     desc: '< 40% vs anno scorso'   },
+  da_visitare:  { id: 'da_visitare',  label: 'Da visitare',  desc: 'Nessun ordinato nel mese' },
+  nuovo:        { id: 'nuovo',        label: 'Nuovo',        desc: 'Nessuno storico 2025' },
+  inattivo:     { id: 'inattivo',     label: 'Inattivo',     desc: 'Nessun fatturato' },
 };
 
 function mediaAnnua(rec) {
