@@ -20,16 +20,28 @@ def parse_rolling(filepath):
     df = pd.read_excel(filepath, sheet_name='REPORT', header=None)
 
     # Data aggiornamento dalla riga 1 (colonna 2)
-    # Fallback sempre al nome file: celle Excel con date italiane (DD/MM/YYYY) vengono
-    # lette come MM/DD/YYYY da openpyxl e producono date future (es. 05/11 → 5 nov).
     data_raw = df.iloc[1][2]
     data_agg = None
+    today_str = datetime.today().strftime("%Y-%m-%d")
+
     if hasattr(data_raw, 'strftime'):
         candidate = data_raw.strftime("%Y-%m-%d")
-        if candidate <= datetime.today().strftime("%Y-%m-%d"):
+        if candidate <= today_str:
             data_agg = candidate
         else:
             print(f"  ⚠️  Data cella Excel futura ({candidate}), uso nome file come fallback")
+    elif isinstance(data_raw, str):
+        for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                candidate = datetime.strptime(data_raw.strip(), fmt).strftime("%Y-%m-%d")
+                if candidate <= today_str:
+                    data_agg = candidate
+                else:
+                    print(f"  ⚠️  Data cella Excel futura ({candidate}), uso nome file come fallback")
+                break
+            except ValueError:
+                continue
+
     if not data_agg:
         m = re.search(r'consuntivo-(\d{2}-\d{2}-\d{4})', os.path.basename(filepath))
         data_agg = datetime.strptime(m.group(1), "%d-%m-%Y").strftime("%Y-%m-%d") if m else None
