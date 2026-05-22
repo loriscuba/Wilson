@@ -520,6 +520,21 @@
         .bc-det-oltre { background:#f0fdf4; color:#2D7D4F; }
         .bc-row:hover td { background:var(--bg); }
 
+        /* ── Impostazioni clienti ── */
+        .cfg-row-off td { opacity:.55; }
+        .cfg-toolbar { margin-bottom:12px; }
+        .cfg-note-inp { width:100%; font-size:12px; padding:4px 6px; border:1px solid var(--border);
+          border-radius:4px; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
+        .cfg-note-inp:focus { outline:none; border-color:var(--accent); }
+        .cfg-toggle { position:relative; display:inline-block; width:36px; height:20px; }
+        .cfg-toggle input { opacity:0; width:0; height:0; }
+        .cfg-slider { position:absolute; cursor:pointer; inset:0; background:#ccc;
+          border-radius:20px; transition:.2s; }
+        .cfg-slider:before { content:''; position:absolute; width:14px; height:14px;
+          left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+        .cfg-toggle input:checked + .cfg-slider { background:var(--green); }
+        .cfg-toggle input:checked + .cfg-slider:before { transform:translateX(16px); }
+
         /* ── Premio variabile ── */
         .pr-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:.5px solid var(--border); }
         .pr-row:first-child { border-top:none; padding-top:0; }
@@ -691,6 +706,7 @@
             <li><a href="#" onclick="showPage('budget',event)"><span class="icon">🎯</span>Budget</a></li>
             <li><a href="#" onclick="showPage('preventivi',event)"><span class="icon">📝</span>Preventivi</a></li>
             <li><a href="#" onclick="showPage('agenda',event)"><span class="icon">📅</span>Agenda</a></li>
+            <li><a href="#" onclick="showPage('impostazioni',event)"><span class="icon">⚙</span>Impostazioni</a></li>
         </ul>
         <button class="sync-btn" id="sync-btn" onclick="triggerSync()">
             <span id="sync-icon">↻</span> <span id="sync-label">Aggiorna dati</span>
@@ -884,6 +900,13 @@
             </div>
         </div>
 
+        <div id="impostazioni" class="page">
+            <h1>Impostazioni</h1>
+            <div id="cfg-clienti-root">
+                <div class="loading">Caricamento…</div>
+            </div>
+        </div>
+
     </div><!-- /main-content -->
 
     <div class="bottom-nav" id="bottom-nav" aria-label="Navigazione mobile">
@@ -929,6 +952,7 @@
     <script src="js/ddt.js?v=10"></script>
     <script src="js/fatturato.js?v=10"></script>
     <script src="js/budget.js?v=1"></script>
+    <script src="js/impostazioni.js?v=1"></script>
     <script src="js/app.js?v=10"></script>
     <script>
         // placeholder — tutto il codice è nei moduli js/

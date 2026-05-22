@@ -38,11 +38,12 @@ function handleMobileDrawerOverlay(event) {
 }
 
 const PAGE_LOADERS = {
-  dashboard: loadDashboard,
-  ordini:    loadOrdini,
-  clienti:   loadClienti,
-  ddt:       loadDDT,
-  budget:    loadBudget,
+  dashboard:    loadDashboard,
+  ordini:       loadOrdini,
+  clienti:      loadClienti,
+  ddt:          loadDDT,
+  budget:       loadBudget,
+  impostazioni: loadImpostazioni,
 };
 
 function showPage(pageId, event) {
@@ -93,6 +94,7 @@ async function loadUltimoSync() {
 function _reloadActivePage() {
   _latestRollingDate = null;
   _rollingEnriched   = null;
+  _clientiEsclusi    = null;
   const activePage = document.querySelector('.page.active')?.id;
   if (activePage && PAGE_LOADERS[activePage]) PAGE_LOADERS[activePage]();
   loadUltimoSync();

@@ -55,17 +55,23 @@ function statoBadgeCls(id) {
 }
 
 // ── Shared rolling cache ──────────────────────────────────────────────────────
-// Clienti esclusi da top-10 e budget (es. filiali, intercompany, non gestiti)
-const CLIENTI_ESCLUSI = new Set([
-  '570377','576587','595528','974997','977448','978309',
-  '974345','590760','603224','603272','614794','974024',
-  '974753','975904',
-]);
-
-// Loaded once per session; enriched with _stato/_media/_gap by analytics.js
 
 let _latestRollingDate = null;
 let _rollingEnriched   = null;
+let _clientiEsclusi    = null;  // Set caricato da clienti_config
+
+async function loadClientiEsclusi() {
+  if (_clientiEsclusi) return _clientiEsclusi;
+  try {
+    const { data } = await sb.from('clienti_config')
+      .select('codice_cliente')
+      .eq('attivo', false);
+    _clientiEsclusi = new Set((data || []).map(r => String(r.codice_cliente)));
+  } catch {
+    _clientiEsclusi = new Set();
+  }
+  return _clientiEsclusi;
+}
 
 async function getLatestRollingDate() {
   if (_latestRollingDate) return _latestRollingDate;
@@ -82,7 +88,7 @@ async function getLatestRollingDate() {
 
 async function loadRollingEnriched(force) {
   if (_rollingEnriched && !force) return _rollingEnriched;
-  const date = await getLatestRollingDate();
+  const [date, esclusi] = await Promise.all([getLatestRollingDate(), loadClientiEsclusi()]);
   if (!date) return [];
   const { data, error } = await sb.from('rolling_fatturato')
     .select([
@@ -99,7 +105,7 @@ async function loadRollingEnriched(force) {
     .order('ragione_sociale', { ascending: true });
   if (error) throw error;
   _rollingEnriched = (data || [])
-    .filter(r => !CLIENTI_ESCLUSI.has(String(r.codice_cliente)))
+    .filter(r => !esclusi.has(String(r.codice_cliente)))
     .map(r => enrichRecord(r));
   return _rollingEnriched;
 }
