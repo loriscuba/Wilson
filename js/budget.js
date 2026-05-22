@@ -137,6 +137,7 @@ async function loadBudgetPremio() {
     const [{ data: bArr }, { data: focus }] = await Promise.all([
       sb.from('budget').select('budget_mese,evaso,data_aggiornamento')
         .lte('data_aggiornamento', today)
+        .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false }).limit(1),
       sb.from('budget_focus').select('*')
         .lte('data_aggiornamento', today)
@@ -272,6 +273,7 @@ async function loadBudgetMensile() {
     const today = new Date().toISOString().split('T')[0];
     const { data: bArr, error: bErr } = await sb.from('budget')
       .select('*').lte('data_aggiornamento', today)
+      .not('budget_mese', 'is', null)
       .order('data_aggiornamento', { ascending: false }).limit(1);
     if (bErr) throw bErr;
     const b = bArr?.[0];

@@ -118,10 +118,10 @@ def parse_avanzamento(filepath):
         r'(\d{1,3}(?:\.\d{3})+)\s+'    # evaso
         r'(\d{1,3}(?:\.\d{3})+)\s+'    # ordinato nel mese
         r'(\d+)\s+'                     # ordinato oltre mese (può essere < 1000)
-        r'(-\d+)\s+'                    # resi (negativo)
+        r'(-?\d+)\s+'                   # resi (negativo o zero)
         r'(\d{1,3}(?:\.\d{3})+)\s+'    # evaso+ordinato-resi
-        r'(-[\d.]+)\s+'                 # delta mese EUR (negativo)
-        r'(-[\d,]+%)',                  # delta mese % (negativo)
+        r'(-?[\d.]+)\s+'               # delta mese EUR (pos o neg)
+        r'(-?[\d,]+%)',                 # delta mese % (pos o neg)
         full
     )
     if m:
@@ -143,7 +143,7 @@ def parse_avanzamento(filepath):
         r'(\d{1,3}(?:\.\d{3})?)\s+'    # obiettivo
         r'(\d{1,3}(?:\.\d{3})?)\s+'    # fatturato giorno
         r'(\d{1,3}(?:\.\d{3})?)\s+'    # valore ordini ieri
-        r'(\d{1,2})\s*$',              # nr ordini ieri (fine testo)
+        r'(\d{1,2})(?:\s|$)',           # nr ordini ieri
         full
     )
     if m:
