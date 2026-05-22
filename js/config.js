@@ -105,7 +105,6 @@ async function loadRollingEnriched(force) {
     .order('ragione_sociale', { ascending: true });
   if (error) throw error;
   _rollingEnriched = (data || [])
-    .filter(r => !esclusi.has(String(r.codice_cliente)))
-    .map(r => enrichRecord(r));
+    .map(r => enrichRecord({ ...r, _escluso: esclusi.has(String(r.codice_cliente)) }));
   return _rollingEnriched;
 }

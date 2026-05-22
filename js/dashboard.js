@@ -16,11 +16,12 @@ async function loadDashboard() {
     const annoC = now.getFullYear();
     const annoP = annoC - 1;
 
-    // Parallel fetch: rolling (enriched cache) + ordini mese + ddt + cedi
+    // Parallel fetch: rolling + ordini mese + ddt + cedi + budget
     const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const today     = now.toISOString().split('T')[0];
 
-    const [rows, { data: ordiniData }, { data: ddtData }, { data: cediData }] = await Promise.all([
+    const [rows, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }] = await Promise.all([
       loadRollingEnriched(),
       sb.from('ordini').select('totale_ordine, data_ordine')
         .gte('data_ordine', startMese).lte('data_ordine', endMese),
@@ -28,6 +29,11 @@ async function loadDashboard() {
       sb.from('cedi_ridistribuito')
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
         .order('valore_ridistribuito', { ascending: false }),
+      sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento')
+        .lte('data_aggiornamento', today)
+        .not('budget_mese', 'is', null)
+        .order('data_aggiornamento', { ascending: false })
+        .limit(1),
     ]);
 
     // KPI aggregati
@@ -45,12 +51,20 @@ async function loadDashboard() {
     const ddtCount     = ddtData?.length || 0;
     const totCEDI      = (cediData || []).reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
     const cediDate     = (cediData || []).reduce((d, r) => (r.data_aggiornamento > d ? r.data_aggiornamento : d), '');
+    const budget       = budgetArr?.[0] || null;
+    const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
+    const budgetColor  = budgetPct == null ? 'var(--text2)' : budgetPct >= 100 ? 'var(--green)' : budgetPct >= 80 ? '#378ADD' : budgetPct >= 40 ? '#D97706' : 'var(--red)';
+
+    const cediSub = totCEDI > 0
+      ? `<div class="kpi-sub" style="margin-top:4px;font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>`
+      : '';
 
     kpiGrid.innerHTML = `
       <div class="kpi-card">
         <h3>Fatturato del mese</h3>
         <div class="kpi-value">€${fmt(totMese26)}</div>
         <div class="kpi-sub">Cons. €${fmt(totCons)} · Prep. €${fmt(totPrep)}</div>
+        ${cediSub}
         ${varMesePct != null ? `<div class="kpi-change ${varMesePct >= 0 ? 'positive' : 'negative'}">${varMesePct >= 0 ? '+' : ''}${varMesePct.toFixed(1)}% vs ${annoP}</div>` : ''}
       </div>
       <div class="kpi-card">
@@ -59,11 +73,13 @@ async function loadDashboard() {
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
         ${varProgPct != null ? `<div class="kpi-change ${varProgPct >= 0 ? 'positive' : 'negative'}">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</div>` : ''}
       </div>
+      ${budget ? `
       <div class="kpi-card">
-        <h3>Fatturato CEDI</h3>
-        <div class="kpi-value">€${fmt(totCEDI)}</div>
-        <div class="kpi-sub">${cediDate ? 'Agg. ' + fmtDate(cediDate) : '—'}</div>
-      </div>
+        <h3>vs Budget mese</h3>
+        <div class="kpi-value" style="color:${budgetColor}">${budgetPct != null ? budgetPct.toFixed(1) + '%' : '—'}</div>
+        <div class="kpi-sub">Evaso €${fmt(budget.evaso)} / €${fmt(budget.budget_mese)}</div>
+        <div class="kpi-sub" style="font-size:11px">Giorno ${budget.giorno_lavorativo ?? '?'}/${budget.giorni_totali ?? '?'} · ${fmtDate(budget.data_aggiornamento)}</div>
+      </div>` : ''}
       <div class="kpi-card">
         <h3>Ordini del mese</h3>
         <div class="kpi-value">${ordiniCount}</div>
@@ -82,7 +98,7 @@ async function loadDashboard() {
     document.getElementById('top-clienti-h2').textContent = `Top 10 da recuperare vs ${annoP}`;
 
     const top10 = [...rows]
-      .filter(r => r.ragione_sociale && (r.variazione_progressivo || 0) < 0)
+      .filter(r => !r._escluso && r.ragione_sociale && (r.variazione_progressivo || 0) < 0)
       .sort((a, b) => (a.variazione_progressivo || 0) - (b.variazione_progressivo || 0))
       .slice(0, 10);
 

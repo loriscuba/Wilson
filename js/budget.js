@@ -374,7 +374,7 @@ async function loadBudgetClienti() {
       return;
     }
 
-    _bcRows = rows.map(r => ({
+    _bcRows = rows.filter(r => !r._escluso).map(r => ({
       cliente:    r.ragione_sociale || '—',
       divisione:  r.divisione || '',
       stato:      r._stato,
