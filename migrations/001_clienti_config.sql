@@ -38,3 +38,10 @@ INSERT INTO clienti_config (codice_cliente, attivo) VALUES
   ('974753', false),
   ('975904', false)
 ON CONFLICT (codice_cliente) DO NOTHING;
+
+-- RLS: lettura e scrittura con anon key (dashboard Wilson)
+ALTER TABLE clienti_config ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "clienti_config_select" ON clienti_config FOR SELECT USING (true);
+CREATE POLICY "clienti_config_insert" ON clienti_config FOR INSERT WITH CHECK (true);
+CREATE POLICY "clienti_config_update" ON clienti_config FOR UPDATE USING (true);
