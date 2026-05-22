@@ -43,7 +43,6 @@ async function loadDashboard() {
     const totPrep    = rows.reduce((s, r) => s + (r.mese_in_preparazione || 0), 0);
     const totMese26  = rows.reduce((s, r) => s + (r.spedito_ordinato_mese || 0), 0);
     const totMese25  = rows.reduce((s, r) => s + (r.fatt_mese_anno_prec   || 0), 0);
-    const varMesePct = totMese25 > 0 ? ((totMese26 - totMese25) / totMese25) * 100 : null;
     const varProgPct = totProg25 > 0 ? ((totProg26 - totProg25) / totProg25) * 100 : null;
 
     const ordiniCount  = ordiniData?.length || 0;
@@ -51,22 +50,33 @@ async function loadDashboard() {
     const ddtCount     = ddtData?.length || 0;
     const totCEDI      = (cediData || []).reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
     const cediDate     = (cediData || []).reduce((d, r) => (r.data_aggiornamento > d ? r.data_aggiornamento : d), '');
-    const totConsConCedi = totCons + totCEDI;
+    const totOrdinato  = totMese26 + totCEDI;
     const budget       = budgetArr?.[0] || null;
     const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
     const budgetColor  = budgetPct == null ? 'var(--text2)' : budgetPct >= 100 ? 'var(--green)' : budgetPct >= 80 ? '#378ADD' : budgetPct >= 40 ? '#D97706' : 'var(--red)';
 
-    const cediSub = totCEDI > 0
-      ? `<div class="kpi-sub" style="margin-top:4px;font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>`
-      : '';
+    const varOrdinatoPct    = totMese25 > 0 ? ((totOrdinato - totMese25) / totMese25) * 100 : null;
+    const varConsPct        = totMese25 > 0 ? ((totCons     - totMese25) / totMese25) * 100 : null;
+    const budgetOrdinatoPct = budget?.budget_mese > 0 ? (totOrdinato / budget.budget_mese) * 100 : null;
+    const budgetConsPct     = budget?.budget_mese > 0 ? (totCons     / budget.budget_mese) * 100 : null;
 
     kpiGrid.innerHTML = `
       <div class="kpi-card">
-        <h3>Fatturato del mese</h3>
-        <div class="kpi-value">€${fmt(totMese26)}</div>
-        <div class="kpi-sub">Cons. €${fmt(totConsConCedi)} · Prep. €${fmt(totPrep)}</div>
-        ${cediSub}
-        ${varMesePct != null ? `<div class="kpi-change ${varMesePct >= 0 ? 'positive' : 'negative'}">${varMesePct >= 0 ? '+' : ''}${varMesePct.toFixed(1)}% vs ${annoP}</div>` : ''}
+        <h3>Ordinato del mese</h3>
+        <div class="kpi-value">€${fmt(totOrdinato)}</div>
+        ${totCEDI > 0 ? `<div class="kpi-sub" style="font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+          ${varOrdinatoPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varOrdinatoPct >= 0 ? '+' : ''}${varOrdinatoPct.toFixed(1)}% vs ${annoP}</span>` : ''}
+          ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
+        </div>
+      </div>
+      <div class="kpi-card">
+        <h3>Consegnato del mese</h3>
+        <div class="kpi-value">€${fmt(totCons)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+          ${varConsPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varConsPct >= 0 ? '+' : ''}${varConsPct.toFixed(1)}% vs ${annoP}</span>` : ''}
+          ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
+        </div>
       </div>
       <div class="kpi-card">
         <h3>Progressivo ${annoC}</h3>
