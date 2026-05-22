@@ -157,6 +157,11 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
     }
 
     // Sezione spedizioni DDT
+    const _noDdtHtml = (() => {
+      const primaData = (data || []).filter(r => r.data_consegna_prevista).map(r => r.data_consegna_prevista).sort()[0];
+      if (!primaData) return '';
+      return `<div class="spedizioni-bar"><div class="spedizione-chip"><div class="sped-meta"><strong class="sped-ddt" style="color:var(--text2);">Nessun DDT</strong></div><div class="sped-status"><span class="eta-chip eta-future">Arrivo prev. ${fmtDate(primaData)}</span></div></div></div>`;
+    })();
     const spedizioniHTML = ddts.length ? `
       <div class="spedizioni-bar">
         ${ddts.map(d => {
@@ -172,7 +177,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             statusHTML = `<span class="badge badge-green">✓ ${statoLabel || 'Consegnato'}${quando ? ' · ' + fmtDate(quando) : ''}</span>`;
           } else if (d.shippeo_url) {
             const etaChip = etaOk
-              ? `<span class="eta-chip ${etaFutura ? 'eta-future' : 'eta-past'}">ETA ${fmtDate(d.eta_shippeo)}</span>`
+              ? `<span class="eta-chip eta-future">Arr. ${fmtDate(d.eta_shippeo)}</span>`
               : '';
             const statoChip = statoLabel
               ? `<span class="badge badge-blue" style="font-size:11px;">${statoLabel}</span>`
@@ -191,7 +196,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             <div class="sped-status">${statusHTML}</div>
           </div>`;
         }).join('')}
-      </div>` : '';
+      </div>` : _noDdtHtml;
 
     // Mappa codice_articolo (senza zeri iniziali) → DDT con priorità a "consegnato"
     const articoloDDT = {};

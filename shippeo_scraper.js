@@ -244,11 +244,8 @@ async function main() {
         const etaDate   = etaRaw ? new Date(etaRaw) : null;
         const etaOk      = etaDate && !isNaN(etaDate);
         const etaPassed  = etaOk && etaDate < now;
-        const etaDaysAgo = etaOk ? (now - etaDate) / (1000 * 60 * 60 * 24) : 0;
-        // Consegnato se Shippeo lo conferma esplicitamente,
-        // oppure se ETA scaduta da ≥1 giorno senza alcuno stato riconoscibile (API non risponde bene)
-        const isConsegnato = statoMapped === 'consegnato' ||
-                             (statoMapped == null && etaDaysAgo >= 1);
+        // Consegnato solo se Shippeo lo conferma esplicitamente
+        const isConsegnato = statoMapped === 'consegnato';
 
         const update = {};
         if (status) update.stato_shippeo = status;
@@ -263,6 +260,20 @@ async function main() {
             await supabase.from('ordini')
                 .update({ stato: 'consegnato' })
                 .eq('numero_ordine', ddt.numero_ordine);
+            // Aggiorna data_consegna_prevista nelle righe prodotto
+            if (consegnaDate) {
+                const deliveryDateStr = consegnaDate.split('T')[0];
+                const { data: ordRow } = await supabase
+                    .from('ordini').select('id')
+                    .eq('numero_ordine', ddt.numero_ordine)
+                    .single();
+                if (ordRow?.id) {
+                    await supabase.from('righe_ordine')
+                        .update({ data_consegna_prevista: deliveryDateStr })
+                        .eq('ordine_id', ordRow.id);
+                    console.log(`  ✓ Righe ordine aggiornate`);
+                }
+            }
             console.log(`  ✓ CONSEGNATO il ${consegnaDate || '—'}`);
         } else {
             update.stato = statoMapped || 'spedito';
