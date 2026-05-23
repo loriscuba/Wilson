@@ -244,8 +244,8 @@ async function main() {
         const etaDate   = etaRaw ? new Date(etaRaw) : null;
         const etaOk      = etaDate && !isNaN(etaDate);
         const etaPassed  = etaOk && etaDate < now;
-        // Consegnato solo se Shippeo lo conferma esplicitamente
-        const isConsegnato = statoMapped === 'consegnato';
+        // Consegnato se lo status lo dice o se c'è una data di consegna effettiva
+        const isConsegnato = statoMapped === 'consegnato' || !!deliveredAt;
 
         const update = {};
         if (status) update.stato_shippeo = status;
