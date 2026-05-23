@@ -300,6 +300,14 @@
         }
         .filter-reset:hover { background: var(--bg); color: var(--text); }
         .filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+        .ord-stato-chip {
+            padding: 4px 11px; border-radius: 20px; font-size: 12px; font-weight: 600;
+            cursor: pointer; font-family: 'DM Sans', sans-serif;
+            background: var(--chip-bg, #F3F4F6); color: var(--chip-col, #374151);
+            border: 1.5px solid var(--chip-col, #9CA3AF); transition: opacity .15s;
+        }
+        .ord-stato-chip:hover { opacity: .8; }
+        .ord-stato-chip.on { background: var(--chip-col, #374151); color: #fff; border-color: var(--chip-col, #374151); }
 
         /* ── Expand righe ordine ── */
         .expand-btn {
@@ -759,7 +767,16 @@
                     <label>Cliente</label>
                     <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="debounceOrdini()">
                     <div class="filter-sep"></div>
-                    <button class="filter-reset" onclick="resetFiltriOrdini()">Azzera filtri</button>
+                    <button class="filter-reset" onclick="resetFiltriOrdini()">↺ Mese</button>
+                </div>
+                <div class="filter-bar" style="padding-top:0;gap:6px;flex-wrap:wrap;">
+                    <button class="ord-stato-chip on"  data-stato=""                    onclick="setFiltroStatoOrdine('')">Tutti</button>
+                    <button class="ord-stato-chip"     data-stato="confermato"           onclick="setFiltroStatoOrdine('confermato')"           style="--chip-bg:#E8F0FE;--chip-col:#1A56DB">Confermato</button>
+                    <button class="ord-stato-chip"     data-stato="in preparazione"      onclick="setFiltroStatoOrdine('in preparazione')"      style="--chip-bg:#FEF9C3;--chip-col:#854D0E">In preparazione</button>
+                    <button class="ord-stato-chip"     data-stato="parzialmente spedito" onclick="setFiltroStatoOrdine('parzialmente spedito')" style="--chip-bg:#FEF9C3;--chip-col:#854D0E">Parz. spedito</button>
+                    <button class="ord-stato-chip"     data-stato="spedito"              onclick="setFiltroStatoOrdine('spedito')"              style="--chip-bg:#FFEDD5;--chip-col:#C2410C">Spedito</button>
+                    <button class="ord-stato-chip"     data-stato="consegnato"           onclick="setFiltroStatoOrdine('consegnato')"           style="--chip-bg:#E8F5EE;--chip-col:#2D7D4F">Consegnato</button>
+                    <button class="ord-stato-chip"     data-stato="annullato"            onclick="setFiltroStatoOrdine('annullato')"            style="--chip-bg:#FDECEA;--chip-col:#C84B2F">Annullato</button>
                 </div>
                 <div class="table-header-bar">
                     <span>Ordini · <span class="table-count" id="ordini-count">—</span></span>
@@ -949,7 +966,7 @@
     <script src="js/analytics.js?v=13"></script>
     <script src="js/dashboard.js?v=16"></script>
     <script src="js/clienti.js?v=13"></script>
-    <script src="js/ordini.js?v=16"></script>
+    <script src="js/ordini.js?v=17"></script>
     <script src="js/ddt.js?v=13"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=4"></script>

@@ -1,14 +1,37 @@
 let _ordiniDebounceTimer = null;
+let _filtroStatoOrdine  = null;
 
 function debounceOrdini() {
   clearTimeout(_ordiniDebounceTimer);
   _ordiniDebounceTimer = setTimeout(loadOrdini, 350);
 }
 
+function _initOrdiniDates() {
+  const da = document.getElementById('filtro-da');
+  const a  = document.getElementById('filtro-a');
+  if (!da || !a) return;
+  if (!da.value && !a.value) {
+    const now = new Date();
+    da.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    a.value  = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  }
+}
+
+function setFiltroStatoOrdine(stato) {
+  _filtroStatoOrdine = stato || null;
+  document.querySelectorAll('.ord-stato-chip').forEach(c =>
+    c.classList.toggle('on', c.dataset.stato === (stato || ''))
+  );
+  loadOrdini();
+}
+
 function resetFiltriOrdini() {
-  document.getElementById('filtro-da').value = '';
-  document.getElementById('filtro-a').value = '';
+  const now = new Date();
+  document.getElementById('filtro-da').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  document.getElementById('filtro-a').value  = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
   document.getElementById('filtro-cliente').value = '';
+  _filtroStatoOrdine = null;
+  document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
   loadOrdini();
 }
 
@@ -17,6 +40,7 @@ async function loadOrdini() {
   const countEl = document.getElementById('ordini-count');
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
+  _initOrdiniDates();
   const da      = document.getElementById('filtro-da')?.value;
   const a       = document.getElementById('filtro-a')?.value;
   const cliente = document.getElementById('filtro-cliente')?.value?.trim();
@@ -26,9 +50,10 @@ async function loadOrdini() {
       .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
       .order('data_ordine', { ascending: false });
 
-    if (da)      q = q.gte('data_ordine', da);
-    if (a)       q = q.lte('data_ordine', a);
-    if (cliente) q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%`);
+    if (da)                 q = q.gte('data_ordine', da);
+    if (a)                  q = q.lte('data_ordine', a);
+    if (cliente)            q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%`);
+    if (_filtroStatoOrdine) q = q.eq('stato', _filtroStatoOrdine);
 
     const { data, error } = await q;
     if (error) throw error;
