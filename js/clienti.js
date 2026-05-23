@@ -183,8 +183,9 @@ async function loadClienteDetail(codice, nome, container) {
       : `<div class="cks">Nessun dato gamma per questo cliente</div>`;
 
     // Ritmo ordini
-    const ritmo    = calcolaRitmoOrdini(ordiniStorico || []);
-    const ritmoHTML = ritmo ? buildRitmoHTML(ritmo) : '<div class="cks">Nessun ordine in Wilson</div>';
+    const ritmo       = calcolaRitmoOrdini(ordiniStorico || []);
+    const ritmoHTML   = ritmo ? buildRitmoHTML(ritmo) : '<div class="cks">Nessun ordine in Wilson</div>';
+    const ordineMedio = ritmo?.ultimi12m > 0 ? ritmo.totaleAnno / ritmo.ultimi12m : null;
 
     container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
@@ -200,9 +201,9 @@ async function loadClienteDetail(codice, nome, container) {
           <div class="ckv">€${fmt(r.fatturato_2025)}</div>
         </div>
         <div class="cliente-kpi-card">
-          <h4>Media mensile 2025</h4>
-          <div class="ckv">€${fmt(r._media)}</div>
-          <div class="cks">media su 12 mesi</div>
+          <h4>Ordine medio</h4>
+          <div class="ckv">${ordineMedio != null ? '€' + fmt(ordineMedio) : '—'}</div>
+          <div class="cks">${ritmo?.ultimi12m ? ritmo.ultimi12m + ' ordini ultimi 12 mesi' : 'Nessun ordine'}</div>
         </div>
         <div class="cliente-kpi-card">
           <h4>Mese corrente</h4>
