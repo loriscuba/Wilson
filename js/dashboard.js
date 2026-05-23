@@ -99,30 +99,61 @@ async function loadDashboard() {
 
     renderStatoMese(rows);
 
-    // Top 15 da ordinare nel mese
-    const meseCorrLabel = MESI_LABEL[now.getMonth()];
-    document.getElementById('top-clienti-h2').textContent = `Top 15 da ordinare nel mese`;
+    // Top 10 da ordinare nel mese
+    document.getElementById('top-clienti-h2').textContent = 'Top 10 da ordinare nel mese';
 
-    const top15 = [...rows]
+    const top10 = [...rows]
       .filter(r => !r._escluso && r.ragione_sociale && (r.fatt_mese_anno_prec || 0) > 0 && (r.spedito_ordinato_mese || 0) === 0)
       .sort((a, b) => (b.fatt_mese_anno_prec || 0) - (a.fatt_mese_anno_prec || 0))
-      .slice(0, 15);
+      .slice(0, 10);
 
-    topBody.innerHTML = top15.length
-      ? top15.map((r, i) => {
-          const m25     = r.fatt_mese_anno_prec   || 0;
-          const m26     = r.spedito_ordinato_mese  || 0;
-          const stBadge = `<span class="badge ${statoBadgeCls(r._stato.id)}">${r._stato.label}</span>`;
-          return `
-          <tr class="ordine-row" onclick="apriClienteDaDashboard('${r.codice_cliente}','${(r.ragione_sociale||'').replace(/'/g,"\\'")}')" style="cursor:pointer;">
-            <td><strong>${i + 1}</strong></td>
-            <td style="color:var(--accent);text-decoration:underline;">${r.ragione_sociale}</td>
-            <td class="num-right">€${fmt(m25)}</td>
-            <td class="num-right" style="color:var(--red);font-weight:600">€${fmt(m26)}</td>
-            <td>${stBadge}</td>
+    topBody.innerHTML = top10.length
+      ? top10.map(r => {
+          const statoId    = r._stato?.id    || 'inattivo';
+          const statoColor = STATO_COLOR[statoId] || '#9B9B97';
+          const statoBadge = `<span class="bc-stato" style="background:${statoColor}20;color:${statoColor};border-color:${statoColor}40">${r._stato?.label || '—'}</span>`;
+
+          const bud   = r.fatt_mese_anno_prec || 0;
+          const ord   = r.spedito_ordinato_mese || 0;
+          const varM  = bud > 0 ? (ord - bud) / bud * 100 : null;
+          const varMBadge = varM != null
+            ? `<span class="bc-badge bc-bdg-neg">${_pct(varM)}</span>`
+            : '<span class="bc-badge bc-bdg-gray">—</span>';
+
+          const prog25 = r.fatt_prog_anno_prec || 0;
+          const prog26 = r.fatt_prog_anno_corr || 0;
+          const varP   = prog25 > 0 ? (prog26 - prog25) / prog25 * 100 : null;
+          const varPBadge = varP != null
+            ? `<span class="bc-badge ${varP >= 0 ? 'bc-bdg-pos' : 'bc-bdg-neg'}">${_pct(varP)}</span>`
+            : '<span class="bc-badge bc-bdg-gray">—</span>';
+
+          const gap = Math.max(0, bud - ord);
+          const gapCell = gap > 0
+            ? `<span class="neg" style="font-weight:500">–${_eur(gap)}</span>`
+            : `<span class="pos" style="font-size:11px">in target</span>`;
+
+          return `<tr class="bc-row bc-row-${statoId}" onclick="apriClienteDaDashboard('${r.codice_cliente}','${(r.ragione_sociale||'').replace(/'/g,"\\'")}')" style="cursor:pointer;">
+            <td>${statoBadge}</td>
+            <td>
+              <div class="bc-cliente-nome">${r.ragione_sociale}${r._ordinaDiPersona ? ' <span class="bc-persona-tag">&#9734; di persona</span>' : ''}</div>
+              ${r.divisione ? `<div class="bc-cliente-div">${r.divisione}</div>` : ''}
+            </td>
+            <td>
+              <div class="bc-bar-wrap">
+                <div class="b-bbg bc-barline"><div class="b-bfill" style="width:0%;background:${statoColor}"></div></div>
+                <div class="bc-bar-vals">${_eur(ord)} <span class="bc-bud">/ ${_eur(bud)}</span></div>
+              </div>
+            </td>
+            <td>${varMBadge}</td>
+            <td>${gapCell}</td>
+            <td>
+              <div style="font-weight:500">${_eur(prog26)}</div>
+              <div style="font-size:11px;color:var(--text2)">${_eur(prog25)} 2025</div>
+            </td>
+            <td>${varPBadge}</td>
           </tr>`;
         }).join('')
-      : '<tr><td colspan="5" class="loading">Nessun dato disponibile</td></tr>';
+      : '<tr><td colspan="7" class="loading">Nessun dato disponibile</td></tr>';
 
   } catch (err) {
     console.error('Errore dashboard:', err);
