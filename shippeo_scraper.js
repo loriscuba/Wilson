@@ -181,8 +181,10 @@ async function getShippeoData(rawUrl) {
     let status = null, etaRaw = null, deliveredAt = null;
 
     for (const { body } of captured) {
-        const s = body?.status?.currentStatus || body?.currentStatus ||
-                  (typeof body?.status === 'string' ? body.status : null);
+        const sRaw = body?.status?.currentStatus || body?.currentStatus ||
+                     (typeof body?.status === 'string' ? body.status : null);
+        // Filtra il valore bogus "status" così i valori reali (loadingCompliant, deliveryCompliant…) prevalgono
+        const s = (sRaw && sRaw.toLowerCase() !== 'status') ? sRaw : null;
         if (s && !status) status = s;
         const da = findField(body, ['occurredon','deliveredat','actualdelivery','consegnato']);
         if (da && !deliveredAt) deliveredAt = da;
@@ -191,29 +193,39 @@ async function getShippeoData(rawUrl) {
         if (eta && !etaRaw) etaRaw = eta;
     }
 
-    // Controlla il testo della pagina anche quando status="status" (bogus) —
-    // è l'unico modo affidabile per distinguere "Consegnato il X" da "Consegna prevista X"
-    const isBogus = !status || status.toLowerCase() === 'status';
-    if (isBogus || !etaRaw) {
-        const t = pageText;
-        const tl = t.toLowerCase();
+    // Analisi testo pagina: sempre per ETA, solo per status quando bogus
+    const t  = pageText;
+    const tl = t.toLowerCase();
 
+    // Status consegna dal testo pagina (solo quando API restituisce valore bogus/null)
+    const isBogus = !status || status.toLowerCase() === 'status';
+    if (isBogus) {
         // "Consegnato il 20 maggio" / "Consegnato il 20/05" / "Consegnato il 20/05/2026"
         const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
         if (consM) {
-            if (isBogus) status = 'deliveryCompliant';
+            status = 'deliveryCompliant';
             if (!deliveredAt) deliveredAt = parseDataIT(consM[1].trim());
-        } else if (tl.includes('consegnat') || tl.includes('delivered')) {
-            if (isBogus) status = 'deliveryCompliant';
+        } else if (tl.includes('consegnat') || tl.includes('delivered') ||
+                   tl.includes('delivery compliant') || tl.includes('delivery late')) {
+            status = 'deliveryCompliant';
         }
+    }
 
-        // "Prevista il 22 maggio" / "Consegna prevista 22/05"
+    // ETA dal blocco "Delivery: MM/DD/YYYY" nella pagina (sempre affidabile, sovrascrive data carico API)
+    const delivPageM = t.match(/\bDelivery[:\s]+(\d{2}\/\d{2}\/\d{4})/i);
+    if (delivPageM) {
+        const [mm, dd, yyyy] = delivPageM[1].split('/');
+        etaRaw = `${yyyy}-${mm}-${dd}`;
+    }
+
+    // Fallback italiano: "Prevista il 22 maggio" / "Consegna prevista 22/05"
+    if (!etaRaw) {
         const etaM = t.match(/(?:prevista?|stimata?|estimated?)\s*(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
-        if (etaM && !etaRaw) etaRaw = parseDataIT(etaM[1].trim());
+        if (etaM) etaRaw = parseDataIT(etaM[1].trim());
+    }
 
-        if (process.env.DEBUG) {
-            console.log(`  [pageText excerpt] ${t.slice(0, 300)}`);
-        }
+    if (process.env.DEBUG) {
+        console.log(`  [pageText excerpt] ${t.slice(0, 300)}`);
     }
 
     console.log(`  [result] status=${status} eta=${etaRaw} deliveredAt=${deliveredAt} (${captured.length} API)`);
