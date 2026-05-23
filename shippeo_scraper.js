@@ -191,17 +191,20 @@ async function getShippeoData(rawUrl) {
         if (eta && !etaRaw) etaRaw = eta;
     }
 
-    if (!status || !etaRaw) {
+    // Controlla il testo della pagina anche quando status="status" (bogus) —
+    // è l'unico modo affidabile per distinguere "Consegnato il X" da "Consegna prevista X"
+    const isBogus = !status || status.toLowerCase() === 'status';
+    if (isBogus || !etaRaw) {
         const t = pageText;
         const tl = t.toLowerCase();
 
         // "Consegnato il 20 maggio" / "Consegnato il 20/05" / "Consegnato il 20/05/2026"
         const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
         if (consM) {
-            if (!status) status = 'deliveryCompliant';
+            if (isBogus) status = 'deliveryCompliant';
             if (!deliveredAt) deliveredAt = parseDataIT(consM[1].trim());
         } else if (tl.includes('consegnat') || tl.includes('delivered')) {
-            if (!status) status = 'deliveryCompliant';
+            if (isBogus) status = 'deliveryCompliant';
         }
 
         // "Prevista il 22 maggio" / "Consegna prevista 22/05"
@@ -244,8 +247,8 @@ async function main() {
         const etaDate   = etaRaw ? new Date(etaRaw) : null;
         const etaOk      = etaDate && !isNaN(etaDate);
         const etaPassed  = etaOk && etaDate < now;
-        // Consegnato se lo status lo dice o se c'è una data di consegna effettiva
-        const isConsegnato = statoMapped === 'consegnato' || !!deliveredAt;
+        // Consegnato solo se Shippeo (o il testo pagina) conferma esplicitamente
+        const isConsegnato = statoMapped === 'consegnato';
 
         const update = {};
         if (status) update.stato_shippeo = status;
