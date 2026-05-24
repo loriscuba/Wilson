@@ -132,7 +132,7 @@ async function loadDashboard() {
             ? `<span class="neg" style="font-weight:500">–${_eur(gap)}</span>`
             : `<span class="pos" style="font-size:11px">in target</span>`;
 
-          return `<tr class="bc-row bc-row-${statoId}" onclick="apriClienteDaDashboard('${r.codice_cliente}','${(r.ragione_sociale||'').replace(/'/g,"\\'")}')" style="cursor:pointer;">
+          return `<tr class="bc-row bc-row-${statoId}" onclick="apriClienteDaDashboard('${r.codice_cliente}')" style="cursor:pointer;">
             <td>${statoBadge}</td>
             <td>
               <div class="bc-cliente-nome">${r.ragione_sociale}${r._ordinaDiPersona ? ' <span class="bc-persona-tag">&#9734; di persona</span>' : ''}</div>

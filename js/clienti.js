@@ -1,9 +1,9 @@
 let _clientiData   = [];   // raw clienti records
 let _rollingByCode = {};   // codice_cliente → enriched rolling record
 
-function apriClienteDaDashboard(codice, nome) {
+function apriClienteDaDashboard(codice) {
   const el = document.getElementById('filtro-clienti');
-  if (el) el.value = nome;
+  if (el) el.value = codice;
   const sel = document.getElementById('filtro-stato');
   if (sel) sel.value = '';
   showPage('clienti', { preventDefault: () => {} });
