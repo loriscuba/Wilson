@@ -7,12 +7,10 @@ function apriClienteDaDashboard(codice, nome) {
   const sel = document.getElementById('filtro-stato');
   if (sel) sel.value = '';
   showPage('clienti', { preventDefault: () => {} });
-  document.querySelector('.sidebar a[onclick*="clienti"]')?.classList.add('active');
 }
 
 function filtraPerStato(statoId) {
   showPage('clienti', { preventDefault: () => {} });
-  document.querySelector('.sidebar a[onclick*="clienti"]')?.classList.add('active');
   const sel = document.getElementById('filtro-stato');
   if (sel) sel.value = statoId;
   filterClienti(document.getElementById('filtro-clienti')?.value || '');
@@ -298,8 +296,7 @@ async function refreshClienteDetail(codice, nome) {
 function goToOrdiniFiltered(codice) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('ordini').classList.add('active');
-  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-  document.querySelector('.sidebar a[onclick*="ordini"]')?.classList.add('active');
+  _setNavActive('ordini');
   document.getElementById('filtro-da').value = '2020-01-01';
   document.getElementById('filtro-a').value  = '2030-12-31';
   document.getElementById('filtro-cliente').value = codice;
@@ -311,8 +308,7 @@ function goToOrdiniFiltered(codice) {
 function goToOrdineFromDDT(numeroOrdine) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('ordini').classList.add('active');
-  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-  document.querySelector('.sidebar a[onclick*="ordini"]')?.classList.add('active');
+  _setNavActive('ordini');
   // Azzera i filtri data per mostrare l'ordine indipendentemente dal mese
   document.getElementById('filtro-da').value = '2020-01-01';
   document.getElementById('filtro-a').value  = '2030-12-31';

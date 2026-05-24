@@ -1,13 +1,5 @@
 // ── Navigation ───────────────────────────────────────────────────────────────
 
-let _sidebarOpen = false;
-
-function toggleSidebar() {
-  _sidebarOpen = !_sidebarOpen;
-  document.getElementById('sidebar').classList.toggle('open', _sidebarOpen);
-  document.getElementById('main-content').classList.toggle('shifted', _sidebarOpen);
-}
-
 function updateMobileNavActive(pageId) {
   document.querySelectorAll('.bottom-nav-item').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.page === pageId);
@@ -47,16 +39,16 @@ const PAGE_LOADERS = {
   impostazioni: loadImpostazioni,
 };
 
-function toggleDesktopSidebar() {
-  document.body.classList.toggle('sidebar-closed');
+function _setNavActive(pageId) {
+  document.querySelectorAll('.top-nav-link').forEach(a => a.classList.remove('active'));
+  document.querySelector(`.top-nav-link[data-page="${pageId}"]`)?.classList.add('active');
+  updateMobileNavActive(pageId);
 }
 
 function navToPage(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(pageId)?.classList.add('active');
-  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-  document.querySelector(`.sidebar a[onclick*="${pageId}"]`)?.classList.add('active');
-  updateMobileNavActive(pageId);
+  _setNavActive(pageId);
   PAGE_LOADERS[pageId]?.();
 }
 
@@ -64,9 +56,7 @@ function showPage(pageId, event) {
   event.preventDefault();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(pageId)?.classList.add('active');
-  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-  if (event?.currentTarget?.classList) event.currentTarget.classList.add('active');
-  updateMobileNavActive(pageId);
+  _setNavActive(pageId);
   PAGE_LOADERS[pageId]?.();
 }
 
