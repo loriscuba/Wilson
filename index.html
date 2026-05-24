@@ -762,6 +762,29 @@
                 opacity: 1;
                 transition: max-width .22s cubic-bezier(.4,0,.2,1), opacity .15s, margin .22s;
             }
+            .top-nav-link[data-tip] { position: relative; }
+            .top-nav-link[data-tip]::after {
+                content: attr(data-tip);
+                position: absolute;
+                top: calc(100% + 8px);
+                left: 50%;
+                transform: translateX(-50%) translateY(-4px);
+                background: rgba(20,20,22,.92);
+                color: rgba(255,255,255,.92);
+                font-size: 11px;
+                font-weight: 500;
+                padding: 4px 9px;
+                border-radius: 6px;
+                white-space: nowrap;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity .14s, transform .14s;
+                z-index: 9999;
+            }
+            .top-nav-link[data-tip]:hover::after {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
             .top-nav-right {
                 display: flex;
                 align-items: center;
@@ -912,19 +935,19 @@
     <nav class="top-nav" id="top-nav">
       <span class="top-nav-brand">Wilson</span>
       <div class="top-nav-links">
-        <a class="top-nav-link active" data-page="dashboard" href="#" onclick="showPage('dashboard',event)">
+        <a class="top-nav-link active" data-page="dashboard" data-tip="Dashboard" href="#" onclick="showPage('dashboard',event)">
           <i class="ti ti-layout-dashboard top-nav-icon"></i><span class="top-nav-label">Dashboard</span></a>
-        <a class="top-nav-link" data-page="ordini" href="#" onclick="showPage('ordini',event)">
+        <a class="top-nav-link" data-page="ordini" data-tip="Ordini" href="#" onclick="showPage('ordini',event)">
           <i class="ti ti-clipboard-list top-nav-icon"></i><span class="top-nav-label">Ordini</span></a>
-        <a class="top-nav-link" data-page="clienti" href="#" onclick="showPage('clienti',event)">
+        <a class="top-nav-link" data-page="clienti" data-tip="Clienti" href="#" onclick="showPage('clienti',event)">
           <i class="ti ti-users top-nav-icon"></i><span class="top-nav-label">Clienti</span></a>
-        <a class="top-nav-link" data-page="ddt" href="#" onclick="showPage('ddt',event)">
+        <a class="top-nav-link" data-page="ddt" data-tip="DDT & Tracking" href="#" onclick="showPage('ddt',event)">
           <i class="ti ti-truck-delivery top-nav-icon"></i><span class="top-nav-label">DDT</span></a>
-        <a class="top-nav-link" data-page="budget" href="#" onclick="showPage('budget',event)">
+        <a class="top-nav-link" data-page="budget" data-tip="Budget" href="#" onclick="showPage('budget',event)">
           <i class="ti ti-target top-nav-icon"></i><span class="top-nav-label">Budget</span></a>
-        <a class="top-nav-link" data-page="agenda" href="#" onclick="showPage('agenda',event)">
+        <a class="top-nav-link" data-page="agenda" data-tip="Agenda" href="#" onclick="showPage('agenda',event)">
           <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
-        <a class="top-nav-link" data-page="impostazioni" href="#" onclick="showPage('impostazioni',event)">
+        <a class="top-nav-link" data-page="impostazioni" data-tip="Impostazioni" href="#" onclick="showPage('impostazioni',event)">
           <i class="ti ti-adjustments top-nav-icon"></i><span class="top-nav-label">Impostazioni</span></a>
       </div>
       <div class="top-nav-right">
