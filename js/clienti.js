@@ -1,7 +1,9 @@
-let _clientiData   = [];   // raw clienti records
-let _rollingByCode = {};   // codice_cliente → enriched rolling record
+let _clientiData        = [];   // raw clienti records
+let _rollingByCode      = {};   // codice_cliente → enriched rolling record
+let _pendingOpenCodice  = null; // auto-espandi questo cliente dopo il caricamento
 
 function apriClienteDaDashboard(codice) {
+  _pendingOpenCodice = codice;
   const el = document.getElementById('filtro-clienti');
   if (el) el.value = codice;
   const sel = document.getElementById('filtro-stato');
@@ -91,6 +93,13 @@ async function loadClienti() {
       filterClienti(q);
     } else {
       renderClientiRows(_clientiData);
+    }
+
+    if (_pendingOpenCodice) {
+      const cod = _pendingOpenCodice;
+      _pendingOpenCodice = null;
+      const c = _clientiData.find(x => String(x.codice_cliente) === String(cod));
+      if (c) toggleClienteDetail(cod, c.ragione_sociale || '', document.body);
     }
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
