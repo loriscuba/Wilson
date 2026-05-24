@@ -42,11 +42,6 @@
             background-color: var(--sidebar-bg);
             border-right: none;
             padding: 16px 10px;
-            position: fixed;
-            top: 0; left: 0;
-            height: 100%;
-            transform: translateX(-100%);
-            transition: transform 0.25s ease;
             z-index: 1000;
             display: flex;
             flex-direction: column;
@@ -598,13 +593,70 @@
         .pr-active td { font-weight:600; background:#edf7ed; }
 
         @media (max-width: 768px) {
-            .sidebar,
+            .sidebar {
+                position: fixed;
+                top: 0; left: 0;
+                height: 100%;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+            }
+            .sidebar.open { transform: translateX(0); }
             .hamburger {
-                display: none !important;
+                display: flex !important;
             }
             .main-content {
                 padding-bottom: 90px;
             }
+
+            /* KPI grid: 2 colonne su mobile */
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+
+            /* Ordini: nascondi Data, Codice Cliente, Tipo */
+            #ordini-table th:nth-child(3),
+            #ordini-table th:nth-child(4),
+            #ordini-table th:nth-child(6),
+            #ordini-table td:nth-child(3),
+            #ordini-table td:nth-child(4),
+            #ordini-table td:nth-child(6) { display: none; }
+
+            /* Righe ordine: nascondi U.M., Listino, Sconto, Netto/pz */
+            .righe-table th:nth-child(4),
+            .righe-table th:nth-child(5),
+            .righe-table th:nth-child(6),
+            .righe-table th:nth-child(7),
+            .righe-table td:nth-child(4),
+            .righe-table td:nth-child(5),
+            .righe-table td:nth-child(6),
+            .righe-table td:nth-child(7) { display: none; }
+
+            /* Clienti: nascondi Città, Provincia, Categoria, Giorno Visita */
+            #clienti-table th:nth-child(3),
+            #clienti-table th:nth-child(4),
+            #clienti-table th:nth-child(6),
+            #clienti-table th:nth-child(7),
+            #clienti-table td:nth-child(3),
+            #clienti-table td:nth-child(4),
+            #clienti-table td:nth-child(6),
+            #clienti-table td:nth-child(7) { display: none; }
+
+            /* DDT: nascondi N° DDT, Data, N° Ordine, Corriere */
+            #ddt-table th:nth-child(2),
+            #ddt-table th:nth-child(3),
+            #ddt-table th:nth-child(5),
+            #ddt-table th:nth-child(6),
+            #ddt-table td:nth-child(2),
+            #ddt-table td:nth-child(3),
+            #ddt-table td:nth-child(5),
+            #ddt-table td:nth-child(6) { display: none; }
+
+            /* Budget clienti: min-width ridotto */
+            .bc-th-cliente { min-width: 120px !important; }
+            .bc-kpi { min-width: 90px !important; }
+
+            /* Agenda: layout calendario compatto */
+            .cal-day { min-height: 50px; padding: 3px; }
+            .ac-nome { font-size: 9px; }
+        }
             .bottom-nav {
                 position: fixed;
                 left: 0;
@@ -726,7 +778,6 @@
                 top: 0;
                 flex-shrink: 0;
                 height: 100vh;
-                transform: none !important;
                 transition: width 0.22s ease, padding 0.22s ease;
                 overflow-x: hidden;
                 overflow-y: auto;
@@ -1147,9 +1198,9 @@
             <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 19v-2a4 4 0 0 0-3-3.87" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="bottom-nav-label">Clienti</span>
         </button>
-        <button class="bottom-nav-item" data-page="fatturato" type="button" onclick="mobileNavSelect('fatturato', event)">
-            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M6 20v-6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 20v-10" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 20v-4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span class="bottom-nav-label">Fatturato</span>
+        <button class="bottom-nav-item" data-page="agenda" type="button" onclick="mobileNavSelect('agenda', event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="18" rx="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 2v4M8 2v4M3 10h18" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="bottom-nav-label">Agenda</span>
         </button>
         <button class="bottom-nav-item" type="button" id="mobile-drawer-toggle" onclick="toggleMobileDrawer(event)">
             <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 6h.01" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 12h.01" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 18h.01" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1160,10 +1211,9 @@
         <div class="mobile-drawer" role="dialog" aria-modal="true" aria-label="Altro">
             <div class="drawer-handle"></div>
             <div class="drawer-links">
-                <button type="button" onclick="showPage('ddt', event); closeMobileDrawer()">DDT</button>
-                <button type="button" onclick="showPage('budget', event); closeMobileDrawer()">Budget</button>
-                <button type="button" onclick="showPage('agenda', event); closeMobileDrawer()">Agenda</button>
-                <button type="button" onclick="showPage('preventivi', event); closeMobileDrawer()">Preventivi</button>
+                <button type="button" onclick="navToPage('ddt'); closeMobileDrawer()">DDT &amp; Tracking</button>
+                <button type="button" onclick="navToPage('budget'); closeMobileDrawer()">Budget</button>
+                <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
         </div>
     </div>
