@@ -194,6 +194,11 @@ async function triggerSync() {
   }, POLL_MS);
 }
 
+// ── Nav compact on scroll ────────────────────────────────────────────────────
+document.getElementById('main-content')?.addEventListener('scroll', function () {
+  document.getElementById('top-nav')?.classList.toggle('compact', this.scrollTop > 30);
+}, { passive: true });
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 loadDashboard();
 loadUltimoSync();

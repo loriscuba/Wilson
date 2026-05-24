@@ -20,7 +20,7 @@
             --accent:     #C0392B;
             --green:      #2D7D4F;
             --red:        #C0392B;
-            --sidebar-bg: #B03A2E;
+            --sidebar-bg: #1C1C1E;
             --sidebar-w:  200px;
             --r:          6px;
             --shadow:     0 1px 3px rgba(0,0,0,.07);
@@ -701,18 +701,28 @@
                 position: fixed;
                 top: 0; left: 0; right: 0;
                 height: 52px;
-                background: var(--sidebar-bg);
+                background: rgba(28,28,30,.94);
+                backdrop-filter: saturate(180%) blur(20px);
+                -webkit-backdrop-filter: saturate(180%) blur(20px);
+                border-bottom: 1px solid rgba(255,255,255,.07);
                 align-items: center;
                 padding: 0 14px;
                 z-index: 200;
+                transition: height .22s cubic-bezier(.4,0,.2,1);
             }
+            .top-nav.compact { height: 40px; }
+            .top-nav.compact .top-nav-label { max-width: 0; opacity: 0; margin-left: 0; }
+            .top-nav.compact .top-nav-link { gap: 0; }
+            .top-nav.compact .top-nav-sync-time { display: none; }
+            .top-nav.compact #sync-label { display: none; }
+            .top-nav.compact .sync-btn { padding: 5px 8px !important; }
             .top-nav-brand {
                 font-family: 'Syne', sans-serif;
                 font-weight: 700;
                 color: #fff;
-                font-size: 17px;
-                padding-right: 16px;
-                border-right: 1px solid rgba(255,255,255,.2);
+                font-size: 16px;
+                padding-right: 14px;
+                border-right: 1px solid rgba(255,255,255,.12);
                 margin-right: 10px;
                 white-space: nowrap;
                 flex-shrink: 0;
@@ -727,24 +737,30 @@
             .top-nav-link {
                 display: flex;
                 align-items: center;
-                gap: 5px;
+                gap: 6px;
                 padding: 6px 9px;
-                border-radius: 5px;
-                color: rgba(255,255,255,.78);
+                border-radius: 6px;
+                color: rgba(255,255,255,.62);
                 text-decoration: none;
                 font-size: 12.5px;
                 font-weight: 500;
                 white-space: nowrap;
-                transition: background .15s;
+                transition: background .15s, color .15s, gap .22s cubic-bezier(.4,0,.2,1);
                 flex-shrink: 0;
             }
-            .top-nav-link:hover { background: rgba(255,255,255,.14); color: #fff; }
-            .top-nav-link.active { background: rgba(255,255,255,.22); color: #fff; font-weight: 600; }
+            .top-nav-link:hover { background: rgba(255,255,255,.1); color: rgba(255,255,255,.92); }
+            .top-nav-link.active { background: rgba(255,255,255,.14); color: #fff; font-weight: 600; }
             .top-nav-icon {
-                width: 15px; height: 15px;
-                stroke: currentColor; fill: none; stroke-width: 1.8;
-                stroke-linecap: round; stroke-linejoin: round;
+                font-size: 16px;
+                line-height: 1;
                 flex-shrink: 0;
+            }
+            .top-nav-label {
+                overflow: hidden;
+                white-space: nowrap;
+                max-width: 80px;
+                opacity: 1;
+                transition: max-width .22s cubic-bezier(.4,0,.2,1), opacity .15s, margin .22s;
             }
             .top-nav-right {
                 display: flex;
@@ -755,14 +771,16 @@
             }
             .top-nav-sync-time {
                 font-size: 11px;
-                color: rgba(255,255,255,.55);
+                color: rgba(255,255,255,.4);
                 white-space: nowrap;
+                transition: opacity .15s;
             }
             .sync-btn {
                 width: auto !important;
                 margin-top: 0 !important;
                 padding: 6px 10px !important;
                 font-size: 12px !important;
+                transition: padding .22s;
             }
             body { overflow: hidden; }
             .main-content {
@@ -895,19 +913,19 @@
       <span class="top-nav-brand">Wilson</span>
       <div class="top-nav-links">
         <a class="top-nav-link active" data-page="dashboard" href="#" onclick="showPage('dashboard',event)">
-          <svg class="top-nav-icon" viewBox="0 0 24 24"><path d="M4 19h16M8 19V9M12 19V5M16 19V13"/></svg>Dashboard</a>
+          <i class="ti ti-layout-dashboard top-nav-icon"></i><span class="top-nav-label">Dashboard</span></a>
         <a class="top-nav-link" data-page="ordini" href="#" onclick="showPage('ordini',event)">
-          <svg class="top-nav-icon" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>Ordini</a>
+          <i class="ti ti-clipboard-list top-nav-icon"></i><span class="top-nav-label">Ordini</span></a>
         <a class="top-nav-link" data-page="clienti" href="#" onclick="showPage('clienti',event)">
-          <svg class="top-nav-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Clienti</a>
+          <i class="ti ti-users top-nav-icon"></i><span class="top-nav-label">Clienti</span></a>
         <a class="top-nav-link" data-page="ddt" href="#" onclick="showPage('ddt',event)">
-          <svg class="top-nav-icon" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>DDT</a>
+          <i class="ti ti-truck-delivery top-nav-icon"></i><span class="top-nav-label">DDT</span></a>
         <a class="top-nav-link" data-page="budget" href="#" onclick="showPage('budget',event)">
-          <svg class="top-nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Budget</a>
+          <i class="ti ti-target top-nav-icon"></i><span class="top-nav-label">Budget</span></a>
         <a class="top-nav-link" data-page="agenda" href="#" onclick="showPage('agenda',event)">
-          <svg class="top-nav-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Agenda</a>
+          <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
         <a class="top-nav-link" data-page="impostazioni" href="#" onclick="showPage('impostazioni',event)">
-          <svg class="top-nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Impostazioni</a>
+          <i class="ti ti-adjustments top-nav-icon"></i><span class="top-nav-label">Impostazioni</span></a>
       </div>
       <div class="top-nav-right">
         <span class="top-nav-sync-time" id="ultimo-sync">—</span>
