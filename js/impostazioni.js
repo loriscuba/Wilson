@@ -9,17 +9,21 @@ async function loadImpostazioni() {
   root.innerHTML = '<div class="loading">Caricamento…</div>';
 
   try {
-    // Legge tutti i clienti dall'ultimo rolling + config attuale
-    const [rollingRes, cfgRes] = await Promise.all([
+    // Legge tutti i clienti dall'ultimo rolling + config attuale + anagrafica attivo
+    const [rollingRes, cfgRes, clientiRes] = await Promise.all([
       sb.from('rolling_fatturato')
         .select('codice_cliente, ragione_sociale')
         .eq('data_aggiornamento', await getLatestRollingDate())
         .order('ragione_sociale'),
       sb.from('clienti_config').select('codice_cliente, ragione_sociale, attivo, note, ordina_di_persona'),
+      sb.from('clienti').select('codice_cliente, attivo'),
     ]);
 
     const cfgMap = Object.fromEntries(
       (cfgRes.data || []).map(r => [String(r.codice_cliente), r])
+    );
+    const clientiAttivoMap = Object.fromEntries(
+      (clientiRes.data || []).map(r => [String(r.codice_cliente), r.attivo])
     );
 
     // Merge: rolling + config (clienti solo in config ma non più nel rolling)
@@ -30,21 +34,23 @@ async function loadImpostazioni() {
       ...(rollingRes.data || []).map(r => {
         const cfg = cfgMap[String(r.codice_cliente)];
         return {
-          codice:          String(r.codice_cliente),
-          nome:            cfg?.ragione_sociale || r.ragione_sociale || '—',
-          attivo:          cfg ? cfg.attivo : true,
-          note:            cfg?.note || '',
-          ordinaDiPersona: cfg?.ordina_di_persona || false,
-          inCfg:           !!cfg,
+          codice:           String(r.codice_cliente),
+          nome:             cfg?.ragione_sociale || r.ragione_sociale || '—',
+          attivo:           cfg ? cfg.attivo : true,
+          note:             cfg?.note || '',
+          ordinaDiPersona:  cfg?.ordina_di_persona || false,
+          inCfg:            !!cfg,
+          anagraficaAttiva: clientiAttivoMap[String(r.codice_cliente)] ?? true,
         };
       }),
       ...onlyCfg.map(r => ({
-        codice:          String(r.codice_cliente),
-        nome:            r.ragione_sociale || '—',
-        attivo:          r.attivo,
-        note:            r.note || '',
-        ordinaDiPersona: r.ordina_di_persona || false,
-        inCfg:           true,
+        codice:           String(r.codice_cliente),
+        nome:             r.ragione_sociale || '—',
+        attivo:           r.attivo,
+        note:             r.note || '',
+        ordinaDiPersona:  r.ordina_di_persona || false,
+        inCfg:            true,
+        anagraficaAttiva: clientiAttivoMap[String(r.codice_cliente)] ?? true,
       })),
     ];
 
@@ -56,13 +62,15 @@ async function loadImpostazioni() {
 }
 
 function _renderImpostazioni(root) {
-  const esclusi  = _cfgRows.filter(r => !r.attivo).length;
+  const esclusi   = _cfgRows.filter(r => !r.attivo).length;
+  const disattivi = _cfgRows.filter(r => !r.anagraficaAttiva).length;
   const diPersona = _cfgRows.filter(r => r.ordinaDiPersona).length;
   root.innerHTML = `
     <p class="b-sec">gestione clienti — inclusi/esclusi da dashboard e budget</p>
     <p style="font-size:12px;color:var(--text2);margin-bottom:1rem">
-      Clienti con <strong>Attivo = NO</strong> non compaiono nel top-15 da ordinare né nel budget clienti.
-      · <strong>${esclusi}</strong> esclusi · <strong>${_cfgRows.length - esclusi}</strong> attivi
+      <strong>Visibile</strong>: compare nella sezione Clienti.
+      <strong>Dashboard</strong>: compare nel top-15 e nel budget.
+      · <strong>${disattivi}</strong> disattivati · <strong>${esclusi}</strong> esclusi da dashboard
       · <strong>${diPersona}</strong> ordinano di persona
     </p>
     <div class="cfg-toolbar">
@@ -74,7 +82,8 @@ function _renderImpostazioni(root) {
         <thead><tr>
           <th>Codice</th>
           <th>Ragione sociale</th>
-          <th style="text-align:center">Attivo</th>
+          <th style="text-align:center">Visibile</th>
+          <th style="text-align:center">Dashboard</th>
           <th style="text-align:center">Di persona</th>
           <th>Note</th>
         </tr></thead>
@@ -93,16 +102,23 @@ function _renderCfgRows() {
     : _cfgRows;
 
   if (!visible.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
     return;
   }
 
   tbody.innerHTML = visible.map(r => `
-    <tr class="${r.attivo ? '' : 'cfg-row-off'}">
+    <tr class="${!r.anagraficaAttiva ? 'cfg-row-off' : !r.attivo ? 'cfg-row-nodash' : ''}">
       <td style="font-size:12px;color:var(--text2)">${r.codice}</td>
       <td>${r.nome}</td>
       <td style="text-align:center">
-        <label class="cfg-toggle" title="${r.attivo ? 'Clicca per escludere' : 'Clicca per includere'}">
+        <label class="cfg-toggle" title="${r.anagraficaAttiva ? 'Visibile in Clienti — clicca per disattivare' : 'Disattivato — clicca per riattivare'}">
+          <input type="checkbox" ${r.anagraficaAttiva ? 'checked' : ''}
+            onchange="toggleAnagraficaAttiva('${r.codice}', this.checked)">
+          <span class="cfg-slider"></span>
+        </label>
+      </td>
+      <td style="text-align:center">
+        <label class="cfg-toggle" title="${r.attivo ? 'Clicca per escludere da dashboard' : 'Clicca per includere in dashboard'}">
           <input type="checkbox" ${r.attivo ? 'checked' : ''}
             onchange="toggleClienteAttivo('${r.codice}', this.checked)">
           <span class="cfg-slider"></span>
@@ -121,6 +137,20 @@ function _renderCfgRows() {
           onchange="saveClienteNote('${r.codice}', this.value)">
       </td>
     </tr>`).join('');
+}
+
+async function toggleAnagraficaAttiva(codice, attivo) {
+  const row = _cfgRows.find(r => r.codice === codice);
+  if (row) row.anagraficaAttiva = attivo;
+  _renderCfgRows();
+  try {
+    await sb.from('clienti').update({ attivo }).eq('codice_cliente', codice);
+    _clientiData = [];  // forza ricarica clienti
+  } catch (err) {
+    if (row) row.anagraficaAttiva = !attivo;
+    _renderCfgRows();
+    console.error('Errore:', err.message);
+  }
 }
 
 async function toggleClienteAttivo(codice, attivo) {

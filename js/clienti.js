@@ -121,7 +121,7 @@ async function loadClienteDetail(codice, nome, container) {
     const annoP   = now.getFullYear() - 1;
     const latestDate = await getLatestRollingDate();
 
-    const [{ data: rollingRec }, { data: ordiniAttivi }, { data: gammaData }, { data: ordiniStorico }] =
+    const [{ data: rollingRec }, { data: ordiniAttivi }, { data: gammaData }, { data: ordiniStorico }, { data: gammaRefData }] =
       await Promise.all([
         sb.from('rolling_fatturato')
           .select([
@@ -147,6 +147,8 @@ async function loadClienteDetail(codice, nome, container) {
           .neq('stato', 'annullato')
           .order('data_ordine', { ascending: false })
           .limit(24),
+        sb.from('gamma_penetrazione')
+          .select('settore, prodotti_acquistati'),
       ]);
 
     const r       = enrichRecord(rollingRec || {});
@@ -161,11 +163,24 @@ async function loadClienteDetail(codice, nome, container) {
     // Stato badge
     const stBadge = `<span class="badge ${statoBadgeCls(r._stato.id)}" style="font-size:13px;padding:4px 12px;">${r._stato.label}</span>`;
 
+    // Costruisce mappa di riferimento: settore → Map<key_normalizzata, nome_display>
+    const gammaRef = {};
+    for (const row of (gammaRefData || [])) {
+      if (!gammaRef[row.settore]) gammaRef[row.settore] = new Map();
+      for (const prod of Object.keys(row.prodotti_acquistati || {})) {
+        const key = prod.toLowerCase();
+        if (!gammaRef[row.settore].has(key)) gammaRef[row.settore].set(key, prod);
+      }
+    }
+
     // Gamma HTML
     const gamma = gammaData || [];
     const gammaHTML = gamma.length
       ? `<div class="gamma-settori">${gamma.map(g => {
-          const prods  = g.prodotti_acquistati ? Object.entries(g.prodotti_acquistati) : [];
+          const prods       = g.prodotti_acquistati ? Object.entries(g.prodotti_acquistati) : [];
+          const acquistatiK = new Set(Object.keys(g.prodotti_acquistati || {}).map(p => p.toLowerCase()));
+          const refMap      = gammaRef[g.settore] || new Map();
+          const mancanti    = [...refMap.entries()].filter(([k]) => !acquistatiK.has(k)).map(([, v]) => v);
           const pctImm = g.pct_immancabili != null ? (g.pct_immancabili * 100).toFixed(0) : null;
           const pctStr = g.pct_strategiche  != null ? (g.pct_strategiche  * 100).toFixed(0) : null;
           return `<div class="gamma-settore-card">
@@ -176,8 +191,10 @@ async function loadClienteDetail(codice, nome, container) {
                 ${pctStr != null ? `<span class="gamma-pct-badge str">Strategiche ${pctStr}%</span>` : ''}
               </div>
             </div>
-            ${prods.length ? `<div class="gamma-prodotti">${prods.map(([l, v]) =>
-              `<span class="gamma-prod-tag" title="€${fmt(v)}">✓ ${l}</span>`).join('')}</div>` : ''}
+            ${(prods.length || mancanti.length) ? `<div class="gamma-prodotti">
+              ${prods.map(([l, v]) => `<span class="gamma-prod-tag" title="€${fmt(v)}">✓ ${l}</span>`).join('')}
+              ${mancanti.map(l => `<span class="gamma-prod-tag gamma-prod-missing">✗ ${l}</span>`).join('')}
+            </div>` : ''}
           </div>`;
         }).join('')}</div>`
       : `<div class="cks">Nessun dato gamma per questo cliente</div>`;
@@ -221,11 +238,10 @@ async function loadClienteDetail(codice, nome, container) {
           <div class="ckv" style="color:${(r.variazione_progressivo||0) >= 0 ? 'var(--green)' : 'var(--red)'}">€${fmt(r.variazione_progressivo)}</div>
           <div class="cks">Prog. ${annoP}: €${fmt(r.fatt_prog_anno_prec)}</div>
         </div>
-        <div class="cliente-kpi-card">
-          <h4>Ordini in corso</h4>
+        <div class="cliente-kpi-card" style="cursor:pointer;" onclick="goToOrdiniFiltered('${codice}')">
+          <h4>Storico Ordini</h4>
           <div class="ckv">${nOrdini}</div>
-          <div class="cks">${nOrdini > 0 ? '€' + fmt(valOrdini) : 'Nessun ordine attivo'}</div>
-          ${nOrdini > 0 ? `<button class="btn-ordini" onclick="goToOrdiniFiltered('${codice}')">Vedi ordini →</button>` : ''}
+          <div class="cks">${nOrdini > 0 ? '€' + fmt(valOrdini) + ' in corso' : 'Nessun ordine attivo'}</div>
         </div>
       </div>
       <div class="gamma-section" style="margin-bottom:18px;">
@@ -284,6 +300,24 @@ function goToOrdiniFiltered(codice) {
   document.getElementById('ordini').classList.add('active');
   document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
   document.querySelector('.sidebar a[onclick*="ordini"]')?.classList.add('active');
+  document.getElementById('filtro-da').value = '2020-01-01';
+  document.getElementById('filtro-a').value  = '2030-12-31';
   document.getElementById('filtro-cliente').value = codice;
+  _filtroStatoOrdine = null;
+  document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
+  loadOrdini();
+}
+
+function goToOrdineFromDDT(numeroOrdine) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('ordini').classList.add('active');
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+  document.querySelector('.sidebar a[onclick*="ordini"]')?.classList.add('active');
+  // Azzera i filtri data per mostrare l'ordine indipendentemente dal mese
+  document.getElementById('filtro-da').value = '2020-01-01';
+  document.getElementById('filtro-a').value  = '2030-12-31';
+  document.getElementById('filtro-cliente').value = numeroOrdine;
+  _filtroStatoOrdine = null;
+  document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
   loadOrdini();
 }

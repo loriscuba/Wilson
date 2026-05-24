@@ -52,7 +52,7 @@ async function loadOrdini() {
 
     if (da)                 q = q.gte('data_ordine', da);
     if (a)                  q = q.lte('data_ordine', a);
-    if (cliente)            q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%`);
+    if (cliente)            q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%,numero_ordine.ilike.%${cliente}%`);
     if (_filtroStatoOrdine) q = q.eq('stato', _filtroStatoOrdine);
 
     const { data, error } = await q;
@@ -102,7 +102,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
   try {
     const [{ data, error }, { data: ddtRaw, error: ddtErr }] = await Promise.all([
       sb.from('righe_ordine')
-        .select('codice_articolo, descrizione_articolo, quantita, unita_misura, prezzo_unitario, importo_eur, data_consegna_prevista')
+        .select('codice_articolo, descrizione_articolo, quantita, unita_misura, prezzo_unitario, sconto1, sconto2, sconto3, prezzo_netto_pezzo, importo_eur, data_consegna_prevista')
         .eq('ordine_id', ordineId)
         .order('codice_articolo'),
       sb.from('ddt')
@@ -249,7 +249,8 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
         <thead><tr>
           <th>Codice</th><th>Descrizione</th>
           <th class="num-right">Qtà</th><th>U.M.</th>
-          <th class="num-right">Prezzo unit.</th><th class="num-right">Importo €</th>
+          <th class="num-right">Listino</th><th>Sconto</th>
+          <th class="num-right">Netto/pz</th><th class="num-right">Importo €</th>
           <th>Cons. prevista</th><th>Shippeo</th>
         </tr></thead>
         <tbody>${data.map(r => {
@@ -271,7 +272,6 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
               shippeoCell = `<span class="badge badge-green">✓ ${statoLabel || 'Consegnato'}</span>`;
             } else if (ddt.shippeo_url || etaOk) {
               rowCls = 'riga-in-transito';
-              // Se c'è l'ETA Shippeo, sovrascrive la data prevista dell'ordine
               if (etaOk) dataConsegna = ddt.eta_shippeo;
               const label = statoLabel || 'In transito';
               if (ddt.shippeo_url) {
@@ -282,6 +282,12 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             }
           }
 
+          const sconti = [r.sconto1, r.sconto2, r.sconto3]
+            .filter(s => s != null && Number(s) !== 0)
+            .map(s => fmt(s) + '%')
+            .join('+');
+          const nettoCell = r.prezzo_netto_pezzo != null ? `€${fmt(r.prezzo_netto_pezzo)}` : '—';
+
           return `
           <tr class="${rowCls}">
             <td><strong>${r.codice_articolo || '—'}</strong></td>
@@ -289,6 +295,8 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             <td class="num-right">${r.quantita ?? '—'}</td>
             <td>${r.unita_misura || '—'}</td>
             <td class="num-right">€${fmt(r.prezzo_unitario)}</td>
+            <td style="color:var(--text2);font-size:12px;">${sconti || '—'}</td>
+            <td class="num-right">${nettoCell}</td>
             <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
             <td>${fmtDate(dataConsegna)}</td>
             <td>${shippeoCell}</td>

@@ -86,12 +86,12 @@ async function loadDashboard() {
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
         ${varProgPct != null ? `<div class="kpi-change ${varProgPct >= 0 ? 'positive' : 'negative'}">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</div>` : ''}
       </div>
-      <div class="kpi-card">
+      <div class="kpi-card kpi-card-link" onclick="navToPage('ordini')">
         <h3>Ordini del mese</h3>
         <div class="kpi-value">${ordiniCount}</div>
         <div class="kpi-sub">€${fmt(ordiniValue)}</div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')">
         <h3>DDT in transito</h3>
         <div class="kpi-value">${ddtCount}</div>
         <div class="kpi-sub">Stato: spedito</div>

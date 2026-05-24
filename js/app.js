@@ -43,8 +43,22 @@ const PAGE_LOADERS = {
   clienti:      loadClienti,
   ddt:          loadDDT,
   budget:       loadBudget,
+  agenda:       loadAgenda,
   impostazioni: loadImpostazioni,
 };
+
+function toggleDesktopSidebar() {
+  document.body.classList.toggle('sidebar-closed');
+}
+
+function navToPage(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(pageId)?.classList.add('active');
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+  document.querySelector(`.sidebar a[onclick*="${pageId}"]`)?.classList.add('active');
+  updateMobileNavActive(pageId);
+  PAGE_LOADERS[pageId]?.();
+}
 
 function showPage(pageId, event) {
   event.preventDefault();

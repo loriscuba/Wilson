@@ -4,10 +4,15 @@ async function loadDDT() {
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
   try {
-    const { data, error } = await sb.from('ddt')
-      .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, shippeo_url, eta_shippeo, data_consegna_effettiva')
-      .order('data_ddt', { ascending: false });
+    const [{ data, error }, { data: clientiRaw }] = await Promise.all([
+      sb.from('ddt')
+        .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, shippeo_url, eta_shippeo, data_consegna_effettiva')
+        .order('data_ddt', { ascending: false }),
+      sb.from('clienti').select('codice_cliente, ragione_sociale').eq('attivo', true),
+    ]);
     if (error) throw error;
+
+    const nomeCliente = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c.ragione_sociale]));
 
     countEl.textContent = data?.length || 0;
 
@@ -26,13 +31,17 @@ async function loadDDT() {
       } else {
         statoBadge = statoBadgeOrdine(d.stato);
       }
+      const nome = nomeCliente[d.codice_cliente] || d.codice_cliente || '—';
+      const ordineCell = d.numero_ordine
+        ? `<a class="ord-link" href="#" onclick="goToOrdineFromDDT('${d.numero_ordine}');return false;">${d.numero_ordine}</a>`
+        : '—';
       return `
       <tr>
         <td><strong>${d.numero_consegna || '—'}</strong></td>
         <td>${d.numero_ddt || '—'}</td>
         <td>${fmtDate(d.data_ddt)}</td>
-        <td>${d.codice_cliente || '—'}</td>
-        <td>${d.numero_ordine || '—'}</td>
+        <td><span title="${d.codice_cliente || ''}">${nome}</span></td>
+        <td>${ordineCell}</td>
         <td>${d.corriere || '—'}</td>
         <td>${statoBadge}</td>
         <td>${d.shippeo_url ? `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>` : '—'}</td>
