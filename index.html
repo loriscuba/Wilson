@@ -547,14 +547,20 @@
             #ordini-table td:nth-child(6) { display: none; }
 
             /* Righe ordine: nascondi U.M., Listino, Sconto, Netto/pz */
-            .righe-table th:nth-child(4),
-            .righe-table th:nth-child(5),
-            .righe-table th:nth-child(6),
-            .righe-table th:nth-child(7),
-            .righe-table td:nth-child(4),
-            .righe-table td:nth-child(5),
-            .righe-table td:nth-child(6),
-            .righe-table td:nth-child(7) { display: none; }
+            .righe-table:not(.stat-prezzo-table) th:nth-child(4),
+            .righe-table:not(.stat-prezzo-table) th:nth-child(5),
+            .righe-table:not(.stat-prezzo-table) th:nth-child(6),
+            .righe-table:not(.stat-prezzo-table) th:nth-child(7),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(4),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(5),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(6),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(7) { display: none; }
+
+            /* Prezzo storico: mostra Data, Ordine, Sconti, Prezzo Netto — nascondi Articolo e Listino */
+            .stat-prezzo-table th:nth-child(3),
+            .stat-prezzo-table td:nth-child(3),
+            .stat-prezzo-table th:nth-child(4),
+            .stat-prezzo-table td:nth-child(4) { display: none; }
 
             /* Clienti: nascondi Città, Provincia, Categoria, Giorno Visita */
             #clienti-table th:nth-child(3),

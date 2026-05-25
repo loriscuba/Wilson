@@ -443,7 +443,7 @@ async function _disegnaGrafico(tipo, params) {
 
     content.innerHTML = `
       <div class="table-scroll" style="margin-top:4px">
-        <table class="righe-table" style="width:100%">
+        <table class="righe-table stat-prezzo-table" style="width:100%">
           <thead><tr>
             <th>Data</th>
             <th>N° Ordine</th>
