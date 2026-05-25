@@ -1,0 +1,439 @@
+// ── Statistiche ───────────────────────────────────────────────────────────────
+
+let _statChart      = null;
+let _statClienti    = [];
+let _currentStatId  = null;
+
+const TIPO_LABEL = {
+  prezzo_prodotto:  'Prezzo prodotto nel tempo per cliente',
+  fatturato_cliente:'Fatturato cliente mese per mese',
+  prodotti_top:     'Prodotti più acquistati da un cliente',
+  trend_ordini:     'Trend ordini per periodo',
+};
+
+// ── Entry point ───────────────────────────────────────────────────────────────
+
+async function loadStatistiche() {
+  await _renderStatList();
+}
+
+// ── Lista ─────────────────────────────────────────────────────────────────────
+
+async function _renderStatList() {
+  const wrap = document.getElementById('stat-list-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading">Caricamento statistiche…</div>';
+
+  try {
+    const { data, error } = await sb.from('statistiche_salvate')
+      .select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+
+    if (!data.length) {
+      wrap.innerHTML = `
+        <div class="placeholder">
+          <div class="placeholder-icon">📈</div>
+          <h3>Nessuna statistica salvata</h3>
+          <p>Clicca "+ Nuova Statistica" per crearne una.</p>
+        </div>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <p class="b-sec" style="margin-top:0">statistiche salvate — ${data.length}</p>
+      <div class="stat-card-grid">${data.map(_statCardHTML).join('')}</div>`;
+  } catch (err) {
+    wrap.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
+
+function _statCardHTML(s) {
+  const date = new Date(s.created_at).toLocaleDateString('it-IT',
+    { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const params = s.parametri || {};
+  const sub = [
+    params.codice_cliente ? `Cliente: ${params.codice_cliente}` : '',
+    params.codice_articolo ? `Art: ${params.codice_articolo}` : '',
+    params.top_n ? `Top ${params.top_n}` : '',
+  ].filter(Boolean).join(' · ');
+
+  return `
+    <div class="stat-card" onclick='_openStat(${JSON.stringify(s)})'>
+      <div class="stat-card-body">
+        <div class="stat-card-nome">${_esc(s.nome)}</div>
+        <div class="stat-card-tipo">${TIPO_LABEL[s.tipo] || s.tipo}</div>
+        ${sub ? `<div class="stat-card-date" style="margin-top:4px">${sub}</div>` : ''}
+        <div class="stat-card-date">${date}</div>
+      </div>
+      <button class="stat-card-del" onclick="eliminaStat('${s.id}',event)" title="Elimina">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+        </svg>
+      </button>
+    </div>`;
+}
+
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Elimina ───────────────────────────────────────────────────────────────────
+
+async function eliminaStat(id, event) {
+  event.stopPropagation();
+  if (!confirm('Eliminare questa statistica?')) return;
+  const { error } = await sb.from('statistiche_salvate').delete().eq('id', id);
+  if (error) { alert('Errore: ' + error.message); return; }
+  if (_currentStatId === id) chiudiGrafico();
+  await _renderStatList();
+}
+
+// ── Modal nuova statistica ────────────────────────────────────────────────────
+
+async function openStatModal() {
+  if (!_statClienti.length) {
+    const { data } = await sb.from('clienti')
+      .select('codice_cliente, ragione_sociale')
+      .order('ragione_sociale').limit(500);
+    _statClienti = data || [];
+  }
+
+  const overlay = document.getElementById('stat-modal-overlay');
+  overlay.innerHTML = `
+    <div class="stat-modal" onclick="event.stopPropagation()">
+      <div class="stat-modal-header">
+        <span class="stat-modal-title">Nuova Statistica</span>
+        <button class="stat-modal-close" onclick="closeStatModal()">✕</button>
+      </div>
+      <div class="stat-modal-body">
+        <div class="stat-field">
+          <label class="stat-label">Nome</label>
+          <input type="text" id="stat-nome" class="filter-input" style="width:100%"
+            placeholder="Es. Prezzi FIS A · Cliente X">
+        </div>
+        <div class="stat-field">
+          <label class="stat-label">Tipo di analisi</label>
+          <select id="stat-tipo" class="filter-input" style="width:100%" onchange="onStatTipoChange()">
+            <option value="">— seleziona —</option>
+            <option value="prezzo_prodotto">Prezzo prodotto nel tempo per cliente</option>
+            <option value="fatturato_cliente">Fatturato cliente mese per mese</option>
+            <option value="prodotti_top">Prodotti più acquistati da un cliente</option>
+            <option value="trend_ordini">Trend ordini per periodo</option>
+          </select>
+        </div>
+        <div id="stat-params"></div>
+        <button class="btn-nuova-stat" onclick="salvaStatistica()" style="width:100%;justify-content:center;margin-top:6px">
+          Salva e Visualizza
+        </button>
+      </div>
+    </div>`;
+  overlay.classList.add('open');
+}
+
+function closeStatModal() {
+  document.getElementById('stat-modal-overlay').classList.remove('open');
+}
+
+function handleStatModalOverlay(event) {
+  if (event.target.id === 'stat-modal-overlay') closeStatModal();
+}
+
+function onStatTipoChange() {
+  const tipo = document.getElementById('stat-tipo').value;
+  const clientiOpts = _statClienti.map(c =>
+    `<option value="${_esc(c.codice_cliente)}">${_esc(c.ragione_sociale)} (${_esc(c.codice_cliente)})</option>`
+  ).join('');
+
+  const clienteField = `
+    <div class="stat-field">
+      <label class="stat-label">Cliente</label>
+      <select id="stat-p-cliente" class="filter-input" style="width:100%">
+        <option value="">— seleziona cliente —</option>${clientiOpts}
+      </select>
+    </div>`;
+
+  const dateFields = `
+    <div class="stat-field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label class="stat-label">Dal</label>
+        <input type="date" id="stat-p-da" class="filter-input" style="width:100%">
+      </div>
+      <div>
+        <label class="stat-label">Al</label>
+        <input type="date" id="stat-p-a" class="filter-input" style="width:100%">
+      </div>
+    </div>`;
+
+  const html = {
+    prezzo_prodotto: `${clienteField}
+      <div class="stat-field">
+        <label class="stat-label">Codice Articolo</label>
+        <input type="text" id="stat-p-articolo" class="filter-input" style="width:100%"
+          placeholder="Es. 04005513000">
+      </div>`,
+    fatturato_cliente: `${clienteField}${dateFields}`,
+    prodotti_top: `${clienteField}
+      <div class="stat-field">
+        <label class="stat-label">Mostra top N prodotti</label>
+        <select id="stat-p-topn" class="filter-input" style="width:100%">
+          <option value="5">Top 5</option>
+          <option value="10" selected>Top 10</option>
+          <option value="20">Top 20</option>
+        </select>
+      </div>`,
+    trend_ordini: dateFields,
+  }[tipo] || '';
+
+  document.getElementById('stat-params').innerHTML = html;
+}
+
+// ── Salva ─────────────────────────────────────────────────────────────────────
+
+async function salvaStatistica() {
+  const nome = document.getElementById('stat-nome')?.value.trim();
+  const tipo = document.getElementById('stat-tipo')?.value;
+  if (!nome) { alert('Inserisci un nome per la statistica.'); return; }
+  if (!tipo)  { alert('Seleziona un tipo di analisi.'); return; }
+
+  const params = _raccogliParams(tipo);
+  if (!params) return;
+
+  const { data, error } = await sb.from('statistiche_salvate')
+    .insert({ nome, tipo, parametri: params }).select().single();
+  if (error) { alert('Errore salvataggio: ' + error.message); return; }
+
+  closeStatModal();
+  await _renderStatList();
+  await _openStat(data);
+}
+
+function _raccogliParams(tipo) {
+  const g = id => document.getElementById(id)?.value?.trim() || null;
+
+  if (tipo === 'prezzo_prodotto') {
+    const codice_cliente   = g('stat-p-cliente');
+    const codice_articolo  = g('stat-p-articolo');
+    if (!codice_cliente)  { alert('Seleziona un cliente.');      return null; }
+    if (!codice_articolo) { alert('Inserisci il codice articolo.'); return null; }
+    return { codice_cliente, codice_articolo };
+  }
+  if (tipo === 'fatturato_cliente') {
+    const codice_cliente = g('stat-p-cliente');
+    if (!codice_cliente) { alert('Seleziona un cliente.'); return null; }
+    return { codice_cliente, data_inizio: g('stat-p-da'), data_fine: g('stat-p-a') };
+  }
+  if (tipo === 'prodotti_top') {
+    const codice_cliente = g('stat-p-cliente');
+    if (!codice_cliente) { alert('Seleziona un cliente.'); return null; }
+    const top_n = parseInt(document.getElementById('stat-p-topn')?.value) || 10;
+    return { codice_cliente, top_n };
+  }
+  if (tipo === 'trend_ordini') {
+    return { data_inizio: g('stat-p-da'), data_fine: g('stat-p-a') };
+  }
+  return {};
+}
+
+// ── Visualizzazione ───────────────────────────────────────────────────────────
+
+async function _openStat(stat) {
+  _currentStatId = stat.id;
+  const wrap = document.getElementById('stat-chart-wrap');
+  if (!wrap) return;
+
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div class="table-wrapper" style="padding:20px 20px 16px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;gap:12px">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700">${_esc(stat.nome)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px">${TIPO_LABEL[stat.tipo] || stat.tipo}</div>
+        </div>
+        <button onclick="chiudiGrafico()"
+          style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px"
+          title="Chiudi">✕</button>
+      </div>
+      <div id="stat-loading" class="loading">Caricamento dati…</div>
+      <canvas id="stat-canvas" style="display:none;max-height:360px"></canvas>
+      <div id="stat-no-data" style="display:none" class="placeholder">
+        <div class="placeholder-icon">📭</div>
+        <h3>Nessun dato</h3>
+        <p>Nessun risultato per i parametri selezionati.</p>
+      </div>
+    </div>`;
+
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  try {
+    await _disegnaGrafico(stat.tipo, stat.parametri || {});
+  } catch (err) {
+    const el = document.getElementById('stat-loading');
+    if (el) el.innerHTML = `<span style="color:var(--red)">Errore: ${err.message}</span>`;
+  }
+}
+
+function chiudiGrafico() {
+  const wrap = document.getElementById('stat-chart-wrap');
+  if (wrap) wrap.style.display = 'none';
+  if (_statChart) { _statChart.destroy(); _statChart = null; }
+  _currentStatId = null;
+}
+
+// ── Grafico ───────────────────────────────────────────────────────────────────
+
+async function _disegnaGrafico(tipo, params) {
+  if (_statChart) { _statChart.destroy(); _statChart = null; }
+
+  let labels = [], datasets = [], indexAxis = 'x';
+
+  if (tipo === 'prezzo_prodotto') {
+    const { data, error } = await sb.from('ordini')
+      .select('data_ordine, righe_ordine!inner(prezzo_unitario, prezzo_netto_pezzo, sconto1, codice_articolo)')
+      .eq('codice_cliente', params.codice_cliente)
+      .eq('righe_ordine.codice_articolo', params.codice_articolo)
+      .order('data_ordine', { ascending: true });
+    if (error) throw error;
+
+    const rows = (data || []).flatMap(o =>
+      (o.righe_ordine || []).map(r => ({
+        label: _fmtDataBreve(o.data_ordine),
+        netto: parseFloat(r.prezzo_netto_pezzo) || 0,
+        listino: parseFloat(r.prezzo_unitario) || 0,
+      }))
+    );
+
+    labels = rows.map(r => r.label);
+    datasets = [
+      {
+        label: 'Prezzo netto (€/pz)',
+        data: rows.map(r => r.netto),
+        borderColor: '#1A56DB', backgroundColor: '#1A56DB18',
+        tension: .3, pointRadius: 4, fill: true,
+      },
+      {
+        label: 'Prezzo listino (€/pz)',
+        data: rows.map(r => r.listino),
+        borderColor: '#9B9B97', backgroundColor: 'transparent',
+        borderDash: [4, 3], tension: .3, pointRadius: 3,
+      },
+    ];
+  }
+
+  else if (tipo === 'fatturato_cliente') {
+    let q = sb.from('ordini')
+      .select('data_ordine, totale_ordine')
+      .eq('codice_cliente', params.codice_cliente)
+      .order('data_ordine', { ascending: true });
+    if (params.data_inizio) q = q.gte('data_ordine', params.data_inizio);
+    if (params.data_fine)   q = q.lte('data_ordine', params.data_fine);
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const byMonth = {};
+    for (const o of (data || [])) {
+      const m = (o.data_ordine || '').slice(0, 7);
+      if (!m) continue;
+      byMonth[m] = (byMonth[m] || 0) + (parseFloat(o.totale_ordine) || 0);
+    }
+    const sorted = Object.entries(byMonth).sort();
+    labels   = sorted.map(([m]) => _fmtMese(m));
+    datasets = [{ label: 'Fatturato (€)', data: sorted.map(([, v]) => v),
+      backgroundColor: '#1A56DBCC', borderColor: '#1A56DB', borderWidth: 1, borderRadius: 4 }];
+  }
+
+  else if (tipo === 'prodotti_top') {
+    const { data, error } = await sb.from('righe_ordine')
+      .select('codice_articolo, descrizione_articolo, quantita, importo_eur, ordini!inner(codice_cliente)')
+      .eq('ordini.codice_cliente', params.codice_cliente);
+    if (error) throw error;
+
+    const byArt = {};
+    for (const r of (data || [])) {
+      const k = r.codice_articolo;
+      if (!byArt[k]) byArt[k] = { desc: r.descrizione_articolo || k, qty: 0, eur: 0 };
+      byArt[k].qty += parseFloat(r.quantita)    || 0;
+      byArt[k].eur += parseFloat(r.importo_eur) || 0;
+    }
+    const topN = (params.top_n || 10);
+    const rows = Object.values(byArt).sort((a, b) => b.eur - a.eur).slice(0, topN);
+
+    indexAxis = 'y';
+    labels   = rows.map(r => r.desc.length > 35 ? r.desc.slice(0, 35) + '…' : r.desc);
+    datasets = [{ label: 'Importo (€)', data: rows.map(r => r.eur),
+      backgroundColor: '#2D7D4FCC', borderColor: '#2D7D4F', borderWidth: 1, borderRadius: 4 }];
+  }
+
+  else if (tipo === 'trend_ordini') {
+    let q = sb.from('ordini')
+      .select('data_ordine, totale_ordine')
+      .order('data_ordine', { ascending: true });
+    if (params.data_inizio) q = q.gte('data_ordine', params.data_inizio);
+    if (params.data_fine)   q = q.lte('data_ordine', params.data_fine);
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const byMonth = {};
+    for (const o of (data || [])) {
+      const m = (o.data_ordine || '').slice(0, 7);
+      if (!m) continue;
+      byMonth[m] = (byMonth[m] || 0) + (parseFloat(o.totale_ordine) || 0);
+    }
+    const sorted = Object.entries(byMonth).sort();
+    labels   = sorted.map(([m]) => _fmtMese(m));
+    datasets = [{ label: 'Fatturato (€)', data: sorted.map(([, v]) => v),
+      borderColor: '#1A56DB', backgroundColor: '#1A56DB18',
+      tension: .3, pointRadius: 4, fill: true }];
+  }
+
+  const loading = document.getElementById('stat-loading');
+  const canvas  = document.getElementById('stat-canvas');
+  const noData  = document.getElementById('stat-no-data');
+  if (!loading || !canvas) return;
+
+  const hasData = labels.length > 0;
+  loading.style.display = 'none';
+  canvas.style.display  = hasData ? 'block' : 'none';
+  noData.style.display  = hasData ? 'none'  : '';
+  if (!hasData) return;
+
+  const isLine = tipo === 'prezzo_prodotto' || tipo === 'trend_ordini';
+  _statChart = new Chart(canvas.getContext('2d'), {
+    type: isLine ? 'line' : 'bar',
+    data: { labels, datasets },
+    options: {
+      indexAxis,
+      responsive: true,
+      plugins: {
+        legend: { display: datasets.length > 1, labels: { font: { family: 'DM Sans' }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = indexAxis === 'y' ? ctx.parsed.x : ctx.parsed.y;
+              return ' ' + ctx.dataset.label + ': ' +
+                (v != null ? '€ ' + v.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { color: '#E5E2DA' }, ticks: { font: { family: 'DM Sans', size: 11 } } },
+        y: { grid: { color: '#E5E2DA' }, ticks: { font: { family: 'DM Sans', size: 11 } } },
+      },
+    },
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function _fmtDataBreve(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function _fmtMese(m) {
+  if (!m) return '';
+  const [y, mo] = m.split('-');
+  const nomi = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  return (nomi[parseInt(mo) - 1] || mo) + ' ' + y.slice(2);
+}

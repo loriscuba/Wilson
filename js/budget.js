@@ -271,12 +271,21 @@ async function loadBudgetMensile() {
   if (!root) return;
   try {
     const today = new Date().toISOString().split('T')[0];
-    const { data: bArr, error: bErr } = await sb.from('budget')
-      .select('*').lte('data_aggiornamento', today)
-      .not('budget_mese', 'is', null)
-      .order('data_aggiornamento', { ascending: false }).limit(1);
+    const [{ data: latestArr, error: bErr }, { data: bMonthArr }] = await Promise.all([
+      sb.from('budget').select('*').lte('data_aggiornamento', today)
+        .order('data_aggiornamento', { ascending: false }).limit(1),
+      sb.from('budget').select('*').lte('data_aggiornamento', today)
+        .not('budget_mese', 'is', null)
+        .order('data_aggiornamento', { ascending: false }).limit(1),
+    ]);
     if (bErr) throw bErr;
-    const b = bArr?.[0];
+    const latest = latestArr?.[0];
+    const bMonth = bMonthArr?.[0];
+    // Merge: bMonth fornisce i campi mensili (budget_mese, evaso, ecc.),
+    // latest sovrascrive con i campi giornalieri aggiornati (fatturato_giorno, giorno_lavorativo, ecc.)
+    const b = bMonth
+      ? { ...bMonth, ...Object.fromEntries(Object.entries(latest || {}).filter(([, v]) => v != null)) }
+      : latest;
     const { data: focus } = b
       ? await sb.from('budget_focus').select('*').eq('data_aggiornamento', b.data_aggiornamento).order('gruppo_prodotti')
       : { data: [] };

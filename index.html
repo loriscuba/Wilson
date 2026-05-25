@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="js/supabase.min.js"></script>
     <style>
         :root {
@@ -931,6 +932,71 @@
             .ac-sub  { display: none; }
         }
 
+        /* ── Statistiche ── */
+        .btn-nuova-stat {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; border-radius: 8px;
+            background: #1A56DB; color: #fff; border: none;
+            font-family: 'DM Sans', sans-serif; font-size: 13px;
+            font-weight: 600; cursor: pointer;
+            transition: background .15s;
+        }
+        .btn-nuova-stat:hover { background: #1648c0; }
+
+        .stat-card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 14px;
+        }
+        .stat-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px 16px 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06);
+            cursor: pointer; display: flex; align-items: flex-start;
+            gap: 10px; transition: box-shadow .15s, border-color .15s;
+        }
+        .stat-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.1); border-color: #1A56DB44; }
+        .stat-card-body { flex: 1; min-width: 0; }
+        .stat-card-nome { font-weight: 700; font-size: 14px; color: var(--text); margin-bottom: 4px; }
+        .stat-card-tipo { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+        .stat-card-date { font-size: 11px; color: var(--text2); }
+        .stat-card-del {
+            background: none; border: none; cursor: pointer;
+            color: var(--text2); padding: 4px; border-radius: 6px;
+            opacity: .5; flex-shrink: 0; transition: opacity .15s, color .15s;
+        }
+        .stat-card-del:hover { opacity: 1; color: var(--red); }
+
+        .stat-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,.4);
+            display: none; align-items: center; justify-content: center;
+            z-index: 1400; padding: 20px;
+        }
+        .stat-modal-overlay.open { display: flex; }
+        .stat-modal {
+            background: var(--surface); border-radius: 14px;
+            width: 100%; max-width: 480px;
+            box-shadow: 0 16px 48px rgba(0,0,0,.18);
+            max-height: 90vh; overflow-y: auto;
+        }
+        .stat-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 20px 0;
+        }
+        .stat-modal-title {
+            font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700;
+        }
+        .stat-modal-close {
+            background: none; border: none; cursor: pointer;
+            color: var(--text2); font-size: 18px; padding: 4px 6px;
+            border-radius: 6px; line-height: 1;
+        }
+        .stat-modal-close:hover { background: var(--bg); }
+        .stat-modal-body { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+        .stat-field { display: flex; flex-direction: column; gap: 5px; }
+        .stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: .4px; color: var(--text2); }
     </style>
 </head>
 <body>
@@ -947,6 +1013,8 @@
           <i class="ti ti-truck-delivery top-nav-icon"></i><span class="top-nav-label">DDT</span></a>
         <a class="top-nav-link" data-page="budget" data-tip="Budget" href="#" onclick="showPage('budget',event)">
           <i class="ti ti-target top-nav-icon"></i><span class="top-nav-label">Budget</span></a>
+        <a class="top-nav-link" data-page="statistiche" data-tip="Statistiche" href="#" onclick="showPage('statistiche',event)">
+          <i class="ti ti-chart-line top-nav-icon"></i><span class="top-nav-label">Statistiche</span></a>
         <a class="top-nav-link" data-page="agenda" data-tip="Agenda" href="#" onclick="showPage('agenda',event)">
           <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
         <a class="top-nav-link" data-page="impostazioni" data-tip="Impostazioni" href="#" onclick="showPage('impostazioni',event)">
@@ -1136,6 +1204,16 @@
             </div>
         </div>
 
+        <!-- ── STATISTICHE ── -->
+        <div id="statistiche" class="page">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+                <h1 style="margin-bottom:0">Statistiche</h1>
+                <button class="btn-nuova-stat" onclick="openStatModal()">+ Nuova Statistica</button>
+            </div>
+            <div id="stat-chart-wrap" style="display:none;margin-bottom:28px"></div>
+            <div id="stat-list-wrap"></div>
+        </div>
+
         <div id="preventivi" class="page">
             <h1>Preventivi</h1>
             <div class="placeholder">
@@ -1193,10 +1271,14 @@
             <div class="drawer-links">
                 <button type="button" onclick="navToPage('ddt'); closeMobileDrawer()">DDT &amp; Tracking</button>
                 <button type="button" onclick="navToPage('budget'); closeMobileDrawer()">Budget</button>
+                <button type="button" onclick="navToPage('statistiche'); closeMobileDrawer()">Statistiche</button>
                 <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
         </div>
     </div>
+
+    <!-- Modal Statistiche -->
+    <div class="stat-modal-overlay" id="stat-modal-overlay" onclick="handleStatModalOverlay(event)"></div>
 
     <script src="env.js?v=12"></script>
     <script src="js/config.js?v=13"></script>
@@ -1209,6 +1291,7 @@
     <script src="js/budget.js?v=4"></script>
     <script src="js/impostazioni.js?v=5"></script>
     <script src="js/agenda.js?v=1"></script>
+    <script src="js/statistiche.js?v=1"></script>
     <script src="js/app.js?v=14"></script>
     <script>
         // placeholder — tutto il codice è nei moduli js/

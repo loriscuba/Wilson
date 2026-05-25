@@ -35,6 +35,7 @@ const PAGE_LOADERS = {
   clienti:      loadClienti,
   ddt:          loadDDT,
   budget:       loadBudget,
+  statistiche:  loadStatistiche,
   agenda:       loadAgenda,
   impostazioni: loadImpostazioni,
 };

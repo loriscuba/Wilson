@@ -112,16 +112,18 @@ def parse_avanzamento(filepath):
     fat_prec = budget_mese = evaso = ord_mese = ord_oltre = resi = evaso_ord_resi = None
     delta_m_eur = delta_m_pct = None
 
+    _N  = r'\d{1,3}(?:\.\d{3})+'   # numero con sep migliaia (≥ 1000 o con formato fisso)
+    _NS = r'\d{1,3}(?:\.\d{3})*'   # numero con sep migliaia opzionale (include 0-999)
     m = re.search(
-        r'(\d{1,3}(?:\.\d{3})+)\s+'    # fatturato anno prec
-        r'(\d{1,3}(?:\.\d{3})+)\s+'    # budget mese
-        r'(\d{1,3}(?:\.\d{3})+)\s+'    # evaso
-        r'(\d{1,3}(?:\.\d{3})+)\s+'    # ordinato nel mese
-        r'(\d+)\s+'                     # ordinato oltre mese (può essere < 1000)
-        r'(-?\d+)\s+'                   # resi (negativo o zero)
-        r'(\d{1,3}(?:\.\d{3})+)\s+'    # evaso+ordinato-resi
-        r'(-?[\d.]+)\s+'               # delta mese EUR (pos o neg)
-        r'(-?[\d,]+%)',                 # delta mese % (pos o neg)
+        rf'({_N})\s+'               # fatturato anno prec
+        rf'({_N})\s+'               # budget mese
+        rf'({_N})\s+'               # evaso
+        rf'({_NS})\s+'              # ordinato nel mese (può essere < 1000)
+        rf'({_NS})\s+'              # ordinato oltre mese (può essere < 1000 o 0)
+        r'(-?\d{1,3}(?:\.\d{3})*)\s+'  # resi (negativo, zero, o con migliaia)
+        rf'({_N})\s+'               # evaso+ordinato-resi
+        r'(-?[\d.]+)\s+'            # delta mese EUR (pos o neg)
+        r'(-?[\d,]+%)',             # delta mese %
         full
     )
     if m:
