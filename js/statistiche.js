@@ -287,20 +287,21 @@ async function _disegnaGrafico(tipo, params) {
   let labels = [], datasets = [], indexAxis = 'x';
 
   if (tipo === 'prezzo_prodotto') {
-    const { data, error } = await sb.from('ordini')
-      .select('data_ordine, righe_ordine!inner(prezzo_unitario, prezzo_netto_pezzo, sconto1, codice_articolo)')
-      .eq('codice_cliente', params.codice_cliente)
-      .eq('righe_ordine.codice_articolo', params.codice_articolo)
-      .order('data_ordine', { ascending: true });
+    // Cerca con ilike per tollerare zeri iniziali (es. "9285" trova "00009285")
+    const { data, error } = await sb.from('righe_ordine')
+      .select('prezzo_unitario, prezzo_netto_pezzo, codice_articolo, ordini!inner(data_ordine, codice_cliente)')
+      .ilike('codice_articolo', `%${params.codice_articolo}%`)
+      .eq('ordini.codice_cliente', params.codice_cliente);
     if (error) throw error;
 
-    const rows = (data || []).flatMap(o =>
-      (o.righe_ordine || []).map(r => ({
-        label: _fmtDataBreve(o.data_ordine),
-        netto: parseFloat(r.prezzo_netto_pezzo) || 0,
+    const rows = (data || [])
+      .map(r => ({
+        date:    r.ordini?.data_ordine || '',
+        label:   _fmtDataBreve(r.ordini?.data_ordine),
+        netto:   parseFloat(r.prezzo_netto_pezzo) || 0,
         listino: parseFloat(r.prezzo_unitario) || 0,
       }))
-    );
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     labels = rows.map(r => r.label);
     datasets = [
