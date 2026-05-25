@@ -396,7 +396,8 @@ async function _disegnaGrafico(tipo, params) {
 
     let q = sb.from('righe_ordine')
       .select('prezzo_unitario, prezzo_netto_pezzo, sconto1, sconto2, sconto3, quantita, codice_articolo, descrizione_articolo, ordini!inner(data_ordine, numero_ordine, codice_cliente)')
-      .or(`codice_articolo.ilike.%${termArt}%,descrizione_articolo.ilike.%${termArt}%`);
+      .or(`codice_articolo.ilike.%${termArt}%,descrizione_articolo.ilike.%${termArt}%`)
+      .order('data_ordine', { referencedTable: 'ordini', ascending: false });
 
     if (codiciCliente.length === 1) {
       q = q.eq('ordini.codice_cliente', codiciCliente[0]);
@@ -419,7 +420,7 @@ async function _disegnaGrafico(tipo, params) {
         qty:      parseFloat(r.quantita) || 0,
         desc:     r.descrizione_articolo || r.codice_articolo || '',
       }))
-      .sort((a, b) => b.date.localeCompare(a.date)); // più recenti prima
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
     loading.style.display = 'none';
     if (!rows.length) { noData.style.display = ''; return; }
