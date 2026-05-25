@@ -290,11 +290,16 @@ function _buildInlineParams(tipo, params) {
 
   if (tipo === 'prezzo_prodotto') return `
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
-      ${clienteSel}
-      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px">
-        <label class="stat-label">Codice Articolo</label>
+      <div style="display:flex;flex-direction:column;gap:3px;min-width:120px">
+        <label class="stat-label">Codice Cliente</label>
+        <input type="text" id="ip-cliente" class="filter-input" style="width:100%"
+          value="${_esc(params.codice_cliente || '')}" placeholder="Es. 609790"
+          oninput="scheduleAggiornaGrafico()">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
+        <label class="stat-label">Codice o Descrizione Articolo</label>
         <input type="text" id="ip-articolo" class="filter-input" style="width:100%"
-          value="${_esc(params.codice_articolo || '')}" placeholder="Es. 9285"
+          value="${_esc(params.codice_articolo || '')}" placeholder="Es. 9285 oppure FIS A"
           oninput="scheduleAggiornaGrafico()">
       </div>
     </div>`;
@@ -377,7 +382,7 @@ async function _disegnaGrafico(tipo, params) {
   if (tipo === 'prezzo_prodotto') {
     const { data, error } = await sb.from('righe_ordine')
       .select('prezzo_unitario, prezzo_netto_pezzo, sconto1, sconto2, sconto3, quantita, codice_articolo, ordini!inner(data_ordine, numero_ordine, codice_cliente)')
-      .ilike('codice_articolo', `%${params.codice_articolo}%`)
+      .or(`codice_articolo.ilike.%${params.codice_articolo}%,descrizione_articolo.ilike.%${params.codice_articolo}%`)
       .eq('ordini.codice_cliente', params.codice_cliente);
     if (error) throw error;
 
