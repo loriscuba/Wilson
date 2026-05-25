@@ -254,7 +254,7 @@ async function _openStat(stat) {
       </div>
       ${_buildInlineParams(stat.tipo, stat.parametri || {})}
       <div id="stat-loading" class="loading" style="margin-top:14px">Caricamento dati…</div>
-      <canvas id="stat-canvas" style="display:none;max-height:360px;margin-top:14px"></canvas>
+      <div id="stat-content" style="margin-top:14px"></div>
       <div id="stat-no-data" style="display:none" class="placeholder">
         <div class="placeholder-icon">📭</div>
         <h3>Nessun dato</h3>
@@ -342,10 +342,10 @@ async function aggiornaGraficoDa() {
 
   // Resetta area grafico e ridisegna
   const loading = document.getElementById('stat-loading');
-  const canvas  = document.getElementById('stat-canvas');
+  const content = document.getElementById('stat-content');
   const noData  = document.getElementById('stat-no-data');
   if (loading) { loading.style.display = ''; loading.textContent = 'Caricamento dati…'; }
-  if (canvas)  canvas.style.display = 'none';
+  if (content) content.innerHTML = '';
   if (noData)  noData.style.display = 'none';
   if (_statChart) { _statChart.destroy(); _statChart = null; }
 
@@ -368,43 +368,72 @@ function chiudiGrafico() {
 async function _disegnaGrafico(tipo, params) {
   if (_statChart) { _statChart.destroy(); _statChart = null; }
 
-  let labels = [], datasets = [], indexAxis = 'x';
+  const loading = document.getElementById('stat-loading');
+  const content = document.getElementById('stat-content');
+  const noData  = document.getElementById('stat-no-data');
+  if (!loading || !content) return;
 
+  // ── Prezzo prodotto: tabella ──────────────────────────────────────────────
   if (tipo === 'prezzo_prodotto') {
-    // Cerca con ilike per tollerare zeri iniziali (es. "9285" trova "00009285")
     const { data, error } = await sb.from('righe_ordine')
-      .select('prezzo_unitario, prezzo_netto_pezzo, codice_articolo, ordini!inner(data_ordine, codice_cliente)')
+      .select('prezzo_unitario, prezzo_netto_pezzo, sconto1, sconto2, sconto3, quantita, codice_articolo, ordini!inner(data_ordine, numero_ordine, codice_cliente)')
       .ilike('codice_articolo', `%${params.codice_articolo}%`)
       .eq('ordini.codice_cliente', params.codice_cliente);
     if (error) throw error;
 
     const rows = (data || [])
       .map(r => ({
-        date:    r.ordini?.data_ordine || '',
-        label:   _fmtDataBreve(r.ordini?.data_ordine),
-        netto:   parseFloat(r.prezzo_netto_pezzo) || 0,
-        listino: parseFloat(r.prezzo_unitario) || 0,
+        date:     r.ordini?.data_ordine    || '',
+        ordine:   r.ordini?.numero_ordine  || '—',
+        listino:  parseFloat(r.prezzo_unitario)   || 0,
+        netto:    parseFloat(r.prezzo_netto_pezzo) || 0,
+        s1:       parseFloat(r.sconto1) || 0,
+        s2:       parseFloat(r.sconto2) || 0,
+        s3:       parseFloat(r.sconto3) || 0,
+        qty:      parseFloat(r.quantita) || 0,
       }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .sort((a, b) => b.date.localeCompare(a.date)); // più recenti prima
 
-    labels = rows.map(r => r.label);
-    datasets = [
-      {
-        label: 'Prezzo netto (€/pz)',
-        data: rows.map(r => r.netto),
-        borderColor: '#1A56DB', backgroundColor: '#1A56DB18',
-        tension: .3, pointRadius: 4, fill: true,
-      },
-      {
-        label: 'Prezzo listino (€/pz)',
-        data: rows.map(r => r.listino),
-        borderColor: '#9B9B97', backgroundColor: 'transparent',
-        borderDash: [4, 3], tension: .3, pointRadius: 3,
-      },
-    ];
+    loading.style.display = 'none';
+    if (!rows.length) { noData.style.display = ''; return; }
+
+    const tbody = rows.map(r => {
+      const sconti = [r.s1, r.s2, r.s3]
+        .filter(s => s > 0)
+        .map(s => s % 1 === 0 ? s + '%' : s.toFixed(2) + '%')
+        .join(' + ') || '—';
+      const eur = n => '€ ' + n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `<tr>
+        <td>${_fmtDataBreve(r.date)}</td>
+        <td><button class="btn-ordini" onclick="apriOrdine('${_esc(r.ordine)}')">${_esc(r.ordine)}</button></td>
+        <td class="num-right" style="color:var(--text2)">${eur(r.listino)}</td>
+        <td class="num-right">${sconti}</td>
+        <td class="num-right"><strong>${eur(r.netto)}</strong></td>
+        <td class="num-right" style="color:var(--text2)">${r.qty % 1 === 0 ? r.qty : r.qty.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+
+    content.innerHTML = `
+      <div class="table-scroll" style="margin-top:4px">
+        <table class="righe-table" style="width:100%">
+          <thead><tr>
+            <th>Data</th>
+            <th>N° Ordine</th>
+            <th class="num-right">Listino</th>
+            <th class="num-right">Sconti</th>
+            <th class="num-right">Prezzo Netto</th>
+            <th class="num-right">Q.tà</th>
+          </tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>`;
+    return;
   }
 
-  else if (tipo === 'fatturato_cliente') {
+  // ── Grafici per gli altri tipi ────────────────────────────────────────────
+  let labels = [], datasets = [], indexAxis = 'x';
+
+  if (tipo === 'fatturato_cliente') {
     const { data, error } = await sb.from('ordini')
       .select('data_ordine, totale_ordine')
       .eq('codice_cliente', params.codice_cliente)
@@ -436,12 +465,10 @@ async function _disegnaGrafico(tipo, params) {
       byArt[k].qty += parseFloat(r.quantita)    || 0;
       byArt[k].eur += parseFloat(r.importo_eur) || 0;
     }
-    const topN = (params.top_n || 10);
-    const rows = Object.values(byArt).sort((a, b) => b.eur - a.eur).slice(0, topN);
-
+    const rows2 = Object.values(byArt).sort((a, b) => b.eur - a.eur).slice(0, params.top_n || 10);
     indexAxis = 'y';
-    labels   = rows.map(r => r.desc.length > 35 ? r.desc.slice(0, 35) + '…' : r.desc);
-    datasets = [{ label: 'Importo (€)', data: rows.map(r => r.eur),
+    labels    = rows2.map(r => r.desc.length > 35 ? r.desc.slice(0, 35) + '…' : r.desc);
+    datasets  = [{ label: 'Importo (€)', data: rows2.map(r => r.eur),
       backgroundColor: '#2D7D4FCC', borderColor: '#2D7D4F', borderWidth: 1, borderRadius: 4 }];
   }
 
@@ -464,18 +491,16 @@ async function _disegnaGrafico(tipo, params) {
       tension: .3, pointRadius: 4, fill: true }];
   }
 
-  const loading = document.getElementById('stat-loading');
-  const canvas  = document.getElementById('stat-canvas');
-  const noData  = document.getElementById('stat-no-data');
-  if (!loading || !canvas) return;
-
   const hasData = labels.length > 0;
   loading.style.display = 'none';
-  canvas.style.display  = hasData ? 'block' : 'none';
-  noData.style.display  = hasData ? 'none'  : '';
+  noData.style.display  = hasData ? 'none' : '';
   if (!hasData) return;
 
-  const isLine = tipo === 'prezzo_prodotto' || tipo === 'trend_ordini';
+  const canvas = document.createElement('canvas');
+  canvas.style.maxHeight = '360px';
+  content.appendChild(canvas);
+
+  const isLine = tipo === 'trend_ordini';
   _statChart = new Chart(canvas.getContext('2d'), {
     type: isLine ? 'line' : 'bar',
     data: { labels, datasets },
@@ -483,7 +508,7 @@ async function _disegnaGrafico(tipo, params) {
       indexAxis,
       responsive: true,
       plugins: {
-        legend: { display: datasets.length > 1, labels: { font: { family: 'DM Sans' }, boxWidth: 12 } },
+        legend: { display: false, labels: { font: { family: 'DM Sans' }, boxWidth: 12 } },
         tooltip: {
           callbacks: {
             label: ctx => {
@@ -503,6 +528,16 @@ async function _disegnaGrafico(tipo, params) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function apriOrdine(numeroOrdine) {
+  navToPage('ordini');
+  const input = document.getElementById('filtro-cliente');
+  const daEl  = document.getElementById('filtro-da');
+  const aEl   = document.getElementById('filtro-a');
+  if (daEl) daEl.value = '2020-01-01';
+  if (aEl)  aEl.value  = new Date().toISOString().split('T')[0];
+  if (input) { input.value = numeroOrdine; loadOrdini(); }
+}
 
 function _fmtDataBreve(d) {
   if (!d) return '';
