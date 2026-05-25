@@ -562,6 +562,16 @@
             .stat-prezzo-table th:nth-child(4),
             .stat-prezzo-table td:nth-child(4) { display: none; }
 
+            /* Fatturato articolo per anno: nascondi N°Righe e Prezzo medio, mostra tutto il resto */
+            .stat-anno-table th:nth-child(2),
+            .stat-anno-table td:nth-child(2),
+            .stat-anno-table th:nth-child(5),
+            .stat-anno-table td:nth-child(5) { display: none; }
+            .stat-anno-table th:nth-child(3),
+            .stat-anno-table td:nth-child(3),
+            .stat-anno-table th:nth-child(4),
+            .stat-anno-table td:nth-child(4) { display: table-cell !important; }
+
             /* Clienti: nascondi Città, Provincia, Categoria, Giorno Visita */
             #clienti-table th:nth-child(3),
             #clienti-table th:nth-child(4),

@@ -6,10 +6,11 @@ let _currentStatId  = null;
 let _currentStatTipo = null;
 
 const TIPO_LABEL = {
-  prezzo_prodotto:  'Prezzo prodotto nel tempo per cliente',
-  fatturato_cliente:'Fatturato cliente mese per mese',
-  prodotti_top:     'Prodotti più acquistati da un cliente',
-  trend_ordini:     'Trend ordini per periodo',
+  prezzo_prodotto:    'Prezzo prodotto nel tempo per cliente',
+  fatturato_articolo: 'Fatturato articolo per anno',
+  fatturato_cliente:  'Fatturato cliente mese per mese',
+  prodotti_top:       'Prodotti più acquistati da un cliente',
+  trend_ordini:       'Trend ordini per periodo',
 };
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -117,6 +118,7 @@ async function openStatModal() {
           <select id="stat-tipo" class="filter-input" style="width:100%" onchange="onStatTipoChange()">
             <option value="">— seleziona —</option>
             <option value="prezzo_prodotto">Prezzo prodotto nel tempo per cliente</option>
+            <option value="fatturato_articolo">Fatturato articolo per anno</option>
             <option value="fatturato_cliente">Fatturato cliente mese per mese</option>
             <option value="prodotti_top">Prodotti più acquistati da un cliente</option>
             <option value="trend_ordini">Trend ordini per periodo</option>
@@ -153,13 +155,16 @@ function onStatTipoChange() {
       </select>
     </div>`;
 
+  const artField = `
+    <div class="stat-field">
+      <label class="stat-label">Codice o Descrizione Articolo</label>
+      <input type="text" id="stat-p-articolo" class="filter-input" style="width:100%"
+        placeholder="Es. 9285 o FIXATURA">
+    </div>`;
+
   const html = {
-    prezzo_prodotto: `${clienteField}
-      <div class="stat-field">
-        <label class="stat-label">Codice Articolo</label>
-        <input type="text" id="stat-p-articolo" class="filter-input" style="width:100%"
-          placeholder="Es. 9285">
-      </div>`,
+    prezzo_prodotto: `${clienteField}${artField}`,
+    fatturato_articolo: artField,
     fatturato_cliente: clienteField,
     prodotti_top: `${clienteField}
       <div class="stat-field">
@@ -205,6 +210,11 @@ function _raccogliParams(tipo) {
     if (!codice_cliente)  { alert('Seleziona un cliente.');      return null; }
     if (!codice_articolo) { alert('Inserisci il codice articolo.'); return null; }
     return { codice_cliente, codice_articolo };
+  }
+  if (tipo === 'fatturato_articolo') {
+    const codice_articolo = g('stat-p-articolo');
+    if (!codice_articolo) { alert('Inserisci il codice o la descrizione articolo.'); return null; }
+    return { codice_articolo };
   }
   if (tipo === 'fatturato_cliente') {
     const codice_cliente = g('stat-p-cliente');
@@ -286,6 +296,16 @@ function _buildInlineParams(tipo, params) {
       <select id="ip-cliente" class="filter-input" style="width:100%" onchange="aggiornaGraficoDa()">
         <option value="">— seleziona —</option>${clientiOpts}
       </select>
+    </div>`;
+
+  if (tipo === 'fatturato_articolo') return `
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
+        <label class="stat-label">Codice o Descrizione Articolo</label>
+        <input type="text" id="ip-articolo" class="filter-input" style="width:100%"
+          value="${_esc(params.codice_articolo || '')}" placeholder="Es. 9285 o FIXATURA"
+          oninput="scheduleAggiornaGrafico()">
+      </div>
     </div>`;
 
   if (tipo === 'prezzo_prodotto') return `
@@ -457,6 +477,90 @@ async function _disegnaGrafico(tipo, params) {
           <tbody>${tbody}</tbody>
         </table>
       </div>`;
+    return;
+  }
+
+  // ── Fatturato articolo per anno ───────────────────────────────────────────
+  if (tipo === 'fatturato_articolo') {
+    const termArt = (params.codice_articolo || '').trim();
+    if (!termArt) { loading.style.display = 'none'; noData.style.display = ''; return; }
+
+    const { data, error } = await sb.from('righe_ordine')
+      .select('quantita, importo_eur, ordini!inner(data_ordine)')
+      .or(`codice_articolo.ilike.%${termArt}%,descrizione_articolo.ilike.%${termArt}%`);
+    if (error) throw error;
+
+    const ANNI = ['2023', '2024', '2025', '2026'];
+    const byYear = {};
+    ANNI.forEach(a => { byYear[a] = { importo: 0, qty: 0, righe: 0 }; });
+    for (const r of (data || [])) {
+      const yr = (r.ordini?.data_ordine || '').slice(0, 4);
+      if (!byYear[yr]) continue;
+      byYear[yr].importo += parseFloat(r.importo_eur) || 0;
+      byYear[yr].qty     += parseFloat(r.quantita)    || 0;
+      byYear[yr].righe   += 1;
+    }
+
+    loading.style.display = 'none';
+    if (!(data || []).length) { noData.style.display = ''; return; }
+
+    // Grafico a barre
+    const canvas = document.createElement('canvas');
+    canvas.style.maxHeight = '260px';
+    content.appendChild(canvas);
+    _statChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: ANNI,
+        datasets: [{
+          label: 'Fatturato (€)',
+          data: ANNI.map(a => byYear[a].importo),
+          backgroundColor: '#1A56DBCC', borderColor: '#1A56DB', borderWidth: 1, borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ' € ' + ctx.parsed.y.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } },
+        },
+        scales: {
+          x: { grid: { color: '#E5E2DA' }, ticks: { font: { family: 'DM Sans', size: 12 } } },
+          y: { grid: { color: '#E5E2DA' }, ticks: { font: { family: 'DM Sans', size: 11 }, callback: v => '€ ' + v.toLocaleString('it-IT') } },
+        },
+      },
+    });
+
+    // Tabella riepilogo
+    const eur = n => '€ ' + n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const tbody = ANNI.map(a => {
+      const d = byYear[a];
+      const prezzoMedio = d.qty > 0 ? d.importo / d.qty : 0;
+      const qFmt = n => n % 1 === 0 ? n.toLocaleString('it-IT') : n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `<tr>
+        <td><strong>${a}</strong></td>
+        <td class="num-right">${d.righe || '—'}</td>
+        <td class="num-right">${d.qty ? qFmt(d.qty) : '—'}</td>
+        <td class="num-right"><strong>${d.importo ? eur(d.importo) : '—'}</strong></td>
+        <td class="num-right" style="color:var(--text2)">${prezzoMedio ? eur(prezzoMedio) : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    const tableEl = document.createElement('div');
+    tableEl.innerHTML = `
+      <div class="table-scroll" style="margin-top:16px">
+        <table class="righe-table stat-anno-table" style="width:100%">
+          <thead><tr>
+            <th>Anno</th>
+            <th class="num-right">N° Righe</th>
+            <th class="num-right">Q.tà</th>
+            <th class="num-right">Fatturato</th>
+            <th class="num-right">Prezzo medio/pz</th>
+          </tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>`;
+    content.appendChild(tableEl);
     return;
   }
 
