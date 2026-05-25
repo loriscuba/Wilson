@@ -291,9 +291,9 @@ function _buildInlineParams(tipo, params) {
   if (tipo === 'prezzo_prodotto') return `
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
       <div style="display:flex;flex-direction:column;gap:3px;min-width:120px">
-        <label class="stat-label">Codice Cliente</label>
+        <label class="stat-label">Cliente (nome o codice)</label>
         <input type="text" id="ip-cliente" class="filter-input" style="width:100%"
-          value="${_esc(params.codice_cliente || '')}" placeholder="Es. 609790"
+          value="${_esc(params.codice_cliente || '')}" placeholder="Es. 609790 o Rossi"
           oninput="scheduleAggiornaGrafico()">
       </div>
       <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
@@ -380,10 +380,31 @@ async function _disegnaGrafico(tipo, params) {
 
   // ── Prezzo prodotto: tabella ──────────────────────────────────────────────
   if (tipo === 'prezzo_prodotto') {
-    const { data, error } = await sb.from('righe_ordine')
-      .select('prezzo_unitario, prezzo_netto_pezzo, sconto1, sconto2, sconto3, quantita, codice_articolo, ordini!inner(data_ordine, numero_ordine, codice_cliente)')
-      .or(`codice_articolo.ilike.%${params.codice_articolo}%,descrizione_articolo.ilike.%${params.codice_articolo}%`)
-      .eq('ordini.codice_cliente', params.codice_cliente);
+    const termArt = (params.codice_articolo || '').trim();
+    const termCli = (params.codice_cliente  || '').trim();
+
+    if (!termArt) { loading.style.display = 'none'; noData.style.display = ''; return; }
+
+    // Risolvi il termine cliente (nome o codice) → lista codici
+    let codiciCliente = [];
+    if (termCli) {
+      const { data: cli } = await sb.from('clienti').select('codice_cliente')
+        .or(`codice_cliente.ilike.%${termCli}%,ragione_sociale.ilike.%${termCli}%`);
+      codiciCliente = (cli || []).map(c => c.codice_cliente);
+      if (!codiciCliente.length) { loading.style.display = 'none'; noData.style.display = ''; return; }
+    }
+
+    let q = sb.from('righe_ordine')
+      .select('prezzo_unitario, prezzo_netto_pezzo, sconto1, sconto2, sconto3, quantita, codice_articolo, descrizione_articolo, ordini!inner(data_ordine, numero_ordine, codice_cliente)')
+      .or(`codice_articolo.ilike.%${termArt}%,descrizione_articolo.ilike.%${termArt}%`);
+
+    if (codiciCliente.length === 1) {
+      q = q.eq('ordini.codice_cliente', codiciCliente[0]);
+    } else if (codiciCliente.length > 1) {
+      q = q.filter('ordini.codice_cliente', 'in', `(${codiciCliente.join(',')})`);
+    }
+
+    const { data, error } = await q;
     if (error) throw error;
 
     const rows = (data || [])
@@ -396,6 +417,7 @@ async function _disegnaGrafico(tipo, params) {
         s2:       parseFloat(r.sconto2) || 0,
         s3:       parseFloat(r.sconto3) || 0,
         qty:      parseFloat(r.quantita) || 0,
+        desc:     r.descrizione_articolo || r.codice_articolo || '',
       }))
       .sort((a, b) => b.date.localeCompare(a.date)); // più recenti prima
 
@@ -411,6 +433,7 @@ async function _disegnaGrafico(tipo, params) {
       return `<tr>
         <td>${_fmtDataBreve(r.date)}</td>
         <td><button class="btn-ordini" onclick="apriOrdine('${_esc(r.ordine)}')">${_esc(r.ordine)}</button></td>
+        <td style="color:var(--text2);font-size:.85em">${_esc(r.desc)}</td>
         <td class="num-right" style="color:var(--text2)">${eur(r.listino)}</td>
         <td class="num-right">${sconti}</td>
         <td class="num-right"><strong>${eur(r.netto)}</strong></td>
@@ -424,6 +447,7 @@ async function _disegnaGrafico(tipo, params) {
           <thead><tr>
             <th>Data</th>
             <th>N° Ordine</th>
+            <th>Articolo</th>
             <th class="num-right">Listino</th>
             <th class="num-right">Sconti</th>
             <th class="num-right">Prezzo Netto</th>
