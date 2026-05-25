@@ -3,6 +3,7 @@
 let _statChart      = null;
 let _statClienti    = [];
 let _currentStatId  = null;
+let _currentStatTipo = null;
 
 const TIPO_LABEL = {
   prezzo_prodotto:  'Prezzo prodotto nel tempo per cliente',
@@ -152,26 +153,14 @@ function onStatTipoChange() {
       </select>
     </div>`;
 
-  const dateFields = `
-    <div class="stat-field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div>
-        <label class="stat-label">Dal</label>
-        <input type="date" id="stat-p-da" class="filter-input" style="width:100%">
-      </div>
-      <div>
-        <label class="stat-label">Al</label>
-        <input type="date" id="stat-p-a" class="filter-input" style="width:100%">
-      </div>
-    </div>`;
-
   const html = {
     prezzo_prodotto: `${clienteField}
       <div class="stat-field">
         <label class="stat-label">Codice Articolo</label>
         <input type="text" id="stat-p-articolo" class="filter-input" style="width:100%"
-          placeholder="Es. 04005513000">
+          placeholder="Es. 9285">
       </div>`,
-    fatturato_cliente: `${clienteField}${dateFields}`,
+    fatturato_cliente: clienteField,
     prodotti_top: `${clienteField}
       <div class="stat-field">
         <label class="stat-label">Mostra top N prodotti</label>
@@ -181,7 +170,7 @@ function onStatTipoChange() {
           <option value="20">Top 20</option>
         </select>
       </div>`,
-    trend_ordini: dateFields,
+    trend_ordini: '',
   }[tipo] || '';
 
   document.getElementById('stat-params').innerHTML = html;
@@ -220,7 +209,7 @@ function _raccogliParams(tipo) {
   if (tipo === 'fatturato_cliente') {
     const codice_cliente = g('stat-p-cliente');
     if (!codice_cliente) { alert('Seleziona un cliente.'); return null; }
-    return { codice_cliente, data_inizio: g('stat-p-da'), data_fine: g('stat-p-a') };
+    return { codice_cliente };
   }
   if (tipo === 'prodotti_top') {
     const codice_cliente = g('stat-p-cliente');
@@ -236,25 +225,36 @@ function _raccogliParams(tipo) {
 
 // ── Visualizzazione ───────────────────────────────────────────────────────────
 
+let _aggDebounce = null;
+
 async function _openStat(stat) {
-  _currentStatId = stat.id;
+  _currentStatId   = stat.id;
+  _currentStatTipo = stat.tipo;
   const wrap = document.getElementById('stat-chart-wrap');
   if (!wrap) return;
 
+  // Carica clienti se non ancora disponibili
+  if (!_statClienti.length) {
+    const { data } = await sb.from('clienti')
+      .select('codice_cliente, ragione_sociale').order('ragione_sociale').limit(500);
+    _statClienti = data || [];
+  }
+
   wrap.style.display = 'block';
   wrap.innerHTML = `
-    <div class="table-wrapper" style="padding:20px 20px 16px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;gap:12px">
+    <div class="table-wrapper" style="padding:18px 20px 16px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
         <div>
           <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700">${_esc(stat.nome)}</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:3px">${TIPO_LABEL[stat.tipo] || stat.tipo}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${TIPO_LABEL[stat.tipo] || stat.tipo}</div>
         </div>
         <button onclick="chiudiGrafico()"
-          style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px"
+          style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px;flex-shrink:0"
           title="Chiudi">✕</button>
       </div>
-      <div id="stat-loading" class="loading">Caricamento dati…</div>
-      <canvas id="stat-canvas" style="display:none;max-height:360px"></canvas>
+      ${_buildInlineParams(stat.tipo, stat.parametri || {})}
+      <div id="stat-loading" class="loading" style="margin-top:14px">Caricamento dati…</div>
+      <canvas id="stat-canvas" style="display:none;max-height:360px;margin-top:14px"></canvas>
       <div id="stat-no-data" style="display:none" class="placeholder">
         <div class="placeholder-icon">📭</div>
         <h3>Nessun dato</h3>
@@ -269,6 +269,90 @@ async function _openStat(stat) {
   } catch (err) {
     const el = document.getElementById('stat-loading');
     if (el) el.innerHTML = `<span style="color:var(--red)">Errore: ${err.message}</span>`;
+  }
+}
+
+function _buildInlineParams(tipo, params) {
+  if (tipo === 'trend_ordini') return '';
+
+  const clientiOpts = _statClienti.map(c => {
+    const sel = c.codice_cliente === params.codice_cliente ? ' selected' : '';
+    return `<option value="${_esc(c.codice_cliente)}"${sel}>${_esc(c.ragione_sociale)} (${_esc(c.codice_cliente)})</option>`;
+  }).join('');
+
+  const clienteSel = `
+    <div style="display:flex;flex-direction:column;gap:3px;min-width:180px;flex:2">
+      <label class="stat-label">Cliente</label>
+      <select id="ip-cliente" class="filter-input" style="width:100%" onchange="aggiornaGraficoDa()">
+        <option value="">— seleziona —</option>${clientiOpts}
+      </select>
+    </div>`;
+
+  if (tipo === 'prezzo_prodotto') return `
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+      ${clienteSel}
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px">
+        <label class="stat-label">Codice Articolo</label>
+        <input type="text" id="ip-articolo" class="filter-input" style="width:100%"
+          value="${_esc(params.codice_articolo || '')}" placeholder="Es. 9285"
+          oninput="scheduleAggiornaGrafico()">
+      </div>
+    </div>`;
+
+  if (tipo === 'fatturato_cliente') return `
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+      ${clienteSel}
+    </div>`;
+
+  if (tipo === 'prodotti_top') return `
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+      ${clienteSel}
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label class="stat-label">Top N</label>
+        <select id="ip-topn" class="filter-input" onchange="aggiornaGraficoDa()">
+          ${[5,10,20].map(n => `<option value="${n}"${n === (params.top_n||10) ? ' selected' : ''}>${n}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+
+  return '';
+}
+
+function scheduleAggiornaGrafico() {
+  clearTimeout(_aggDebounce);
+  _aggDebounce = setTimeout(aggiornaGraficoDa, 600);
+}
+
+async function aggiornaGraficoDa() {
+  if (!_currentStatId) return;
+
+  // Leggi i parametri dai controlli inline
+  const g = id => document.getElementById(id)?.value?.trim() || null;
+  const params = {};
+  if (document.getElementById('ip-cliente'))  params.codice_cliente  = g('ip-cliente');
+  if (document.getElementById('ip-articolo')) params.codice_articolo = g('ip-articolo');
+  if (document.getElementById('ip-topn'))     params.top_n = parseInt(g('ip-topn')) || 10;
+
+  const tipo = _currentStatTipo;
+  if (!tipo) return;
+
+  // Salva i nuovi parametri su Supabase (fire & forget)
+  sb.from('statistiche_salvate').update({ parametri: params })
+    .eq('id', _currentStatId).then(() => {});
+
+  // Resetta area grafico e ridisegna
+  const loading = document.getElementById('stat-loading');
+  const canvas  = document.getElementById('stat-canvas');
+  const noData  = document.getElementById('stat-no-data');
+  if (loading) { loading.style.display = ''; loading.textContent = 'Caricamento dati…'; }
+  if (canvas)  canvas.style.display = 'none';
+  if (noData)  noData.style.display = 'none';
+  if (_statChart) { _statChart.destroy(); _statChart = null; }
+
+  try {
+    await _disegnaGrafico(tipo, params);
+  } catch (err) {
+    if (loading) loading.innerHTML = `<span style="color:var(--red)">Errore: ${err.message}</span>`;
   }
 }
 
@@ -321,13 +405,10 @@ async function _disegnaGrafico(tipo, params) {
   }
 
   else if (tipo === 'fatturato_cliente') {
-    let q = sb.from('ordini')
+    const { data, error } = await sb.from('ordini')
       .select('data_ordine, totale_ordine')
       .eq('codice_cliente', params.codice_cliente)
       .order('data_ordine', { ascending: true });
-    if (params.data_inizio) q = q.gte('data_ordine', params.data_inizio);
-    if (params.data_fine)   q = q.lte('data_ordine', params.data_fine);
-    const { data, error } = await q;
     if (error) throw error;
 
     const byMonth = {};
@@ -365,12 +446,9 @@ async function _disegnaGrafico(tipo, params) {
   }
 
   else if (tipo === 'trend_ordini') {
-    let q = sb.from('ordini')
+    const { data, error } = await sb.from('ordini')
       .select('data_ordine, totale_ordine')
       .order('data_ordine', { ascending: true });
-    if (params.data_inizio) q = q.gte('data_ordine', params.data_inizio);
-    if (params.data_fine)   q = q.lte('data_ordine', params.data_fine);
-    const { data, error } = await q;
     if (error) throw error;
 
     const byMonth = {};
