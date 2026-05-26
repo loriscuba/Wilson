@@ -28,6 +28,7 @@ async function loadDashboard() {
       sb.from('ddt').select('id, stato').eq('stato', 'spedito'),
       sb.from('cedi_ridistribuito')
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
+        .order('data_aggiornamento', { ascending: false })
         .order('valore_ridistribuito', { ascending: false }),
       sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento')
         .lte('data_aggiornamento', today)
@@ -48,8 +49,11 @@ async function loadDashboard() {
     const ordiniCount  = ordiniData?.length || 0;
     const ordiniValue  = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
     const ddtCount     = ddtData?.length || 0;
-    const totCEDI      = (cediData || []).reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
-    const cediDate     = (cediData || []).reduce((d, r) => (r.data_aggiornamento > d ? r.data_aggiornamento : d), '');
+    // Solo l'ultimo import CEDI (filtra per la data_aggiornamento più recente)
+    const allCedi     = cediData || [];
+    const cediDate    = allCedi.length ? allCedi[0].data_aggiornamento : '';
+    const latestCedi  = allCedi.filter(r => r.data_aggiornamento === cediDate);
+    const totCEDI     = latestCedi.reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
     const totOrdinato  = totMese26 + totCEDI;
     const budget       = budgetArr?.[0] || null;
     const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
