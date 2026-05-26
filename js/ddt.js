@@ -1,6 +1,7 @@
 async function loadDDT() {
   const tbody   = document.querySelector('#ddt-table tbody');
   const countEl = document.getElementById('ddt-count');
+  const todayMs = new Date().setHours(0, 0, 0, 0);
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
   try {
@@ -27,7 +28,8 @@ async function loadDDT() {
         const dt = d.data_consegna_effettiva ? ' · ' + fmtDate(d.data_consegna_effettiva) : '';
         statoBadge = `<span class="badge badge-green">✓ Consegnato${dt}</span>`;
       } else if (d.eta_shippeo) {
-        statoBadge = `<span class="eta-chip eta-future">Arr. prev. ${fmtDate(d.eta_shippeo)}</span>`;
+        const isLate = new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs;
+        statoBadge = `<span class="eta-chip ${isLate ? 'eta-late' : 'eta-future'}">${isLate ? '⚠ Ritardo · ' : 'Arr. prev. '}${fmtDate(d.eta_shippeo)}</span>`;
       } else {
         statoBadge = statoBadgeOrdine(d.stato);
       }

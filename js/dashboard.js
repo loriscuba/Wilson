@@ -25,7 +25,7 @@ async function loadDashboard() {
       loadRollingEnriched(),
       sb.from('ordini').select('totale_ordine, data_ordine')
         .gte('data_ordine', startMese).lte('data_ordine', endMese),
-      sb.from('ddt').select('id, stato').eq('stato', 'spedito'),
+      sb.from('ddt').select('stato, eta_shippeo').neq('stato', 'consegnato'),
       sb.from('cedi_ridistribuito')
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
         .order('data_aggiornamento', { ascending: false })
@@ -46,9 +46,11 @@ async function loadDashboard() {
     const totMese25  = rows.reduce((s, r) => s + (r.fatt_mese_anno_prec   || 0), 0);
     const varProgPct = totProg25 > 0 ? ((totProg26 - totProg25) / totProg25) * 100 : null;
 
-    const ordiniCount  = ordiniData?.length || 0;
-    const ordiniValue  = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
-    const ddtCount     = ddtData?.length || 0;
+    const ordiniCount      = ordiniData?.length || 0;
+    const ordiniValue      = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
+    const todayMs          = new Date().setHours(0, 0, 0, 0);
+    const ddtCount         = (ddtData || []).filter(d => d.stato === 'spedito').length;
+    const ddtRitardoCount  = (ddtData || []).filter(d => d.eta_shippeo && new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs).length;
     // Solo l'ultimo import CEDI (filtra per la data_aggiornamento più recente)
     const allCedi     = cediData || [];
     const cediDate    = allCedi.length ? allCedi[0].data_aggiornamento : '';
@@ -99,6 +101,11 @@ async function loadDashboard() {
         <h3>DDT in transito</h3>
         <div class="kpi-value">${ddtCount}</div>
         <div class="kpi-sub">Stato: spedito</div>
+      </div>
+      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" style="${ddtRitardoCount > 0 ? 'border-left:3px solid #C84B2F' : ''}">
+        <h3>DDT in ritardo</h3>
+        <div class="kpi-value" style="color:${ddtRitardoCount > 0 ? '#C84B2F' : 'var(--text2)'}">${ddtRitardoCount}</div>
+        <div class="kpi-sub">ETA superata, non consegnato</div>
       </div>`;
 
     renderStatoMese(rows);
