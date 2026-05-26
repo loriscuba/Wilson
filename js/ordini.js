@@ -65,13 +65,21 @@ async function loadOrdini() {
       return;
     }
 
+    // Fallback nome cliente per ordini senza destinazione_ragione_sociale
+    const nullCodes = [...new Set((data).filter(o => !o.destinazione_ragione_sociale).map(o => o.codice_cliente).filter(Boolean))];
+    let nomeFallback = {};
+    if (nullCodes.length) {
+      const { data: cli } = await sb.from('clienti').select('codice_cliente, ragione_sociale').in('codice_cliente', nullCodes);
+      nomeFallback = Object.fromEntries((cli || []).map(c => [c.codice_cliente, c.ragione_sociale]));
+    }
+
     tbody.innerHTML = data.map(o => `
       <tr class="ordine-row" onclick="toggleRighe('${o.id}','${o.numero_ordine}',this)">
         <td><button class="expand-btn" id="expand-${o.id}">▶</button></td>
         <td><strong>${o.numero_ordine || '—'}</strong></td>
         <td>${fmtDate(o.data_ordine)}</td>
         <td>${o.codice_cliente || '—'}</td>
-        <td><span class="ord-cliente-link" onclick="event.stopPropagation();apriClienteDaDashboard('${o.codice_cliente||''}')">${o.destinazione_ragione_sociale || '—'}</span></td>
+        <td><span class="ord-cliente-link" onclick="event.stopPropagation();apriClienteDaDashboard('${o.codice_cliente||''}')">${o.destinazione_ragione_sociale || nomeFallback[o.codice_cliente] || '—'}</span></td>
         <td>${o.tipo_ordine || '—'}</td>
         <td class="num-right"><strong>€${fmt(o.totale_ordine)}</strong></td>
         <td>${statoBadgeOrdine(o.stato)}</td>
