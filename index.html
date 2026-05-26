@@ -557,11 +557,15 @@
             .righe-table:not(.stat-prezzo-table) td:nth-child(6),
             .righe-table:not(.stat-prezzo-table) td:nth-child(7) { display: none; }
 
-            /* Prezzo storico: mostra Data, Ordine, Sconti, Prezzo Netto — nascondi Articolo e Listino */
-            .stat-prezzo-table th:nth-child(3),
-            .stat-prezzo-table td:nth-child(3),
+            /* Prezzo storico: mostra Data(1), Ordine(2), Cliente(3), Prezzo Netto(7) — nascondi resto */
             .stat-prezzo-table th:nth-child(4),
-            .stat-prezzo-table td:nth-child(4) { display: none; }
+            .stat-prezzo-table td:nth-child(4),
+            .stat-prezzo-table th:nth-child(5),
+            .stat-prezzo-table td:nth-child(5),
+            .stat-prezzo-table th:nth-child(6),
+            .stat-prezzo-table td:nth-child(6),
+            .stat-prezzo-table th:nth-child(8),
+            .stat-prezzo-table td:nth-child(8) { display: none; }
 
             /* Fatturato articolo per anno: nascondi N°Righe e Prezzo medio, mostra tutto il resto */
             .stat-anno-table th:nth-child(2),

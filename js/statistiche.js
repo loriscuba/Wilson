@@ -428,17 +428,27 @@ async function _disegnaGrafico(tipo, params) {
     const { data, error } = await q;
     if (error) throw error;
 
+    // Risolvi codice_cliente → ragione_sociale per tutti i risultati
+    const uniqueCodes = [...new Set((data || []).map(r => r.ordini?.codice_cliente).filter(Boolean))];
+    let nomeCliente = {};
+    if (uniqueCodes.length) {
+      const { data: cli } = await sb.from('clienti').select('codice_cliente, ragione_sociale').in('codice_cliente', uniqueCodes);
+      nomeCliente = Object.fromEntries((cli || []).map(c => [c.codice_cliente, c.ragione_sociale]));
+    }
+
     const rows = (data || [])
       .map(r => ({
-        date:     r.ordini?.data_ordine    || '',
-        ordine:   r.ordini?.numero_ordine  || '—',
-        listino:  parseFloat(r.prezzo_unitario)   || 0,
-        netto:    parseFloat(r.prezzo_netto_pezzo) || 0,
-        s1:       parseFloat(r.sconto1) || 0,
-        s2:       parseFloat(r.sconto2) || 0,
-        s3:       parseFloat(r.sconto3) || 0,
-        qty:      parseFloat(r.quantita) || 0,
-        desc:     r.descrizione_articolo || r.codice_articolo || '',
+        date:   r.ordini?.data_ordine    || '',
+        ordine: r.ordini?.numero_ordine  || '—',
+        codcli: r.ordini?.codice_cliente || '',
+        nome:   nomeCliente[r.ordini?.codice_cliente] || r.ordini?.codice_cliente || '—',
+        listino: parseFloat(r.prezzo_unitario)    || 0,
+        netto:   parseFloat(r.prezzo_netto_pezzo) || 0,
+        s1:      parseFloat(r.sconto1) || 0,
+        s2:      parseFloat(r.sconto2) || 0,
+        s3:      parseFloat(r.sconto3) || 0,
+        qty:     parseFloat(r.quantita) || 0,
+        desc:    r.descrizione_articolo || r.codice_articolo || '',
       }))
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
@@ -454,6 +464,7 @@ async function _disegnaGrafico(tipo, params) {
       return `<tr>
         <td>${_fmtDataBreve(r.date)}</td>
         <td><button class="btn-ordini" onclick="apriOrdine('${_esc(r.ordine)}')">${_esc(r.ordine)}</button></td>
+        <td style="font-size:.85em">${_esc(r.nome)}</td>
         <td style="color:var(--text2);font-size:.85em">${_esc(r.desc)}</td>
         <td class="num-right" style="color:var(--text2)">${eur(r.listino)}</td>
         <td class="num-right">${sconti}</td>
@@ -468,6 +479,7 @@ async function _disegnaGrafico(tipo, params) {
           <thead><tr>
             <th>Data</th>
             <th>N° Ordine</th>
+            <th>Cliente</th>
             <th>Articolo</th>
             <th class="num-right">Listino</th>
             <th class="num-right">Sconti</th>
