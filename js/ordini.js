@@ -244,6 +244,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
       return;
     }
 
+    const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
     inner.innerHTML = spedizioniHTML + `
       <table class="righe-table">
         <thead><tr>
@@ -298,7 +299,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             <td style="color:var(--text2);font-size:12px;">${sconti || '—'}</td>
             <td class="num-right">${nettoCell}</td>
             <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
-            <td>${fmtDate(dataConsegna)}</td>
+            <td style="${dataConsegna && rowCls !== 'riga-consegnata' && new Date(dataConsegna) < oggi ? 'color:#e53935;font-weight:600' : ''}">${fmtDate(dataConsegna)}</td>
             <td>${shippeoCell}</td>
           </tr>`;
         }).join('')}
