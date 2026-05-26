@@ -27,9 +27,20 @@ function setFiltroStatoOrdine(stato) {
 
 function resetFiltriOrdini() {
   const now = new Date();
-  document.getElementById('filtro-da').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  document.getElementById('filtro-a').value  = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-  document.getElementById('filtro-cliente').value = '';
+  document.getElementById('filtro-da').value      = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  document.getElementById('filtro-a').value       = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  document.getElementById('filtro-cliente').value  = '';
+  const fp = document.getElementById('filtro-prodotto'); if (fp) fp.value = '';
+  _filtroStatoOrdine = null;
+  document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
+  loadOrdini();
+}
+
+function azzeraFiltriOrdini() {
+  document.getElementById('filtro-da').value       = '';
+  document.getElementById('filtro-a').value        = '';
+  document.getElementById('filtro-cliente').value  = '';
+  const fp = document.getElementById('filtro-prodotto'); if (fp) fp.value = '';
   _filtroStatoOrdine = null;
   document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
   loadOrdini();
@@ -41,11 +52,26 @@ async function loadOrdini() {
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
   _initOrdiniDates();
-  const da      = document.getElementById('filtro-da')?.value;
-  const a       = document.getElementById('filtro-a')?.value;
-  const cliente = document.getElementById('filtro-cliente')?.value?.trim();
+  const da       = document.getElementById('filtro-da')?.value;
+  const a        = document.getElementById('filtro-a')?.value;
+  const cliente  = document.getElementById('filtro-cliente')?.value?.trim();
+  const prodotto = document.getElementById('filtro-prodotto')?.value?.trim();
 
   try {
+    // Pre-query prodotto: trova i numero_ordine che contengono l'articolo cercato
+    let ordiniNums = null;
+    if (prodotto) {
+      const { data: righe } = await sb.from('righe_ordine')
+        .select('numero_ordine')
+        .or(`codice_articolo.ilike.%${prodotto}%,descrizione_articolo.ilike.%${prodotto}%`);
+      ordiniNums = [...new Set((righe || []).map(r => r.numero_ordine).filter(Boolean))];
+      if (!ordiniNums.length) {
+        countEl.textContent = 0;
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun ordine trovato</td></tr>';
+        return;
+      }
+    }
+
     let q = sb.from('ordini')
       .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
       .order('data_ordine', { ascending: false });
@@ -53,6 +79,7 @@ async function loadOrdini() {
     if (da)                 q = q.gte('data_ordine', da);
     if (a)                  q = q.lte('data_ordine', a);
     if (cliente)            q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%,numero_ordine.ilike.%${cliente}%`);
+    if (ordiniNums)         q = q.in('numero_ordine', ordiniNums);
     if (_filtroStatoOrdine) q = q.eq('stato', _filtroStatoOrdine);
 
     const { data, error } = await q;

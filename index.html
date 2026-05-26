@@ -1090,7 +1090,11 @@
                     <label>Cliente</label>
                     <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="debounceOrdini()">
                     <div class="filter-sep"></div>
+                    <label>Prodotto</label>
+                    <input class="filter-input" type="text" id="filtro-prodotto" placeholder="Codice o descrizione…" oninput="debounceOrdini()">
+                    <div class="filter-sep"></div>
                     <button class="filter-reset" onclick="resetFiltriOrdini()">↺ Mese</button>
+                    <button class="filter-reset" onclick="azzeraFiltriOrdini()">✕ Azzera</button>
                 </div>
                 <div class="filter-bar" style="padding-top:0;gap:6px;flex-wrap:wrap;">
                     <button class="ord-stato-chip on"  data-stato=""                    onclick="setFiltroStatoOrdine('')">Tutti</button>
