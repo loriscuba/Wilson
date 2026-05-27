@@ -2,7 +2,10 @@ name: Wilson - Sync Drive → Supabase
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # ogni 5 minuti
+  - cron: '0 7 * * *'     # 8:00 UTC (9:00 Italia +1)
+  - cron: '0 11 * * *'    # 12:00 UTC (13:00 Italia +1)
+  - cron: '0 15 * * *'    # 16:00 UTC (17:00 Italia +1)
+    
   workflow_dispatch:          # permette esecuzione manuale
 
 jobs:
