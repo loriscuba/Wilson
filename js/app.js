@@ -31,7 +31,7 @@ function handleMobileDrawerOverlay(event) {
 
 const PAGE_LOADERS = {
   dashboard:    loadDashboard,
-  ordini:       loadOrdini,
+  ordini:       () => { _initOrdiniDates(); loadOrdini(); },
   clienti:      loadClienti,
   ddt:          loadDDT,
   budget:       loadBudget,
