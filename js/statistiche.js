@@ -6,10 +6,11 @@ let _currentStatId  = null;
 let _currentStatTipo = null;
 
 const TIPO_LABEL = {
-  prezzo_prodotto:  'Prezzo prodotto nel tempo per cliente',
-  fatturato_cliente:'Fatturato cliente mese per mese',
-  prodotti_top:     'Prodotti più acquistati da un cliente',
-  trend_ordini:     'Trend ordini per periodo',
+  prezzo_prodotto:    'Prezzo prodotto nel tempo per cliente',
+  fatturato_articolo: 'Fatturato articolo per anno',
+  fatturato_cliente:  'Fatturato cliente mese per mese',
+  prodotti_top:       'Prodotti più acquistati da un cliente',
+  trend_ordini:       'Trend ordini per periodo',
 };
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -117,6 +118,7 @@ async function openStatModal() {
           <select id="stat-tipo" class="filter-input" style="width:100%" onchange="onStatTipoChange()">
             <option value="">— seleziona —</option>
             <option value="prezzo_prodotto">Prezzo prodotto nel tempo per cliente</option>
+            <option value="fatturato_articolo">Fatturato articolo per anno</option>
             <option value="fatturato_cliente">Fatturato cliente mese per mese</option>
             <option value="prodotti_top">Prodotti più acquistati da un cliente</option>
             <option value="trend_ordini">Trend ordini per periodo</option>
@@ -153,13 +155,16 @@ function onStatTipoChange() {
       </select>
     </div>`;
 
+  const artField = `
+    <div class="stat-field">
+      <label class="stat-label">Codice o Descrizione Articolo</label>
+      <input type="text" id="stat-p-articolo" class="filter-input" style="width:100%"
+        placeholder="Es. 9285 o FIXATURA">
+    </div>`;
+
   const html = {
-    prezzo_prodotto: `${clienteField}
-      <div class="stat-field">
-        <label class="stat-label">Codice Articolo</label>
-        <input type="text" id="stat-p-articolo" class="filter-input" style="width:100%"
-          placeholder="Es. 9285">
-      </div>`,
+    prezzo_prodotto: `${clienteField}${artField}`,
+    fatturato_articolo: artField,
     fatturato_cliente: clienteField,
     prodotti_top: `${clienteField}
       <div class="stat-field">
@@ -205,6 +210,11 @@ function _raccogliParams(tipo) {
     if (!codice_cliente)  { alert('Seleziona un cliente.');      return null; }
     if (!codice_articolo) { alert('Inserisci il codice articolo.'); return null; }
     return { codice_cliente, codice_articolo };
+  }
+  if (tipo === 'fatturato_articolo') {
+    const codice_articolo = g('stat-p-articolo');
+    if (!codice_articolo) { alert('Inserisci il codice o la descrizione articolo.'); return null; }
+    return { codice_articolo };
   }
   if (tipo === 'fatturato_cliente') {
     const codice_cliente = g('stat-p-cliente');
@@ -288,13 +298,28 @@ function _buildInlineParams(tipo, params) {
       </select>
     </div>`;
 
+  if (tipo === 'fatturato_articolo') return `
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
+        <label class="stat-label">Codice o Descrizione Articolo</label>
+        <input type="text" id="ip-articolo" class="filter-input" style="width:100%"
+          value="${_esc(params.codice_articolo || '')}" placeholder="Es. 9285 o FIXATURA"
+          oninput="scheduleAggiornaGrafico()">
+      </div>
+    </div>`;
+
   if (tipo === 'prezzo_prodotto') return `
     <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
-      ${clienteSel}
-      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px">
-        <label class="stat-label">Codice Articolo</label>
+      <div style="display:flex;flex-direction:column;gap:3px;min-width:120px">
+        <label class="stat-label">Cliente (nome o codice)</label>
+        <input type="text" id="ip-cliente" class="filter-input" style="width:100%"
+          value="${_esc(params.codice_cliente || '')}" placeholder="Es. 609790 o Rossi"
+          oninput="scheduleAggiornaGrafico()">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
+        <label class="stat-label">Codice o Descrizione Articolo</label>
         <input type="text" id="ip-articolo" class="filter-input" style="width:100%"
-          value="${_esc(params.codice_articolo || '')}" placeholder="Es. 9285"
+          value="${_esc(params.codice_articolo || '')}" placeholder="Es. 9285 oppure FIS A"
           oninput="scheduleAggiornaGrafico()">
       </div>
     </div>`;
@@ -375,24 +400,57 @@ async function _disegnaGrafico(tipo, params) {
 
   // ── Prezzo prodotto: tabella ──────────────────────────────────────────────
   if (tipo === 'prezzo_prodotto') {
-    const { data, error } = await sb.from('righe_ordine')
-      .select('prezzo_unitario, prezzo_netto_pezzo, sconto1, sconto2, sconto3, quantita, codice_articolo, ordini!inner(data_ordine, numero_ordine, codice_cliente)')
-      .ilike('codice_articolo', `%${params.codice_articolo}%`)
-      .eq('ordini.codice_cliente', params.codice_cliente);
+    const termArt = (params.codice_articolo || '').trim();
+    const termCli = (params.codice_cliente  || '').trim();
+
+    if (!termArt) { loading.style.display = 'none'; noData.style.display = ''; return; }
+
+    // Risolvi il termine cliente (nome o codice) → lista codici
+    let codiciCliente = [];
+    if (termCli) {
+      const { data: cli } = await sb.from('clienti').select('codice_cliente')
+        .or(`codice_cliente.ilike.%${termCli}%,ragione_sociale.ilike.%${termCli}%`);
+      codiciCliente = (cli || []).map(c => c.codice_cliente);
+      if (!codiciCliente.length) { loading.style.display = 'none'; noData.style.display = ''; return; }
+    }
+
+    let q = sb.from('righe_ordine')
+      .select('prezzo_unitario, prezzo_netto_pezzo, sconto1, sconto2, sconto3, quantita, codice_articolo, descrizione_articolo, ordini!inner(data_ordine, numero_ordine, codice_cliente)')
+      .or(`codice_articolo.ilike.%${termArt}%,descrizione_articolo.ilike.%${termArt}%`)
+      .order('data_ordine', { referencedTable: 'ordini', ascending: false });
+
+    if (codiciCliente.length === 1) {
+      q = q.eq('ordini.codice_cliente', codiciCliente[0]);
+    } else if (codiciCliente.length > 1) {
+      q = q.filter('ordini.codice_cliente', 'in', `(${codiciCliente.join(',')})`);
+    }
+
+    const { data, error } = await q;
     if (error) throw error;
+
+    // Risolvi codice_cliente → ragione_sociale per tutti i risultati
+    const uniqueCodes = [...new Set((data || []).map(r => r.ordini?.codice_cliente).filter(Boolean))];
+    let nomeCliente = {};
+    if (uniqueCodes.length) {
+      const { data: cli } = await sb.from('clienti').select('codice_cliente, ragione_sociale').in('codice_cliente', uniqueCodes);
+      nomeCliente = Object.fromEntries((cli || []).map(c => [c.codice_cliente, c.ragione_sociale]));
+    }
 
     const rows = (data || [])
       .map(r => ({
-        date:     r.ordini?.data_ordine    || '',
-        ordine:   r.ordini?.numero_ordine  || '—',
-        listino:  parseFloat(r.prezzo_unitario)   || 0,
-        netto:    parseFloat(r.prezzo_netto_pezzo) || 0,
-        s1:       parseFloat(r.sconto1) || 0,
-        s2:       parseFloat(r.sconto2) || 0,
-        s3:       parseFloat(r.sconto3) || 0,
-        qty:      parseFloat(r.quantita) || 0,
+        date:   r.ordini?.data_ordine    || '',
+        ordine: r.ordini?.numero_ordine  || '—',
+        codcli: r.ordini?.codice_cliente || '',
+        nome:   nomeCliente[r.ordini?.codice_cliente] || r.ordini?.codice_cliente || '—',
+        listino: parseFloat(r.prezzo_unitario)    || 0,
+        netto:   parseFloat(r.prezzo_netto_pezzo) || 0,
+        s1:      parseFloat(r.sconto1) || 0,
+        s2:      parseFloat(r.sconto2) || 0,
+        s3:      parseFloat(r.sconto3) || 0,
+        qty:     parseFloat(r.quantita) || 0,
+        desc:    r.descrizione_articolo || r.codice_articolo || '',
       }))
-      .sort((a, b) => b.date.localeCompare(a.date)); // più recenti prima
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
     loading.style.display = 'none';
     if (!rows.length) { noData.style.display = ''; return; }
@@ -406,6 +464,8 @@ async function _disegnaGrafico(tipo, params) {
       return `<tr>
         <td>${_fmtDataBreve(r.date)}</td>
         <td><button class="btn-ordini" onclick="apriOrdine('${_esc(r.ordine)}')">${_esc(r.ordine)}</button></td>
+        <td style="font-size:.85em">${_esc(r.nome)}</td>
+        <td style="color:var(--text2);font-size:.85em">${_esc(r.desc)}</td>
         <td class="num-right" style="color:var(--text2)">${eur(r.listino)}</td>
         <td class="num-right">${sconti}</td>
         <td class="num-right"><strong>${eur(r.netto)}</strong></td>
@@ -415,10 +475,12 @@ async function _disegnaGrafico(tipo, params) {
 
     content.innerHTML = `
       <div class="table-scroll" style="margin-top:4px">
-        <table class="righe-table" style="width:100%">
+        <table class="righe-table stat-prezzo-table" style="width:100%">
           <thead><tr>
             <th>Data</th>
             <th>N° Ordine</th>
+            <th>Cliente</th>
+            <th>Articolo</th>
             <th class="num-right">Listino</th>
             <th class="num-right">Sconti</th>
             <th class="num-right">Prezzo Netto</th>
@@ -427,6 +489,90 @@ async function _disegnaGrafico(tipo, params) {
           <tbody>${tbody}</tbody>
         </table>
       </div>`;
+    return;
+  }
+
+  // ── Fatturato articolo per anno ───────────────────────────────────────────
+  if (tipo === 'fatturato_articolo') {
+    const termArt = (params.codice_articolo || '').trim();
+    if (!termArt) { loading.style.display = 'none'; noData.style.display = ''; return; }
+
+    const { data, error } = await sb.from('righe_ordine')
+      .select('quantita, importo_eur, ordini!inner(data_ordine)')
+      .or(`codice_articolo.ilike.%${termArt}%,descrizione_articolo.ilike.%${termArt}%`);
+    if (error) throw error;
+
+    const ANNI = ['2023', '2024', '2025', '2026'];
+    const byYear = {};
+    ANNI.forEach(a => { byYear[a] = { importo: 0, qty: 0, righe: 0 }; });
+    for (const r of (data || [])) {
+      const yr = (r.ordini?.data_ordine || '').slice(0, 4);
+      if (!byYear[yr]) continue;
+      byYear[yr].importo += parseFloat(r.importo_eur) || 0;
+      byYear[yr].qty     += parseFloat(r.quantita)    || 0;
+      byYear[yr].righe   += 1;
+    }
+
+    loading.style.display = 'none';
+    if (!(data || []).length) { noData.style.display = ''; return; }
+
+    // Grafico a barre
+    const canvas = document.createElement('canvas');
+    canvas.style.maxHeight = '260px';
+    content.appendChild(canvas);
+    _statChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: ANNI,
+        datasets: [{
+          label: 'Fatturato (€)',
+          data: ANNI.map(a => byYear[a].importo),
+          backgroundColor: '#1A56DBCC', borderColor: '#1A56DB', borderWidth: 1, borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ' € ' + ctx.parsed.y.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) } },
+        },
+        scales: {
+          x: { grid: { color: '#E5E2DA' }, ticks: { font: { family: 'DM Sans', size: 12 } } },
+          y: { grid: { color: '#E5E2DA' }, ticks: { font: { family: 'DM Sans', size: 11 }, callback: v => '€ ' + v.toLocaleString('it-IT') } },
+        },
+      },
+    });
+
+    // Tabella riepilogo
+    const eur = n => '€ ' + n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const tbody = ANNI.map(a => {
+      const d = byYear[a];
+      const prezzoMedio = d.qty > 0 ? d.importo / d.qty : 0;
+      const qFmt = n => n % 1 === 0 ? n.toLocaleString('it-IT') : n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `<tr>
+        <td><strong>${a}</strong></td>
+        <td class="num-right">${d.righe || '—'}</td>
+        <td class="num-right">${d.qty ? qFmt(d.qty) : '—'}</td>
+        <td class="num-right"><strong>${d.importo ? eur(d.importo) : '—'}</strong></td>
+        <td class="num-right" style="color:var(--text2)">${prezzoMedio ? eur(prezzoMedio) : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    const tableEl = document.createElement('div');
+    tableEl.innerHTML = `
+      <div class="table-scroll" style="margin-top:16px">
+        <table class="righe-table stat-anno-table" style="width:100%">
+          <thead><tr>
+            <th>Anno</th>
+            <th class="num-right">N° Righe</th>
+            <th class="num-right">Q.tà</th>
+            <th class="num-right">Fatturato</th>
+            <th class="num-right">Prezzo medio/pz</th>
+          </tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>`;
+    content.appendChild(tableEl);
     return;
   }
 

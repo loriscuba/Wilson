@@ -332,6 +332,7 @@
         .eta-chip { font-size:11px; padding:2px 7px; border-radius:4px; font-weight:600; }
         .eta-chip.eta-future { background:#FEF3C7; color:#92400E; }
         .eta-chip.eta-past   { background:var(--bg); color:var(--text2); border:1px solid var(--border); }
+        .eta-chip.eta-late   { background:#FDECEA; color:#C84B2F; }
 
         /* ── Sync button ── */
         .sync-btn {
@@ -547,14 +548,34 @@
             #ordini-table td:nth-child(6) { display: none; }
 
             /* Righe ordine: nascondi U.M., Listino, Sconto, Netto/pz */
-            .righe-table th:nth-child(4),
-            .righe-table th:nth-child(5),
-            .righe-table th:nth-child(6),
-            .righe-table th:nth-child(7),
-            .righe-table td:nth-child(4),
-            .righe-table td:nth-child(5),
-            .righe-table td:nth-child(6),
-            .righe-table td:nth-child(7) { display: none; }
+            .righe-table:not(.stat-prezzo-table) th:nth-child(4),
+            .righe-table:not(.stat-prezzo-table) th:nth-child(5),
+            .righe-table:not(.stat-prezzo-table) th:nth-child(6),
+            .righe-table:not(.stat-prezzo-table) th:nth-child(7),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(4),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(5),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(6),
+            .righe-table:not(.stat-prezzo-table) td:nth-child(7) { display: none; }
+
+            /* Prezzo storico: mostra Data(1), Ordine(2), Cliente(3), Prezzo Netto(7) — nascondi resto */
+            .stat-prezzo-table th:nth-child(4),
+            .stat-prezzo-table td:nth-child(4),
+            .stat-prezzo-table th:nth-child(5),
+            .stat-prezzo-table td:nth-child(5),
+            .stat-prezzo-table th:nth-child(6),
+            .stat-prezzo-table td:nth-child(6),
+            .stat-prezzo-table th:nth-child(8),
+            .stat-prezzo-table td:nth-child(8) { display: none; }
+
+            /* Fatturato articolo per anno: nascondi N°Righe e Prezzo medio, mostra tutto il resto */
+            .stat-anno-table th:nth-child(2),
+            .stat-anno-table td:nth-child(2),
+            .stat-anno-table th:nth-child(5),
+            .stat-anno-table td:nth-child(5) { display: none; }
+            .stat-anno-table th:nth-child(3),
+            .stat-anno-table td:nth-child(3),
+            .stat-anno-table th:nth-child(4),
+            .stat-anno-table td:nth-child(4) { display: table-cell !important; }
 
             /* Clienti: nascondi Città, Provincia, Categoria, Giorno Visita */
             #clienti-table th:nth-child(3),
@@ -1073,7 +1094,11 @@
                     <label>Cliente</label>
                     <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="debounceOrdini()">
                     <div class="filter-sep"></div>
+                    <label>Prodotto</label>
+                    <input class="filter-input" type="text" id="filtro-prodotto" placeholder="Codice o descrizione…" oninput="debounceOrdini()">
+                    <div class="filter-sep"></div>
                     <button class="filter-reset" onclick="resetFiltriOrdini()">↺ Mese</button>
+                    <button class="filter-reset" onclick="azzeraFiltriOrdini()">✕ Azzera</button>
                 </div>
                 <div class="filter-bar" style="padding-top:0;gap:6px;flex-wrap:wrap;">
                     <button class="ord-stato-chip on"  data-stato=""                    onclick="setFiltroStatoOrdine('')">Tutti</button>
@@ -1236,6 +1261,7 @@
 
         <div id="impostazioni" class="page">
             <h1>Impostazioni</h1>
+            <div id="cfg-token-root" style="margin-bottom:2rem"></div>
             <div id="cfg-clienti-root">
                 <div class="loading">Caricamento…</div>
             </div>

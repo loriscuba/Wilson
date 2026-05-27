@@ -27,9 +27,20 @@ function setFiltroStatoOrdine(stato) {
 
 function resetFiltriOrdini() {
   const now = new Date();
-  document.getElementById('filtro-da').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  document.getElementById('filtro-a').value  = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-  document.getElementById('filtro-cliente').value = '';
+  document.getElementById('filtro-da').value      = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  document.getElementById('filtro-a').value       = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  document.getElementById('filtro-cliente').value  = '';
+  const fp = document.getElementById('filtro-prodotto'); if (fp) fp.value = '';
+  _filtroStatoOrdine = null;
+  document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
+  loadOrdini();
+}
+
+function azzeraFiltriOrdini() {
+  document.getElementById('filtro-da').value       = '';
+  document.getElementById('filtro-a').value        = '';
+  document.getElementById('filtro-cliente').value  = '';
+  const fp = document.getElementById('filtro-prodotto'); if (fp) fp.value = '';
   _filtroStatoOrdine = null;
   document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
   loadOrdini();
@@ -41,11 +52,26 @@ async function loadOrdini() {
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
   _initOrdiniDates();
-  const da      = document.getElementById('filtro-da')?.value;
-  const a       = document.getElementById('filtro-a')?.value;
-  const cliente = document.getElementById('filtro-cliente')?.value?.trim();
+  const da       = document.getElementById('filtro-da')?.value;
+  const a        = document.getElementById('filtro-a')?.value;
+  const cliente  = document.getElementById('filtro-cliente')?.value?.trim();
+  const prodotto = document.getElementById('filtro-prodotto')?.value?.trim();
 
   try {
+    // Pre-query prodotto: trova i numero_ordine che contengono l'articolo cercato
+    let ordiniNums = null;
+    if (prodotto) {
+      const { data: righe } = await sb.from('righe_ordine')
+        .select('numero_ordine')
+        .or(`codice_articolo.ilike.%${prodotto}%,descrizione_articolo.ilike.%${prodotto}%`);
+      ordiniNums = [...new Set((righe || []).map(r => r.numero_ordine).filter(Boolean))];
+      if (!ordiniNums.length) {
+        countEl.textContent = 0;
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun ordine trovato</td></tr>';
+        return;
+      }
+    }
+
     let q = sb.from('ordini')
       .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
       .order('data_ordine', { ascending: false });
@@ -53,6 +79,7 @@ async function loadOrdini() {
     if (da)                 q = q.gte('data_ordine', da);
     if (a)                  q = q.lte('data_ordine', a);
     if (cliente)            q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%,numero_ordine.ilike.%${cliente}%`);
+    if (ordiniNums)         q = q.in('numero_ordine', ordiniNums);
     if (_filtroStatoOrdine) q = q.eq('stato', _filtroStatoOrdine);
 
     const { data, error } = await q;
@@ -65,13 +92,21 @@ async function loadOrdini() {
       return;
     }
 
+    // Fallback nome cliente per ordini senza destinazione_ragione_sociale
+    const nullCodes = [...new Set((data).filter(o => !o.destinazione_ragione_sociale).map(o => o.codice_cliente).filter(Boolean))];
+    let nomeFallback = {};
+    if (nullCodes.length) {
+      const { data: cli } = await sb.from('clienti').select('codice_cliente, ragione_sociale').in('codice_cliente', nullCodes);
+      nomeFallback = Object.fromEntries((cli || []).map(c => [c.codice_cliente, c.ragione_sociale]));
+    }
+
     tbody.innerHTML = data.map(o => `
       <tr class="ordine-row" onclick="toggleRighe('${o.id}','${o.numero_ordine}',this)">
         <td><button class="expand-btn" id="expand-${o.id}">▶</button></td>
         <td><strong>${o.numero_ordine || '—'}</strong></td>
         <td>${fmtDate(o.data_ordine)}</td>
         <td>${o.codice_cliente || '—'}</td>
-        <td><span class="ord-cliente-link" onclick="event.stopPropagation();apriClienteDaDashboard('${o.codice_cliente||''}')">${o.destinazione_ragione_sociale || '—'}</span></td>
+        <td><span class="ord-cliente-link" onclick="event.stopPropagation();apriClienteDaDashboard('${o.codice_cliente||''}')">${o.destinazione_ragione_sociale || nomeFallback[o.codice_cliente] || '—'}</span></td>
         <td>${o.tipo_ordine || '—'}</td>
         <td class="num-right"><strong>€${fmt(o.totale_ordine)}</strong></td>
         <td>${statoBadgeOrdine(o.stato)}</td>
@@ -185,7 +220,8 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
     const _noDdtHtml = (() => {
       const primaData = (data || []).filter(r => r.data_consegna_prevista).map(r => r.data_consegna_prevista).sort()[0];
       if (!primaData) return '';
-      return `<div class="spedizioni-bar"><div class="spedizione-chip"><div class="sped-meta"><strong class="sped-ddt" style="color:var(--text2);">Nessun DDT</strong></div><div class="sped-status"><span class="eta-chip eta-future">Arrivo prev. ${fmtDate(primaData)}</span></div></div></div>`;
+      const noDdtLate = new Date(primaData).setHours(0,0,0,0) < now;
+      return `<div class="spedizioni-bar"><div class="spedizione-chip"><div class="sped-meta"><strong class="sped-ddt" style="color:var(--text2);">Nessun DDT</strong></div><div class="sped-status"><span class="eta-chip ${noDdtLate ? 'eta-late' : 'eta-future'}">${noDdtLate ? '⚠ Ritardo · ' : 'Arrivo prev. '}${fmtDate(primaData)}</span></div></div></div>`;
     })();
     const spedizioniHTML = ddts.length ? `
       <div class="spedizioni-bar">
@@ -201,8 +237,9 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             const quando = d.data_consegna_effettiva || d.eta_shippeo;
             statusHTML = `<span class="badge badge-green">✓ ${statoLabel || 'Consegnato'}${quando ? ' · ' + fmtDate(quando) : ''}</span>`;
           } else if (d.shippeo_url) {
+            const etaLate = etaOk && !etaFutura;
             const etaChip = etaOk
-              ? `<span class="eta-chip eta-future">Arr. ${fmtDate(d.eta_shippeo)}</span>`
+              ? `<span class="eta-chip ${etaLate ? 'eta-late' : 'eta-future'}">${etaLate ? '⚠ Ritardo · ' : 'Arr. '}${fmtDate(d.eta_shippeo)}</span>`
               : '';
             const statoChip = statoLabel
               ? `<span class="badge badge-blue" style="font-size:11px;">${statoLabel}</span>`
@@ -244,6 +281,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
       return;
     }
 
+    const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
     inner.innerHTML = spedizioniHTML + `
       <table class="righe-table">
         <thead><tr>
@@ -298,7 +336,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             <td style="color:var(--text2);font-size:12px;">${sconti || '—'}</td>
             <td class="num-right">${nettoCell}</td>
             <td class="num-right"><strong>€${fmt(r.importo_eur)}</strong></td>
-            <td>${fmtDate(dataConsegna)}</td>
+            <td style="${dataConsegna && rowCls !== 'riga-consegnata' && new Date(dataConsegna) < oggi ? 'color:#e53935;font-weight:600' : ''}">${fmtDate(dataConsegna)}</td>
             <td>${shippeoCell}</td>
           </tr>`;
         }).join('')}

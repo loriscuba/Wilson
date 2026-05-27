@@ -1,9 +1,46 @@
+// ── Impostazioni → Token GitHub ───────────────────────────────────────────────
+
+function _renderTokenSection() {
+  const root = document.getElementById('cfg-token-root');
+  if (!root) return;
+  const saved = localStorage.getItem('github_token') || '';
+  root.innerHTML = `
+    <p class="b-sec" style="margin-top:0">token github — aggiorna dati</p>
+    <div class="b-panel" style="padding:1rem 1.25rem;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:220px">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.06em">
+          Personal Access Token (scope: workflow)
+        </label>
+        <input type="password" id="cfg-github-token" class="filter-input" style="width:100%;font-family:monospace"
+          value="${saved}" placeholder="ghp_…">
+      </div>
+      <button class="btn-nuova-stat" onclick="salvaGithubToken()" style="flex-shrink:0">
+        Salva token
+      </button>
+      <span id="cfg-token-status" style="font-size:13px;color:var(--text2);align-self:center">
+        ${saved ? '✓ Token configurato' : '— Non configurato'}
+      </span>
+    </div>`;
+}
+
+function salvaGithubToken() {
+  const val = document.getElementById('cfg-github-token')?.value.trim() || '';
+  if (val) {
+    localStorage.setItem('github_token', val);
+  } else {
+    localStorage.removeItem('github_token');
+  }
+  const status = document.getElementById('cfg-token-status');
+  if (status) status.textContent = val ? '✓ Salvato' : '— Rimosso';
+}
+
 // ── Impostazioni → Gestione clienti ──────────────────────────────────────────
 
 let _cfgRows  = [];
 let _cfgQuery = '';
 
 async function loadImpostazioni() {
+  _renderTokenSection();
   const root = document.getElementById('cfg-clienti-root');
   if (!root) return;
   root.innerHTML = '<div class="loading">Caricamento…</div>';
@@ -16,41 +53,63 @@ async function loadImpostazioni() {
         .eq('data_aggiornamento', await getLatestRollingDate())
         .order('ragione_sociale'),
       sb.from('clienti_config').select('codice_cliente, ragione_sociale, attivo, note, ordina_di_persona'),
-      sb.from('clienti').select('codice_cliente, attivo'),
+      sb.from('clienti').select('codice_cliente, ragione_sociale, citta, attivo'),
     ]);
 
     const cfgMap = Object.fromEntries(
       (cfgRes.data || []).map(r => [String(r.codice_cliente), r])
     );
-    const clientiAttivoMap = Object.fromEntries(
-      (clientiRes.data || []).map(r => [String(r.codice_cliente), r.attivo])
+    const clientiMap = Object.fromEntries(
+      (clientiRes.data || []).map(r => [String(r.codice_cliente), r])
     );
 
-    // Merge: rolling + config (clienti solo in config ma non più nel rolling)
+    const rollingCodes = new Set((rollingRes.data || []).map(r => String(r.codice_cliente)));
+    const cfgCodes     = new Set((cfgRes.data || []).map(r => String(r.codice_cliente)));
+
+    // Merge: rolling + config-only + clienti-only (non in rolling né in config)
     const onlyCfg = (cfgRes.data || [])
-      .filter(r => !(rollingRes.data || []).some(x => String(x.codice_cliente) === String(r.codice_cliente)));
+      .filter(r => !rollingCodes.has(String(r.codice_cliente)));
+
+    const onlyClienti = (clientiRes.data || [])
+      .filter(r => !rollingCodes.has(String(r.codice_cliente)) && !cfgCodes.has(String(r.codice_cliente)));
 
     _cfgRows = [
       ...(rollingRes.data || []).map(r => {
         const cfg = cfgMap[String(r.codice_cliente)];
+        const cli = clientiMap[String(r.codice_cliente)];
         return {
           codice:           String(r.codice_cliente),
           nome:             cfg?.ragione_sociale || r.ragione_sociale || '—',
+          citta:            cli?.citta || '—',
           attivo:           cfg ? cfg.attivo : true,
           note:             cfg?.note || '',
           ordinaDiPersona:  cfg?.ordina_di_persona || false,
           inCfg:            !!cfg,
-          anagraficaAttiva: clientiAttivoMap[String(r.codice_cliente)] ?? true,
+          anagraficaAttiva: cli ? cli.attivo : true,
         };
       }),
-      ...onlyCfg.map(r => ({
+      ...onlyCfg.map(r => {
+        const cli = clientiMap[String(r.codice_cliente)];
+        return {
+          codice:           String(r.codice_cliente),
+          nome:             r.ragione_sociale || '—',
+          citta:            cli?.citta || '—',
+          attivo:           r.attivo,
+          note:             r.note || '',
+          ordinaDiPersona:  r.ordina_di_persona || false,
+          inCfg:            true,
+          anagraficaAttiva: cli ? cli.attivo : true,
+        };
+      }),
+      ...onlyClienti.map(r => ({
         codice:           String(r.codice_cliente),
         nome:             r.ragione_sociale || '—',
-        attivo:           r.attivo,
-        note:             r.note || '',
-        ordinaDiPersona:  r.ordina_di_persona || false,
-        inCfg:            true,
-        anagraficaAttiva: clientiAttivoMap[String(r.codice_cliente)] ?? true,
+        citta:            r.citta || '—',
+        attivo:           true,
+        note:             '',
+        ordinaDiPersona:  false,
+        inCfg:            false,
+        anagraficaAttiva: r.attivo,
       })),
     ];
 
@@ -82,6 +141,7 @@ function _renderImpostazioni(root) {
         <thead><tr>
           <th>Codice</th>
           <th>Ragione sociale</th>
+          <th>Città</th>
           <th style="text-align:center">Visibile</th>
           <th style="text-align:center">Dashboard</th>
           <th style="text-align:center">Di persona</th>
@@ -102,7 +162,7 @@ function _renderCfgRows() {
     : _cfgRows;
 
   if (!visible.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
     return;
   }
 
@@ -110,6 +170,7 @@ function _renderCfgRows() {
     <tr class="${!r.anagraficaAttiva ? 'cfg-row-off' : !r.attivo ? 'cfg-row-nodash' : ''}">
       <td style="font-size:12px;color:var(--text2)">${r.codice}</td>
       <td>${r.nome}</td>
+      <td style="font-size:12px;color:var(--text2)">${r.citta}</td>
       <td style="text-align:center">
         <label class="cfg-toggle" title="${r.anagraficaAttiva ? 'Visibile in Clienti — clicca per disattivare' : 'Disattivato — clicca per riattivare'}">
           <input type="checkbox" ${r.anagraficaAttiva ? 'checked' : ''}
