@@ -1,5 +1,6 @@
 let _ordiniDebounceTimer = null;
 let _filtroStatoOrdine  = null;
+let _skipInitDates      = false;
 
 function debounceOrdini() {
   clearTimeout(_ordiniDebounceTimer);
@@ -7,6 +8,7 @@ function debounceOrdini() {
 }
 
 function _initOrdiniDates() {
+  if (_skipInitDates) { _skipInitDates = false; return; }
   const da = document.getElementById('filtro-da');
   const a  = document.getElementById('filtro-a');
   if (!da || !a) return;
@@ -43,6 +45,7 @@ function azzeraFiltriOrdini() {
   const fp = document.getElementById('filtro-prodotto'); if (fp) fp.value = '';
   _filtroStatoOrdine = null;
   document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
+  _skipInitDates = true;
   loadOrdini();
 }
 
