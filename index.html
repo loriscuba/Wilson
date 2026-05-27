@@ -1092,7 +1092,7 @@
                     <input class="filter-input" type="date" id="filtro-a" oninput="loadOrdini()">
                     <div class="filter-sep"></div>
                     <label>Cliente</label>
-                    <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="onFiltroClienteOrdini()">
+                    <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="document.getElementById('filtro-da').value='';document.getElementById('filtro-a').value='';debounceOrdini()">
                     <div class="filter-sep"></div>
                     <label>Prodotto</label>
                     <input class="filter-input" type="text" id="filtro-prodotto" placeholder="Codice o descrizione…" oninput="debounceOrdini()">
