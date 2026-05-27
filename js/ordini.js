@@ -36,14 +36,10 @@ function resetFiltriOrdini() {
   loadOrdini();
 }
 
-function azzeraFiltriOrdini() {
-  document.getElementById('filtro-da').value       = '';
-  document.getElementById('filtro-a').value        = '';
-  document.getElementById('filtro-cliente').value  = '';
-  const fp = document.getElementById('filtro-prodotto'); if (fp) fp.value = '';
-  _filtroStatoOrdine = null;
-  document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
-  loadOrdini();
+function onFiltroClienteOrdini() {
+  document.getElementById('filtro-da').value = '';
+  document.getElementById('filtro-a').value  = '';
+  debounceOrdini();
 }
 
 async function loadOrdini() {

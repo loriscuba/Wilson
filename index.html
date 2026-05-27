@@ -1092,13 +1092,12 @@
                     <input class="filter-input" type="date" id="filtro-a" oninput="loadOrdini()">
                     <div class="filter-sep"></div>
                     <label>Cliente</label>
-                    <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="debounceOrdini()">
+                    <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="onFiltroClienteOrdini()">
                     <div class="filter-sep"></div>
                     <label>Prodotto</label>
                     <input class="filter-input" type="text" id="filtro-prodotto" placeholder="Codice o descrizione…" oninput="debounceOrdini()">
                     <div class="filter-sep"></div>
                     <button class="filter-reset" onclick="resetFiltriOrdini()">↺ Mese</button>
-                    <button class="filter-reset" onclick="azzeraFiltriOrdini()">✕ Azzera</button>
                 </div>
                 <div class="filter-bar" style="padding-top:0;gap:6px;flex-wrap:wrap;">
                     <button class="ord-stato-chip on"  data-stato=""                    onclick="setFiltroStatoOrdine('')">Tutti</button>
@@ -1311,7 +1310,7 @@
     <script src="js/analytics.js?v=13"></script>
     <script src="js/dashboard.js?v=18"></script>
     <script src="js/clienti.js?v=19"></script>
-    <script src="js/ordini.js?v=21"></script>
+    <script src="js/ordini.js?v=22"></script>
     <script src="js/ddt.js?v=15"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=5"></script>
