@@ -25,7 +25,7 @@ async function loadDashboard() {
       loadRollingEnriched(),
       sb.from('ordini').select('totale_ordine, data_ordine')
         .gte('data_ordine', startMese).lte('data_ordine', endMese),
-      sb.from('ddt').select('stato, eta_shippeo').neq('stato', 'consegnato'),
+      sb.from('ddt').select('stato, stato_shippeo, eta_shippeo').neq('stato', 'consegnato'),
       sb.from('cedi_ridistribuito')
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
         .order('data_aggiornamento', { ascending: false })
@@ -49,8 +49,9 @@ async function loadDashboard() {
     const ordiniCount      = ordiniData?.length || 0;
     const ordiniValue      = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
     const todayMs          = new Date().setHours(0, 0, 0, 0);
-    const ddtCount         = (ddtData || []).filter(d => d.stato === 'spedito').length;
-    const ddtRitardoCount  = (ddtData || []).filter(d => d.eta_shippeo && new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs).length;
+    const _ddtNonConsegnati = (ddtData || []).filter(d => !(d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery')));
+    const ddtCount         = _ddtNonConsegnati.filter(d => d.stato === 'spedito').length;
+    const ddtRitardoCount  = _ddtNonConsegnati.filter(d => d.eta_shippeo && new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs).length;
     // Solo l'ultimo import CEDI (filtra per la data_aggiornamento più recente)
     const allCedi     = cediData || [];
     const cediDate    = allCedi.length ? allCedi[0].data_aggiornamento : '';

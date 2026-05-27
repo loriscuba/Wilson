@@ -7,7 +7,7 @@ async function loadDDT() {
   try {
     const [{ data, error }, { data: clientiRaw }] = await Promise.all([
       sb.from('ddt')
-        .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, shippeo_url, eta_shippeo, data_consegna_effettiva')
+        .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, stato_shippeo, shippeo_url, eta_shippeo, data_consegna_effettiva')
         .order('data_ddt', { ascending: false }),
       sb.from('clienti').select('codice_cliente, ragione_sociale').eq('attivo', true),
     ]);
@@ -24,7 +24,9 @@ async function loadDDT() {
 
     tbody.innerHTML = data.map(d => {
       let statoBadge;
-      if (d.stato === 'consegnato') {
+      const isConsegnato = d.stato === 'consegnato' ||
+        (d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery'));
+      if (isConsegnato) {
         const dt = d.data_consegna_effettiva ? ' · ' + fmtDate(d.data_consegna_effettiva) : '';
         statoBadge = `<span class="badge badge-green">✓ Consegnato${dt}</span>`;
       } else if (d.eta_shippeo) {
