@@ -392,6 +392,10 @@ async function loadBudgetClienti() {
   if (!root) return;
   root.innerHTML = '<div class="loading">Caricamento clienti…</div>';
   try {
+    // Forza sempre dati freschi: la data più recente potrebbe essere cambiata
+    // se è stato importato un nuovo file rolling durante la sessione.
+    _latestRollingDate = null;
+    _rollingEnriched   = null;
     const rows = await loadRollingEnriched();
     if (!rows.length) {
       root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun dato rolling disponibile.</p>';

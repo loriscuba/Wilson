@@ -298,6 +298,10 @@ async function refreshClienteDetail(codice, nome) {
   const inner = document.getElementById('cdetail-' + codice);
   if (!inner) return;
   delete inner.dataset.loaded;
+  // Resetta anche la cache della data rolling: se è stato importato un nuovo file
+  // durante la sessione, getLatestRollingDate() deve rileggere la data più recente.
+  _latestRollingDate = null;
+  _rollingEnriched   = null;
   inner.innerHTML = '<div class="loading" style="padding:16px 0">Aggiornamento…</div>';
   await loadClienteDetail(codice, nome, inner);
 }
