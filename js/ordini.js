@@ -68,7 +68,7 @@ async function loadOrdini() {
     }
 
     let q = sb.from('ordini')
-      .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
+      .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, importo_totale, stato')
       .order('data_ordine', { ascending: false });
 
     if (da)                 q = q.gte('data_ordine', da);
@@ -103,7 +103,7 @@ async function loadOrdini() {
         <td>${o.codice_cliente || '—'}</td>
         <td><span class="ord-cliente-link" onclick="event.stopPropagation();apriClienteDaDashboard('${o.codice_cliente||''}')">${o.destinazione_ragione_sociale || nomeFallback[o.codice_cliente] || '—'}</span></td>
         <td>${o.tipo_ordine || '—'}</td>
-        <td class="num-right"><strong>€${fmt(o.totale_ordine)}</strong></td>
+        <td class="num-right"><strong>€${fmt(o.importo_totale)}</strong></td>
         <td>${statoBadgeOrdine(o.stato)}</td>
       </tr>
       <tr class="righe-row" id="righe-${o.id}">
