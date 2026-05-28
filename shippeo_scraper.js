@@ -90,10 +90,9 @@ function findField(obj, keys, depth = 0) {
     return null;
 }
 
-// Tenta di leggere lo stato direttamente dalle API Shippeo senza browser.
-// Ritorna { status, etaRaw, deliveredAt } solo se la consegna è confermata
-// (status 'delivery*' O data effettiva nel passato); altrimenti { _partial: true, etaRaw }
-// per passare l'ETA a Puppeteer senza saltare il controllo testo pagina.
+// Usa le API Shippeo senza browser solo per recuperare l'ETA.
+// NON conferma mai la consegna: 'deliveryCompliant' può riferirsi a stop
+// intermedi (hub, carico) e non alla consegna finale al cliente.
 async function tryDirectApi(token) {
     const endpoints = [
         `https://view.shippeo.com/api/road/orderPublic/${token}`,
@@ -111,29 +110,10 @@ async function tryDirectApi(token) {
             const ct = res.headers.get('content-type') || '';
             if (!ct.includes('json')) continue;
             const body = await res.json();
-            const sRaw = body?.status?.currentStatus || body?.currentStatus ||
-                         (typeof body?.status === 'string' ? body.status : null);
-            const s = (sRaw && sRaw.toLowerCase() !== 'status') ? sRaw : null;
-            // Solo campi che indicano data effettiva di consegna (NON planned/estimated)
-            const da  = findField(body, ['occurredon','deliveredat','actualdelivery']);
             const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
                         etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
-
-            // Consegna confermata: status 'delivery*' oppure data effettiva nel passato
-            const daIsActual = da && !isNaN(new Date(da)) && new Date(da) < new Date();
-            const deliveryConfirmed = (s && s.toLowerCase().startsWith('delivery')) || daIsActual;
-
-            if (deliveryConfirmed) {
-                const statusFinal = daIsActual && !s?.toLowerCase().startsWith('delivery')
-                    ? 'deliveryCompliant' : s;
-                console.log(`  [direct-api] CONFERMATO ${url} → status=${statusFinal} deliveredAt=${da}`);
-                return { status: statusFinal, etaRaw: eta, deliveredAt: da };
-            }
-
-            // Status non-delivery (transit/exception/loading…): passa solo l'ETA
-            // Puppeteer verificherà il testo pagina per rilevare consegne non ancora agganciate
-            if (s || eta) {
-                console.log(`  [direct-api] parziale ${url} → status=${s} eta=${eta}`);
+            if (eta) {
+                console.log(`  [direct-api] eta=${eta}`);
                 return { _partial: true, etaRaw: eta };
             }
         } catch (_) {}
@@ -212,9 +192,8 @@ async function getShippeoData(rawUrl) {
         if (eta && !etaRaw) etaRaw = eta;
     }
 
-    // deliveredAt da API Puppeteer: valida solo se data nel passato
-    const daIsActual = deliveredAt && !isNaN(new Date(deliveredAt)) && new Date(deliveredAt) < new Date();
-    if (daIsActual) status = 'deliveryCompliant';
+    // Non usiamo deliveredAt dalle API catturate per forzare lo status:
+    // può venire da stop intermedi. Solo il testo pagina è affidabile.
 
     // Analisi testo pagina: sempre eseguita
     const t  = pageText;
