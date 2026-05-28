@@ -30,17 +30,29 @@ async function loadDDT() {
   }
 }
 
+function _isRitardo(d, todayMs) {
+  const isConsegnato = d.stato === 'consegnato' ||
+    (d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery'));
+  return !isConsegnato && d.eta_shippeo &&
+    new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs;
+}
+
 function _renderDDTFiltri() {
-  const bar = document.getElementById('ddt-filter-bar');
+  const bar     = document.getElementById('ddt-filter-bar');
   if (!bar) return;
 
-  const stati = [...new Set(_ddtRows.map(r => r.stato).filter(Boolean))].sort();
+  const todayMs = new Date().setHours(0, 0, 0, 0);
+  const stati   = [...new Set(_ddtRows.map(r => r.stato).filter(Boolean))].sort();
   if (!stati.length) { bar.innerHTML = ''; return; }
 
-  const chips = ['tutti', ...stati].map(s => {
+  const ritardoCount = _ddtRows.filter(r => _isRitardo(r, todayMs)).length;
+
+  const allKeys = ['tutti', ...stati, ...(ritardoCount > 0 ? ['in_ritardo'] : [])];
+  const chips = allKeys.map(s => {
     const active = (s === 'tutti' && !_ddtFilter) || s === _ddtFilter;
-    const label  = s === 'tutti' ? 'Tutti' : _labelStato(s);
-    return `<button class="ddt-chip${active ? ' active' : ''}" onclick="filtraDDT(${s === 'tutti' ? 'null' : `'${s}'`})">${label}</button>`;
+    const label  = s === 'tutti' ? 'Tutti' : s === 'in_ritardo' ? `⚠ In ritardo (${ritardoCount})` : _labelStato(s);
+    const style  = s === 'in_ritardo' && !active ? ' style="color:#C84B2F;border-color:#C84B2F40;"' : '';
+    return `<button class="ddt-chip${active ? ' active' : ''}"${style} onclick="filtraDDT(${s === 'tutti' ? 'null' : `'${s}'`})">${label}</button>`;
   }).join('');
 
   bar.innerHTML = chips;
@@ -62,7 +74,11 @@ function _renderDDTTabella(todayMs) {
   const tbody   = document.querySelector('#ddt-table tbody');
   const countEl = document.getElementById('ddt-count');
 
-  const rows = _ddtFilter ? _ddtRows.filter(r => r.stato === _ddtFilter) : _ddtRows;
+  const rows = !_ddtFilter
+    ? _ddtRows
+    : _ddtFilter === 'in_ritardo'
+      ? _ddtRows.filter(r => _isRitardo(r, todayMs))
+      : _ddtRows.filter(r => r.stato === _ddtFilter);
   countEl.textContent = rows.length;
 
   if (!rows.length) {
