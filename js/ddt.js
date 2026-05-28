@@ -1,6 +1,7 @@
-let _ddtRows    = [];
-let _ddtClienti = {};
-let _ddtFilter  = null;
+let _ddtRows          = [];
+let _ddtClienti       = {};
+let _ddtFilter        = null;
+let _pendingDDTFilter = null;
 
 async function loadDDT() {
   const tbody   = document.querySelector('#ddt-table tbody');
@@ -19,7 +20,8 @@ async function loadDDT() {
 
     _ddtClienti = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c.ragione_sociale]));
     _ddtRows    = data || [];
-    _ddtFilter  = null;
+    _ddtFilter  = _pendingDDTFilter;
+    _pendingDDTFilter = null;
 
     countEl.textContent = _ddtRows.length;
     _renderDDTFiltri();
@@ -28,6 +30,11 @@ async function loadDDT() {
     document.querySelector('#ddt-table tbody').innerHTML =
       `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
   }
+}
+
+function navToDDTFiltro(filtro) {
+  _pendingDDTFilter = filtro;
+  navToPage('ddt');
 }
 
 function _isRitardo(d, todayMs) {

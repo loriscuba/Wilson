@@ -107,7 +107,7 @@ async function loadDashboard() {
         <div class="kpi-value">${ddtCount}</div>
         <div class="kpi-sub">Stato: spedito</div>
       </div>
-      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" style="${ddtRitardoCount > 0 ? 'border-left:3px solid #C84B2F' : ''}">
+      <div class="kpi-card kpi-card-link" onclick="navToDDTFiltro('in_ritardo')" style="${ddtRitardoCount > 0 ? 'border-left:3px solid #C84B2F' : ''}">
         <h3>DDT in ritardo</h3>
         <div class="kpi-value" style="color:${ddtRitardoCount > 0 ? '#C84B2F' : 'var(--text2)'}">${ddtRitardoCount}</div>
         <div class="kpi-sub">ETA superata, non consegnato</div>
