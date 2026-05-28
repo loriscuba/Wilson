@@ -67,6 +67,8 @@ async function loadDashboard() {
     const varConsPct        = totMese25 > 0 ? ((totConsConCedi - totMese25) / totMese25) * 100 : null;
     const budgetOrdinatoPct = budget?.budget_mese > 0 ? (totOrdinato    / budget.budget_mese) * 100 : null;
     const budgetConsPct     = budget?.budget_mese > 0 ? (totConsConCedi / budget.budget_mese) * 100 : null;
+    const gapOrdinato       = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totOrdinato)    : null;
+    const gapCons           = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totConsConCedi) : null;
 
     kpiGrid.innerHTML = `
       <div class="kpi-card">
@@ -76,6 +78,7 @@ async function loadDashboard() {
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
           ${varOrdinatoPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varOrdinatoPct >= 0 ? '+' : ''}${varOrdinatoPct.toFixed(1)}% vs ${annoP}</span>` : ''}
           ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
+          ${gapOrdinato > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapOrdinato)} al budget</span>` : ''}
         </div>
       </div>
       <div class="kpi-card">
@@ -85,6 +88,7 @@ async function loadDashboard() {
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
           ${varConsPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varConsPct >= 0 ? '+' : ''}${varConsPct.toFixed(1)}% vs ${annoP}</span>` : ''}
           ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
+          ${gapCons > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapCons)} al budget</span>` : ''}
         </div>
       </div>
       <div class="kpi-card">
