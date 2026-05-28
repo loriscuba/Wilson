@@ -110,14 +110,15 @@ async function tryDirectApi(token) {
             const body = await res.json();
             const sRaw = body?.status?.currentStatus || body?.currentStatus ||
                          (typeof body?.status === 'string' ? body.status : null);
-            // Filtra valori bogus come la stringa letterale "status"
             const s = (sRaw && sRaw.toLowerCase() !== 'status') ? sRaw : null;
-            const da = findField(body, ['occurredon','deliveredat','actualdelivery']);
+            const da = findField(body, ['occurredon','deliveredat','actualdelivery','deliverydate']);
             const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
                         etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
-            if (s || eta) {
-                console.log(`  [direct-api] ${url} → status=${s} eta=${eta}`);
-                return { status: s, etaRaw: eta, deliveredAt: da };
+            if (s || eta || da) {
+                // Se c'è una data di consegna effettiva, il DDT è consegnato a prescindere dallo status
+                const statusFinal = da ? 'deliveryCompliant' : s;
+                console.log(`  [direct-api] ${url} → status=${statusFinal} eta=${eta} deliveredAt=${da}`);
+                return { status: statusFinal, etaRaw: eta, deliveredAt: da };
             }
         } catch (_) {}
     }
@@ -183,23 +184,24 @@ async function getShippeoData(rawUrl) {
     for (const { body } of captured) {
         const sRaw = body?.status?.currentStatus || body?.currentStatus ||
                      (typeof body?.status === 'string' ? body.status : null);
-        // Filtra il valore bogus "status" così i valori reali (loadingCompliant, deliveryCompliant…) prevalgono
         const s = (sRaw && sRaw.toLowerCase() !== 'status') ? sRaw : null;
         if (s && !status) status = s;
-        const da = findField(body, ['occurredon','deliveredat','actualdelivery','consegnato']);
+        const da = findField(body, ['occurredon','deliveredat','actualdelivery','deliverydate','consegnato']);
         if (da && !deliveredAt) deliveredAt = da;
         const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
                     etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
         if (eta && !etaRaw) etaRaw = eta;
     }
 
-    // Analisi testo pagina: sempre per ETA, solo per status quando bogus
+    // Se le API catturate hanno una data di consegna effettiva → consegnato (sovrascrive status)
+    if (deliveredAt) status = 'deliveryCompliant';
+
+    // Analisi testo pagina: sempre eseguita, i segnali di consegna sovrascrivono status non-delivery
     const t  = pageText;
     const tl = t.toLowerCase();
+    const alreadyDelivery = mapStatus(status) === 'consegnato';
 
-    // Status consegna dal testo pagina (solo quando API restituisce valore bogus/null)
-    const isBogus = !status || status.toLowerCase() === 'status';
-    if (isBogus) {
+    if (!alreadyDelivery) {
         // "Consegnato il 20 maggio" / "Consegnato il 20/05" / "Consegnato il 20/05/2026"
         const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
         if (consM) {
