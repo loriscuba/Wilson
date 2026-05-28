@@ -1,3 +1,7 @@
+let _ddtRows    = [];
+let _ddtClienti = {};
+let _ddtFilter  = null;
+
 async function loadDDT() {
   const tbody   = document.querySelector('#ddt-table tbody');
   const countEl = document.getElementById('ddt-count');
@@ -13,45 +17,86 @@ async function loadDDT() {
     ]);
     if (error) throw error;
 
-    const nomeCliente = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c.ragione_sociale]));
+    _ddtClienti = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c.ragione_sociale]));
+    _ddtRows    = data || [];
+    _ddtFilter  = null;
 
-    countEl.textContent = data?.length || 0;
-
-    if (!data?.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun DDT trovato</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = data.map(d => {
-      let statoBadge;
-      const isConsegnato = d.stato === 'consegnato' ||
-        (d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery'));
-      if (isConsegnato) {
-        const dt = d.data_consegna_effettiva ? ' · ' + fmtDate(d.data_consegna_effettiva) : '';
-        statoBadge = `<span class="badge badge-green">✓ Consegnato${dt}</span>`;
-      } else if (d.eta_shippeo) {
-        const isLate = new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs;
-        statoBadge = `<span class="eta-chip ${isLate ? 'eta-late' : 'eta-future'}">${isLate ? '⚠ Ritardo · ' : 'Arr. prev. '}${fmtDate(d.eta_shippeo)}</span>`;
-      } else {
-        statoBadge = statoBadgeOrdine(d.stato);
-      }
-      const nome = nomeCliente[d.codice_cliente] || d.codice_cliente || '—';
-      const ordineCell = d.numero_ordine
-        ? `<a class="ord-link" href="#" onclick="goToOrdineFromDDT('${d.numero_ordine}');return false;">${d.numero_ordine}</a>`
-        : '—';
-      return `
-      <tr>
-        <td><strong>${d.numero_consegna || '—'}</strong></td>
-        <td>${d.numero_ddt || '—'}</td>
-        <td>${fmtDate(d.data_ddt)}</td>
-        <td><span title="${d.codice_cliente || ''}">${nome}</span></td>
-        <td>${ordineCell}</td>
-        <td>${d.corriere || '—'}</td>
-        <td>${statoBadge}</td>
-        <td>${d.shippeo_url ? `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>` : '—'}</td>
-      </tr>`;
-    }).join('');
+    countEl.textContent = _ddtRows.length;
+    _renderDDTFiltri();
+    _renderDDTTabella(todayMs);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
+    document.querySelector('#ddt-table tbody').innerHTML =
+      `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
   }
+}
+
+function _renderDDTFiltri() {
+  const bar = document.getElementById('ddt-filter-bar');
+  if (!bar) return;
+
+  const stati = [...new Set(_ddtRows.map(r => r.stato).filter(Boolean))].sort();
+  if (!stati.length) { bar.innerHTML = ''; return; }
+
+  const chips = ['tutti', ...stati].map(s => {
+    const active = (s === 'tutti' && !_ddtFilter) || s === _ddtFilter;
+    const label  = s === 'tutti' ? 'Tutti' : _labelStato(s);
+    return `<button class="ddt-chip${active ? ' active' : ''}" onclick="filtraDDT(${s === 'tutti' ? 'null' : `'${s}'`})">${label}</button>`;
+  }).join('');
+
+  bar.innerHTML = chips;
+}
+
+function _labelStato(s) {
+  return { consegnato: 'Consegnato', spedito: 'Spedito', in_preparazione: 'In preparazione',
+           annullato: 'Annullato' }[s] || s.replace(/_/g, ' ');
+}
+
+function filtraDDT(stato) {
+  _ddtFilter = stato;
+  const todayMs = new Date().setHours(0, 0, 0, 0);
+  _renderDDTFiltri();
+  _renderDDTTabella(todayMs);
+}
+
+function _renderDDTTabella(todayMs) {
+  const tbody   = document.querySelector('#ddt-table tbody');
+  const countEl = document.getElementById('ddt-count');
+
+  const rows = _ddtFilter ? _ddtRows.filter(r => r.stato === _ddtFilter) : _ddtRows;
+  countEl.textContent = rows.length;
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun DDT trovato</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(d => {
+    let statoBadge;
+    const isConsegnato = d.stato === 'consegnato' ||
+      (d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery'));
+    if (isConsegnato) {
+      const dt = d.data_consegna_effettiva ? ' · ' + fmtDate(d.data_consegna_effettiva) : '';
+      statoBadge = `<span class="badge badge-green">✓ Consegnato${dt}</span>`;
+    } else if (d.eta_shippeo) {
+      const isLate = new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs;
+      statoBadge = `<span class="eta-chip ${isLate ? 'eta-late' : 'eta-future'}">${isLate ? '⚠ Ritardo · ' : 'Arr. prev. '}${fmtDate(d.eta_shippeo)}</span>`;
+    } else {
+      statoBadge = statoBadgeOrdine(d.stato);
+    }
+    const nome = _ddtClienti[d.codice_cliente] || d.codice_cliente || '—';
+    const ordineCell = d.numero_ordine
+      ? `<a class="ord-link" href="#" onclick="goToOrdineFromDDT('${d.numero_ordine}');return false;">${d.numero_ordine}</a>`
+      : '—';
+    return `
+    <tr>
+      <td><strong>${d.numero_consegna || '—'}</strong></td>
+      <td>${d.numero_ddt || '—'}</td>
+      <td>${fmtDate(d.data_ddt)}</td>
+      <td><span title="${d.codice_cliente || ''}">${nome}</span></td>
+      <td>${ordineCell}</td>
+      <td>${d.corriere || '—'}</td>
+      <td>${statoBadge}</td>
+      <td>${d.shippeo_url ? `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>` : '—'}</td>
+    </tr>`;
+  }).join('');
 }
