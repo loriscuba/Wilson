@@ -222,16 +222,15 @@ async function getShippeoData(rawUrl) {
     const alreadyDelivery = status && status.toLowerCase().startsWith('delivery');
 
     if (!alreadyDelivery) {
-        // "Consegnato il 20 maggio" / "Consegnato il 20/05" — pattern specifico con data
-        const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
-        if (consM) {
+        // Cerca "Consegnato DD/MM/YYYY • HH:MM" con orario NON 00:00
+        // (00:00 = orario pianificato/slot, non consegna effettiva; gli hub usano lo stesso label)
+        const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})\s*[•·]?\s*(\d{2}:\d{2})/i);
+        if (consM && consM[2] !== '00:00') {
             status = 'deliveryCompliant';
             // La data dal testo pagina sovrascrive sempre quella API (che può venire da stop sbagliato)
             deliveredAt = parseDataIT(consM[1].trim());
-        } else if (
-            tl.includes('consegnato') || tl.includes('consegnata') ||
-            tl.includes('delivery compliant')  // label Shippeo esplicita
-        ) {
+        } else if (tl.includes('delivery compliant')) {
+            // Label Shippeo esplicita nella pagina (es. status chip)
             status = 'deliveryCompliant';
         }
     }
