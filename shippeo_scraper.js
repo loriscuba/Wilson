@@ -90,7 +90,10 @@ function findField(obj, keys, depth = 0) {
     return null;
 }
 
-// Tenta di leggere lo stato direttamente dalle API Shippeo senza browser
+// Tenta di leggere lo stato direttamente dalle API Shippeo senza browser.
+// Ritorna { status, etaRaw, deliveredAt } solo se la consegna è confermata
+// (status 'delivery*' O data effettiva nel passato); altrimenti { _partial: true, etaRaw }
+// per passare l'ETA a Puppeteer senza saltare il controllo testo pagina.
 async function tryDirectApi(token) {
     const endpoints = [
         `https://view.shippeo.com/api/road/orderPublic/${token}`,
@@ -111,14 +114,27 @@ async function tryDirectApi(token) {
             const sRaw = body?.status?.currentStatus || body?.currentStatus ||
                          (typeof body?.status === 'string' ? body.status : null);
             const s = (sRaw && sRaw.toLowerCase() !== 'status') ? sRaw : null;
-            const da = findField(body, ['occurredon','deliveredat','actualdelivery','deliverydate']);
+            // Solo campi che indicano data effettiva di consegna (NON planned/estimated)
+            const da  = findField(body, ['occurredon','deliveredat','actualdelivery']);
             const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
                         etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
-            if (s || eta || da) {
-                // Se c'è una data di consegna effettiva, il DDT è consegnato a prescindere dallo status
-                const statusFinal = da ? 'deliveryCompliant' : s;
-                console.log(`  [direct-api] ${url} → status=${statusFinal} eta=${eta} deliveredAt=${da}`);
+
+            // Consegna confermata: status 'delivery*' oppure data effettiva nel passato
+            const daIsActual = da && !isNaN(new Date(da)) && new Date(da) < new Date();
+            const deliveryConfirmed = (s && s.toLowerCase().startsWith('delivery')) || daIsActual;
+
+            if (deliveryConfirmed) {
+                const statusFinal = daIsActual && !s?.toLowerCase().startsWith('delivery')
+                    ? 'deliveryCompliant' : s;
+                console.log(`  [direct-api] CONFERMATO ${url} → status=${statusFinal} deliveredAt=${da}`);
                 return { status: statusFinal, etaRaw: eta, deliveredAt: da };
+            }
+
+            // Status non-delivery (transit/exception/loading…): passa solo l'ETA
+            // Puppeteer verificherà il testo pagina per rilevare consegne non ancora agganciate
+            if (s || eta) {
+                console.log(`  [direct-api] parziale ${url} → status=${s} eta=${eta}`);
+                return { _partial: true, etaRaw: eta };
             }
         } catch (_) {}
     }
@@ -130,13 +146,15 @@ async function getShippeoData(rawUrl) {
     const token = extractToken(rawUrl);
     console.log(`  [url] ${shippeoUrl}`);
 
-    // Prova prima senza browser (più veloce, aggira Cloudflare per alcune rotte)
+    let partialEta = null;
+
     if (token) {
         const direct = await tryDirectApi(token);
-        if (direct) return direct;
+        if (direct && !direct._partial) return direct;   // consegna confermata → salta Puppeteer
+        if (direct?._partial && direct.etaRaw) partialEta = direct.etaRaw;  // salva ETA per dopo
     }
 
-    // Fallback: Puppeteer con stealth
+    // Puppeteer: gira sempre per DDT non ancora confermati consegnati
     let puppeteer;
     try {
         const extra = require('puppeteer-extra');
@@ -186,34 +204,38 @@ async function getShippeoData(rawUrl) {
                      (typeof body?.status === 'string' ? body.status : null);
         const s = (sRaw && sRaw.toLowerCase() !== 'status') ? sRaw : null;
         if (s && !status) status = s;
-        const da = findField(body, ['occurredon','deliveredat','actualdelivery','deliverydate','consegnato']);
+        // Solo campi di data effettiva (non planned/estimated)
+        const da = findField(body, ['occurredon','deliveredat','actualdelivery']);
         if (da && !deliveredAt) deliveredAt = da;
         const eta = findField(body, ['estimateddelivery','estimatedarrival','eta','planned']) ||
                     etaDaStops(body?.stops) || etaDaStops(body?.order?.stops);
         if (eta && !etaRaw) etaRaw = eta;
     }
 
-    // Se le API catturate hanno una data di consegna effettiva → consegnato (sovrascrive status)
-    if (deliveredAt) status = 'deliveryCompliant';
+    // deliveredAt da API Puppeteer: valida solo se data nel passato
+    const daIsActual = deliveredAt && !isNaN(new Date(deliveredAt)) && new Date(deliveredAt) < new Date();
+    if (daIsActual) status = 'deliveryCompliant';
 
-    // Analisi testo pagina: sempre eseguita, i segnali di consegna sovrascrivono status non-delivery
+    // Analisi testo pagina: sempre eseguita
     const t  = pageText;
     const tl = t.toLowerCase();
-    const alreadyDelivery = mapStatus(status) === 'consegnato';
+    const alreadyDelivery = status && status.toLowerCase().startsWith('delivery');
 
     if (!alreadyDelivery) {
-        // "Consegnato il 20 maggio" / "Consegnato il 20/05" / "Consegnato il 20/05/2026"
+        // "Consegnato il 20 maggio" / "Consegnato il 20/05" — pattern specifico con data
         const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
         if (consM) {
             status = 'deliveryCompliant';
             if (!deliveredAt) deliveredAt = parseDataIT(consM[1].trim());
-        } else if (tl.includes('consegnat') || tl.includes('delivered') ||
-                   tl.includes('delivery compliant') || tl.includes('delivery late')) {
+        } else if (
+            tl.includes('consegnato') || tl.includes('consegnata') ||
+            tl.includes('delivery compliant')  // label Shippeo esplicita
+        ) {
             status = 'deliveryCompliant';
         }
     }
 
-    // ETA dal blocco "Delivery: MM/DD/YYYY" nella pagina (sempre affidabile, sovrascrive data carico API)
+    // ETA dal blocco "Delivery: MM/DD/YYYY" nella pagina
     const delivPageM = t.match(/\bDelivery[:\s]+(\d{2}\/\d{2}\/\d{4})/i);
     if (delivPageM) {
         const [mm, dd, yyyy] = delivPageM[1].split('/');
@@ -225,6 +247,9 @@ async function getShippeoData(rawUrl) {
         const etaM = t.match(/(?:prevista?|stimata?|estimated?)\s*(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
         if (etaM) etaRaw = parseDataIT(etaM[1].trim());
     }
+
+    // Usa l'ETA dalla direct API se Puppeteer non ne ha trovata una
+    if (!etaRaw && partialEta) etaRaw = partialEta;
 
     if (process.env.DEBUG) {
         console.log(`  [pageText excerpt] ${t.slice(0, 300)}`);
