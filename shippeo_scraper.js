@@ -226,7 +226,8 @@ async function getShippeoData(rawUrl) {
         const consM = t.match(/consegnat\w{0,3}\s+(?:il\s+)?(\d{1,2}[\s\/\.](?:[a-z]+|\d{2})[\s\/\.]?\d{0,4})/i);
         if (consM) {
             status = 'deliveryCompliant';
-            if (!deliveredAt) deliveredAt = parseDataIT(consM[1].trim());
+            // La data dal testo pagina sovrascrive sempre quella API (che può venire da stop sbagliato)
+            deliveredAt = parseDataIT(consM[1].trim());
         } else if (
             tl.includes('consegnato') || tl.includes('consegnata') ||
             tl.includes('delivery compliant')  // label Shippeo esplicita
