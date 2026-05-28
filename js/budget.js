@@ -328,6 +328,9 @@ function _renderBudgetMensile(root) {
   const evaso         = (b.evaso            || 0) + cediAdd;
   const evasoOrdinato = (b.evaso_ordinato_resi || 0) + cediAdd;
 
+  const deltaEur = b.budget_mese > 0 ? evasoOrdinato - b.budget_mese : b.delta_mese_eur;
+  const deltaPct = b.budget_mese > 0 ? (evasoOrdinato - b.budget_mese) / b.budget_mese * 100 : b.delta_mese_pct;
+
   const cediBtn = _bmCedi > 0
     ? `<button onclick="toggleCediMensile()" style="
         margin-left:auto;padding:3px 10px;border-radius:20px;border:1px solid;cursor:pointer;font-size:12px;font-weight:500;
@@ -372,7 +375,7 @@ function _renderBudgetMensile(root) {
         <div style="margin-bottom:10px"></div>
         <div class="b-prow"><span class="b-prow-label">consegnato + ordinato – resi${_bmCediOn ? ' <span style="color:#2D7D4F;font-size:11px">+CEDI</span>' : ''}</span><span class="b-prow-val">${_eur(evasoOrdinato)} <span>/ ${_eur(b.budget_mese)}</span></span></div>
         ${_mini(evasoOrdinato, b.budget_mese, '#2D7D4F')}
-        <div class="b-hint"><span>Budget ${meseNome}: ${_eur(b.budget_mese)}</span><span class="${_cls(b.delta_mese_eur)}">delta budget: ${_pct(b.delta_mese_pct)} (${b.delta_mese_eur >= 0 ? '+' : ''}${_eur(b.delta_mese_eur)})</span></div>
+        <div class="b-hint"><span>Budget ${meseNome}: ${_eur(b.budget_mese)}</span><span class="${_cls(deltaEur)}">delta budget: ${_pct(deltaPct)} (${deltaEur >= 0 ? '+' : ''}${_eur(deltaEur)})</span></div>
       </div>
 
       <div class="b-g4">
