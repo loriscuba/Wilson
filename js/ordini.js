@@ -47,26 +47,11 @@ async function loadOrdini() {
   const countEl = document.getElementById('ordini-count');
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
-  const da       = document.getElementById('filtro-da')?.value;
-  const a        = document.getElementById('filtro-a')?.value;
-  const cliente  = document.getElementById('filtro-cliente')?.value?.trim();
-  const prodotto = document.getElementById('filtro-prodotto')?.value?.trim();
+  const da      = document.getElementById('filtro-da')?.value;
+  const a       = document.getElementById('filtro-a')?.value;
+  const cliente = document.getElementById('filtro-cliente')?.value?.trim();
 
   try {
-    // Pre-query prodotto: trova i numero_ordine che contengono l'articolo cercato
-    let ordiniNums = null;
-    if (prodotto) {
-      const { data: righe } = await sb.from('righe_ordine')
-        .select('numero_ordine')
-        .or(`codice_articolo.ilike.%${prodotto}%,descrizione_articolo.ilike.%${prodotto}%`);
-      ordiniNums = [...new Set((righe || []).map(r => r.numero_ordine).filter(Boolean))];
-      if (!ordiniNums.length) {
-        countEl.textContent = 0;
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun ordine trovato</td></tr>';
-        return;
-      }
-    }
-
     let q = sb.from('ordini')
       .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, importo_totale, stato')
       .order('data_ordine', { ascending: false });
@@ -74,7 +59,6 @@ async function loadOrdini() {
     if (da)                 q = q.gte('data_ordine', da);
     if (a)                  q = q.lte('data_ordine', a);
     if (cliente)            q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%,numero_ordine.ilike.%${cliente}%`);
-    if (ordiniNums)         q = q.in('numero_ordine', ordiniNums);
     if (_filtroStatoOrdine) q = q.eq('stato', _filtroStatoOrdine);
 
     const { data, error } = await q;

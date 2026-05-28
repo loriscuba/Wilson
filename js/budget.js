@@ -372,7 +372,7 @@ function _renderBudgetMensile(root) {
         <div style="margin-bottom:10px"></div>
         <div class="b-prow"><span class="b-prow-label">consegnato + ordinato – resi${_bmCediOn ? ' <span style="color:#2D7D4F;font-size:11px">+CEDI</span>' : ''}</span><span class="b-prow-val">${_eur(evasoOrdinato)} <span>/ ${_eur(b.budget_mese)}</span></span></div>
         ${_mini(evasoOrdinato, b.budget_mese, '#2D7D4F')}
-        <div class="b-hint"><span>fat. ${meseNome} anno prec: ${_eur(b.fatturato_mese_anno_prec)}</span><span class="${_cls(b.delta_mese_eur)}">delta budget: ${_pct(b.delta_mese_pct)} (${b.delta_mese_eur >= 0 ? '+' : ''}${_eur(b.delta_mese_eur)})</span></div>
+        <div class="b-hint"><span>Budget ${meseNome}: ${_eur(b.budget_mese)}</span><span class="${_cls(b.delta_mese_eur)}">delta budget: ${_pct(b.delta_mese_pct)} (${b.delta_mese_eur >= 0 ? '+' : ''}${_eur(b.delta_mese_eur)})</span></div>
       </div>
 
       <div class="b-g4">
