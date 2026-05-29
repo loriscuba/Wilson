@@ -41,26 +41,17 @@
         /* ── Top Nav (visibile solo su desktop) ── */
         .top-nav { display: none; }
 
-        /* ── Mobile top bar ── */
-        .mobile-topbar {
-            position: fixed;
-            top: 0; left: 0; right: 0;
-            height: 52px;
-            background: rgba(28,28,30,.94);
-            backdrop-filter: saturate(180%) blur(20px);
-            -webkit-backdrop-filter: saturate(180%) blur(20px);
-            display: flex;
-            align-items: center;
-            padding: 0 16px;
-            z-index: 200;
-        }
-        .mobile-topbar-brand {
-            font-family: 'Syne', sans-serif;
-            font-weight: 700;
-            font-size: 17px;
-            color: #fff;
-        }
         .mobile-only-card { display: block; }
+        .mobile-only-card .sync-btn {
+            background: #1A56DB !important;
+            color: #fff !important;
+            border-color: #1A56DB !important;
+            width: auto !important;
+            margin-top: 0 !important;
+        }
+        .mobile-only-card .sync-btn:hover:not(:disabled) { background: #1648c0 !important; }
+        .mobile-only-card .sync-btn.success { background: #15803d !important; border-color: #15803d !important; }
+        .mobile-only-card .sync-btn.error   { background: #b91c1c !important; border-color: #b91c1c !important; }
 
         /* ── Main content ── */
         .main-content {
@@ -69,7 +60,6 @@
             margin-left: 0;
             transition: margin-left 0.25s ease;
             overflow-y: auto;
-            padding-top: 68px;
         }
         .main-content.shifted { margin-left: var(--sidebar-w); }
 
@@ -737,7 +727,6 @@
         }
 
         @media (min-width: 769px) {
-            .mobile-topbar { display: none !important; }
             .mobile-only-card { display: none !important; }
             .bottom-nav,
             .mobile-drawer-overlay,
@@ -1090,10 +1079,6 @@
       </div>
     </nav>
 
-    <div class="mobile-topbar" id="mobile-topbar">
-      <span class="mobile-topbar-brand">Wilson</span>
-    </div>
-
     <div class="main-content" id="main-content">
 
         <!-- ── DASHBOARD ── -->
@@ -1375,7 +1360,7 @@
     <script src="js/impostazioni.js?v=5"></script>
     <script src="js/agenda.js?v=5"></script>
     <script src="js/statistiche.js?v=1"></script>
-    <script src="js/app.js?v=17"></script>
+    <script src="js/app.js?v=18"></script>
     <script>
         // placeholder — tutto il codice è nei moduli js/
     </script>
