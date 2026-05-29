@@ -225,7 +225,7 @@ async function loadAgenda() {
         .select('codice_cliente, ragione_sociale, giorno_visita, settori(nome)')
         .eq('attivo', true),
       loadRollingEnriched(),
-      sb.from('agenda_giorni').gte('data', d1).lte('data', d2),
+      sb.from('agenda_giorni').select('*').gte('data', d1).lte('data', d2),
     ]);
 
     _giorniMap = Object.fromEntries((giorniRaw || []).map(g => [g.data, g]));
@@ -254,7 +254,7 @@ async function _eseguiGenera(conferma) {
     const [{ data: clientiRaw }, rolling, { data: giorniRaw }, { data: existingVisite }] = await Promise.all([
       sb.from('clienti').select('codice_cliente, giorno_visita').eq('attivo', true),
       loadRollingEnriched(),
-      sb.from('agenda_giorni').gte('data', d1).lte('data', d2),
+      sb.from('agenda_giorni').select('*').gte('data', d1).lte('data', d2),
       sb.from('agenda_visite').select('id, data_visita').gte('data_visita', d1).lte('data_visita', d2),
     ]);
 
