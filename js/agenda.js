@@ -61,6 +61,12 @@ function cardStatoCls(r) {
 
 // ── Algoritmo pianificazione ──────────────────────────────────────────
 // giorniSpeciali: Set di date string da saltare (festa/feria/bloccato)
+//
+// Logica priorità:
+//   URGENTI (da_visitare + indietro) → tutti al primo giorno disponibile
+//   MEDI    (da_stimolare + nuovo)   → distribuiti dal primo giorno
+//   NORMALI (in_linea + ottimo)      → distribuiti sull'intero mese
+//   INATTIVI                         → ultimi slot disponibili
 function algoritmoAgenda(anno, mese, clientiList, rollingMap, giorniSpeciali) {
   const weeks  = getCalWeeks(anno, mese);
   const oggi   = new Date(); oggi.setHours(0,0,0,0);
@@ -80,8 +86,8 @@ function algoritmoAgenda(anno, mese, clientiList, rollingMap, giorniSpeciali) {
     const dates = weeks
       .map(w => w[weekIdx])
       .filter(d => d.getMonth() === mese - 1)
-      .filter(d => d > oggi)                                              // solo giorni futuri
-      .filter(d => !giorniSpeciali.has(d.toISOString().split('T')[0]))   // escludi speciali
+      .filter(d => d > oggi)
+      .filter(d => !giorniSpeciali.has(d.toISOString().split('T')[0]))
       .map(d => d.toISOString().split('T')[0]);
 
     if (!dates.length) continue;
@@ -89,7 +95,18 @@ function algoritmoAgenda(anno, mese, clientiList, rollingMap, giorniSpeciali) {
     const sorted = [...clients].sort((a, b) =>
       getPriority(rollingMap[a.codice_cliente]) - getPriority(rollingMap[b.codice_cliente])
     );
-    sorted.forEach((c, i) => {
+
+    // Urgenti (da_visitare + indietro): tutti al primo giorno disponibile.
+    // L'utente li sposta via drag&drop se troppi nello stesso giorno.
+    const urgenti   = sorted.filter(c => getPriority(rollingMap[c.codice_cliente]) <= 1);
+    const nonUrgent = sorted.filter(c => getPriority(rollingMap[c.codice_cliente]) > 1);
+
+    urgenti.forEach(c => {
+      assignments.push({ codice_cliente: c.codice_cliente, data_visita: dates[0] });
+    });
+
+    // Non urgenti: distribuiti uniformemente su tutti i giorni disponibili
+    nonUrgent.forEach((c, i) => {
       assignments.push({ codice_cliente: c.codice_cliente, data_visita: dates[i % dates.length] });
     });
   }
