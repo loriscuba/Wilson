@@ -82,18 +82,28 @@ function initMobileSectionObserver() {
 // ── Sync ─────────────────────────────────────────────────────────────────────
 
 async function loadUltimoSync() {
-  const el = document.getElementById('ultimo-sync');
+  const el  = document.getElementById('ultimo-sync');
+  const mel = document.getElementById('mobile-ultimo-sync');
   try {
     const { data, error } = await sb.from('importazioni')
       .select('created_at').eq('esito', 'ok')
       .order('created_at', { ascending: false }).limit(1).single();
-    if (error || !data) { el.textContent = 'Nessun sync'; return; }
+    if (error || !data) {
+      if (el)  el.textContent  = 'Nessun sync';
+      if (mel) mel.textContent = 'Nessun sync';
+      return;
+    }
     const d = new Date(data.created_at);
-    el.textContent = 'Agg. ' + d.toLocaleString('it-IT', {
+    const txt = 'Agg. ' + d.toLocaleString('it-IT', {
       day: '2-digit', month: '2-digit', year: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });
-  } catch { el.textContent = '—'; }
+    if (el)  el.textContent  = txt;
+    if (mel) mel.textContent = txt;
+  } catch {
+    if (el)  el.textContent  = '—';
+    if (mel) mel.textContent = '—';
+  }
 }
 
 function _reloadActivePage() {
@@ -107,15 +117,23 @@ function _reloadActivePage() {
 }
 
 function _syncDone(btn, icon, label, ok) {
+  const mBtn  = document.getElementById('mobile-sync-btn');
+  const mIcon = document.getElementById('mobile-sync-icon');
+
   icon.className   = '';
   icon.textContent = ok ? '✓' : '⚠';
-  label.textContent = ok ? 'Aggiornato' : 'Timeout';
+  if (label) label.textContent = ok ? 'Aggiornato' : 'Timeout';
   btn.classList.add(ok ? 'success' : 'error');
+  if (mIcon) { mIcon.className = ''; mIcon.textContent = ok ? '✓' : '⚠'; }
+  if (mBtn)  mBtn.classList.add(ok ? 'success' : 'error');
+
   setTimeout(() => {
     btn.classList.remove('success', 'error');
     icon.textContent  = '↻';
-    label.textContent = 'Aggiorna dati';
+    if (label) label.textContent = 'Aggiorna dati';
     btn.disabled = false;
+    if (mBtn)  { mBtn.classList.remove('success', 'error'); mBtn.disabled = false; }
+    if (mIcon) mIcon.textContent = '↻';
   }, 3000);
 }
 
@@ -123,13 +141,17 @@ async function triggerSync() {
   const btn   = document.getElementById('sync-btn');
   const icon  = document.getElementById('sync-icon');
   const label = document.getElementById('sync-label');
+  const mBtn  = document.getElementById('mobile-sync-btn');
+  const mIcon = document.getElementById('mobile-sync-icon');
   const token = window.__env?.GITHUB_TOKEN;
 
   btn.disabled = true;
   btn.classList.remove('success', 'error');
   icon.className    = 'spin';
   icon.textContent  = '↻';
-  label.textContent = 'Aggiorna dati';
+  if (label) label.textContent = 'Aggiorna dati';
+  if (mBtn)  { mBtn.disabled = true; mBtn.classList.remove('success', 'error'); }
+  if (mIcon) { mIcon.className = 'spin'; mIcon.textContent = '↻'; }
 
   // Senza token: ricarica solo la UI
   if (!token) {

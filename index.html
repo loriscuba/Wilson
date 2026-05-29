@@ -41,6 +41,51 @@
         /* ── Top Nav (visibile solo su desktop) ── */
         .top-nav { display: none; }
 
+        /* ── Mobile top bar ── */
+        .mobile-topbar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 52px;
+            background: rgba(28,28,30,.94);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 200;
+        }
+        .mobile-topbar-brand {
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            font-size: 17px;
+            color: #fff;
+        }
+        .mobile-topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .mobile-topbar-sync-time {
+            font-size: 11px;
+            color: rgba(255,255,255,0.55);
+            white-space: nowrap;
+        }
+        .mobile-sync-btn {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 16px;
+            padding: 5px 11px;
+            cursor: pointer;
+            line-height: 1;
+            transition: background 0.15s;
+        }
+        .mobile-sync-btn:active { background: rgba(255,255,255,0.22); }
+        .mobile-sync-btn.success { background: rgba(74,222,128,0.25); border-color: rgba(74,222,128,0.4); }
+        .mobile-sync-btn.error   { background: rgba(239,68,68,0.22);  border-color: rgba(239,68,68,0.4); }
+
         /* ── Main content ── */
         .main-content {
             flex: 1;
@@ -48,7 +93,7 @@
             margin-left: 0;
             transition: margin-left 0.25s ease;
             overflow-y: auto;
-            padding-top: 60px;
+            padding-top: 68px;
         }
         .main-content.shifted { margin-left: var(--sidebar-w); }
 
@@ -716,6 +761,7 @@
         }
 
         @media (min-width: 769px) {
+            .mobile-topbar { display: none !important; }
             .bottom-nav,
             .mobile-drawer-overlay,
             .mobile-drawer {
@@ -1067,6 +1113,16 @@
       </div>
     </nav>
 
+    <div class="mobile-topbar" id="mobile-topbar">
+      <span class="mobile-topbar-brand">Wilson</span>
+      <div class="mobile-topbar-right">
+        <span class="mobile-topbar-sync-time" id="mobile-ultimo-sync">—</span>
+        <button class="mobile-sync-btn" id="mobile-sync-btn" onclick="triggerSync()">
+          <span id="mobile-sync-icon">↻</span>
+        </button>
+      </div>
+    </div>
+
     <div class="main-content" id="main-content">
 
         <!-- ── DASHBOARD ── -->
@@ -1333,7 +1389,7 @@
     <script src="js/impostazioni.js?v=5"></script>
     <script src="js/agenda.js?v=5"></script>
     <script src="js/statistiche.js?v=1"></script>
-    <script src="js/app.js?v=15"></script>
+    <script src="js/app.js?v=16"></script>
     <script>
         // placeholder — tutto il codice è nei moduli js/
     </script>
