@@ -130,18 +130,18 @@ function renderCalendario(container, anno, mese, visite, clientiMap, rollingMap)
   }
 
   const clientiConGiorno = Object.values(clientiMap).filter(c => giornoToIdx(c.giorno_visita));
-  const toolbar = visite.length
-    ? `<div class="ag-toolbar">
-        <span class="ag-count">${visite.length} visite · ${visite.filter(v=>v.completata).length} completate</span>
-        <button class="ag-btn-sec" onclick="agendaRigenera()">↺ Rigenera</button>
-       </div>`
-    : `<div class="ag-empty">
-        <div class="ag-empty-icon">📅</div>
-        <div class="ag-empty-text">Nessuna visita pianificata</div>
-        ${clientiConGiorno.length
-          ? `<button class="ag-btn-prim" onclick="agendaGenera()">✦ Genera agenda automatica</button>`
-          : `<p style="font-size:13px;color:var(--text2)">Imposta il giorno di visita nelle schede clienti.</p>`}
-       </div>`;
+
+  // La griglia è sempre visibile; il messaggio "no visite" è solo un banner nella toolbar
+  const toolbar = `<div class="ag-toolbar">
+    ${visite.length
+      ? `<span class="ag-count">${visite.length} visite · ${visite.filter(v=>v.completata).length} completate</span>
+         <button class="ag-btn-sec" onclick="agendaRigenera()">↺ Rigenera</button>`
+      : clientiConGiorno.length
+        ? `<span style="font-size:13px;color:var(--text2)">Nessuna visita — segna feste/ferie poi genera</span>
+           <button class="ag-btn-prim" onclick="agendaGenera()" style="padding:4px 12px;font-size:12px">✦ Genera</button>`
+        : `<span style="font-size:13px;color:var(--text2)">Imposta il giorno di visita nelle schede clienti.</span>`
+    }
+  </div>`;
 
   container.innerHTML = `
     ${toolbar}
