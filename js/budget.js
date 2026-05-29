@@ -134,7 +134,7 @@ async function loadBudgetPremio() {
   if (!root) return;
   try {
     const today = new Date().toISOString().split('T')[0];
-    const [{ data: bArr }, { data: focus }] = await Promise.all([
+    const [{ data: bArr }, { data: focus }, rows, { data: cediRaw }] = await Promise.all([
       sb.from('budget').select('budget_mese,evaso,data_aggiornamento')
         .lte('data_aggiornamento', today)
         .not('budget_mese', 'is', null)
@@ -142,15 +142,27 @@ async function loadBudgetPremio() {
       sb.from('budget_focus').select('*')
         .lte('data_aggiornamento', today)
         .order('data_aggiornamento', { ascending: false }),
+      loadRollingEnriched(),
+      sb.from('cedi_ridistribuito')
+        .select('valore_ridistribuito, data_aggiornamento')
+        .order('data_aggiornamento', { ascending: false }),
     ]);
 
-    const b         = bArr?.[0];
-    const g1        = focus?.find(f => f.gruppo_prodotti.startsWith('Gruppo 1'));
-    const meseNome  = _nomeMese(b?.data_aggiornamento);
+    const b        = bArr?.[0];
+    const g1       = focus?.find(f => f.gruppo_prodotti.startsWith('Gruppo 1'));
+    const meseNome = _nomeMese(b?.data_aggiornamento);
+
+    // Consegnato del mese = stesso calcolo della dashboard (rolling + CEDI)
+    const totCons   = rows.reduce((s, r) => s + (r.mese_consegnato || 0), 0);
+    const cediArr   = cediRaw || [];
+    const cediDate  = cediArr.length ? cediArr[0].data_aggiornamento : '';
+    const totCEDI   = cediArr.filter(r => r.data_aggiornamento === cediDate)
+                             .reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
+    const consMese  = totCons + totCEDI;
 
     _prObjFat = b?.budget_mese    || 117192;
     _prObjStr = g1?.target_eur    || 4217.75;
-    const initFat = b?.evaso          || 0;
+    const initFat = consMese  || b?.evaso || 0;
     const initStr = g1?.consegnato_eur || 0;
 
     root.innerHTML = `
@@ -165,7 +177,7 @@ async function loadBudgetPremio() {
         <div class="pr-row">
           <div class="pr-row-name">
             <div class="pr-row-title">fatturato zona di competenza</div>
-            <div class="pr-row-sub">obiettivo ${_eur(_prObjFat)} · peso 65%</div>
+            <div class="pr-row-sub">obiettivo ${_eur(_prObjFat)} · peso 65% · <span style="color:var(--text)">consegnato mese: ${_eur(consMese)}</span></div>
           </div>
           <div class="pr-row-input">
             <input type="number" id="pr-inp-fat" value="${initFat}" step="100" min="0" oninput="prCalc()">
