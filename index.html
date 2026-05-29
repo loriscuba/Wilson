@@ -903,13 +903,28 @@
         .cal-day.cal-today { border-color: var(--accent); }
         .cal-day.cal-past { opacity: .6; }
         .cal-day.cal-dragover { background: #FEF3F2; border-color: var(--accent); }
+        .cal-day.cal-locked { background: #F0FDF4; border-color: #86EFAC; }
+        .cal-day.cal-speciale { background: #FFF7ED; border-color: #FBD38D; opacity: .75; }
+        .cal-num-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px; }
         .cal-num {
             font-size: 11px; color: var(--text2); font-weight: 600;
-            margin-bottom: 4px; line-height: 1;
+            line-height: 1; flex-shrink: 0;
         }
-        .cal-num.cal-num-today {
-            color: var(--accent); font-weight: 700;
+        .cal-num.cal-num-today { color: var(--accent); font-weight: 700; }
+        .cal-day-btns { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; }
+        .cal-btn-mini {
+            font-size: 9px; padding: 1px 4px; border-radius: 3px; cursor: pointer;
+            border: 1px solid var(--border); background: var(--surface);
+            color: var(--text2); line-height: 1.4; white-space: nowrap;
         }
+        .cal-btn-mini:hover { border-color: var(--text2); color: var(--text); }
+        .cal-btn-mini.cal-btn-locked { background: #F0FDF4; border-color: #86EFAC; color: #166534; }
+        .cal-badge-speciale {
+            font-size: 9px; padding: 1px 5px; border-radius: 3px; cursor: pointer;
+            background: #FEF3C7; border: 1px solid #FBD38D; color: #92400E;
+            line-height: 1.4; white-space: nowrap;
+        }
+        .cal-badge-speciale:hover { background: #FDE68A; }
         .cal-cards { display: flex; flex-direction: column; gap: 3px; }
 
         /* Agenda card */
@@ -1316,7 +1331,7 @@
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=9"></script>
     <script src="js/impostazioni.js?v=5"></script>
-    <script src="js/agenda.js?v=1"></script>
+    <script src="js/agenda.js?v=2"></script>
     <script src="js/statistiche.js?v=1"></script>
     <script src="js/app.js?v=15"></script>
     <script>

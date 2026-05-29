@@ -2,13 +2,13 @@
 
 let _agendaAnno  = null;
 let _agendaMese  = null;
-let _dragCard    = null;   // riferimento DOM della card in drag
+let _dragCard    = null;
+let _giorniMap   = {};   // { 'YYYY-MM-DD': { data, tipo } }
 
 const MESI_AGENDA = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                      'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const GIORNI_TH   = ['Lun','Mar','Mer','Gio','Ven','Sab'];
 
-// Mappa nome italiano giorno → indice 1..6 (1=Lun, 6=Sab)
 function giornoToIdx(s) {
   if (!s) return null;
   const l = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -21,12 +21,11 @@ function giornoToIdx(s) {
   return null;
 }
 
-// Restituisce le settimane del mese: array di array [Lun…Sab] (6 date)
 function getCalWeeks(anno, mese) {
   const weeks    = [];
   const firstDay = new Date(anno, mese - 1, 1);
   const lastDay  = new Date(anno, mese, 0);
-  const dow      = firstDay.getDay(); // 0=Dom
+  const dow      = firstDay.getDay();
   const offset   = dow === 0 ? -6 : 1 - dow;
   let monday = new Date(firstDay);
   monday.setDate(monday.getDate() + offset);
@@ -43,7 +42,6 @@ function getCalWeeks(anno, mese) {
   return weeks;
 }
 
-// Priorità per l'algoritmo di scheduling (valore basso = da visitare prima)
 function getPriority(r) {
   if (!r) return 3;
   const ord = { da_visitare: 0, indietro: 1, da_stimolare: 2, nuovo: 2,
@@ -51,7 +49,6 @@ function getPriority(r) {
   return ord[r._stato?.id] ?? 3;
 }
 
-// Classe CSS card in base allo stato rolling
 function cardStatoCls(r) {
   if (!r) return 'ac-neutral';
   const id = r._stato?.id;
@@ -62,13 +59,13 @@ function cardStatoCls(r) {
   return 'ac-neutral';
 }
 
-// ── Algoritmo pianificazione ─────────────────────────────────────────
-function algoritmoAgenda(anno, mese, clientiList, rollingMap) {
-  const weeks       = getCalWeeks(anno, mese);
-  const assignments = [];
+// ── Algoritmo pianificazione ──────────────────────────────────────────
+// giorniSpeciali: Set di date string da saltare (festa/feria/bloccato)
+function algoritmoAgenda(anno, mese, clientiList, rollingMap, giorniSpeciali) {
+  const weeks  = getCalWeeks(anno, mese);
+  const oggi   = new Date(); oggi.setHours(0,0,0,0);
+  const byDay  = {};
 
-  // Raggruppa per indice giorno (1-6)
-  const byDay = {};
   for (const c of clientiList) {
     const idx = giornoToIdx(c.giorno_visita);
     if (idx === null) continue;
@@ -76,35 +73,30 @@ function algoritmoAgenda(anno, mese, clientiList, rollingMap) {
     byDay[idx].push(c);
   }
 
+  const assignments = [];
   for (const [idxStr, clients] of Object.entries(byDay)) {
-    const weekIdx = parseInt(idxStr) - 1; // 0-based index into week array
+    const weekIdx = parseInt(idxStr) - 1;
 
-    // Date disponibili del mese per questo giorno della settimana
     const dates = weeks
       .map(w => w[weekIdx])
       .filter(d => d.getMonth() === mese - 1)
+      .filter(d => d > oggi)                                              // solo giorni futuri
+      .filter(d => !giorniSpeciali.has(d.toISOString().split('T')[0]))   // escludi speciali
       .map(d => d.toISOString().split('T')[0]);
 
     if (!dates.length) continue;
 
-    // Ordina per priorità (urgenti prima)
     const sorted = [...clients].sort((a, b) =>
       getPriority(rollingMap[a.codice_cliente]) - getPriority(rollingMap[b.codice_cliente])
     );
-
-    // Distribuisce round-robin sulle date: i più urgenti vanno alle prime settimane
     sorted.forEach((c, i) => {
-      assignments.push({
-        codice_cliente: c.codice_cliente,
-        data_visita:    dates[i % dates.length],
-      });
+      assignments.push({ codice_cliente: c.codice_cliente, data_visita: dates[i % dates.length] });
     });
   }
-
   return assignments;
 }
 
-// ── Rendering calendar ───────────────────────────────────────────────
+// ── Rendering card ────────────────────────────────────────────────────
 function renderCard(v, clientiMap, rollingMap) {
   const c = clientiMap[v.codice_cliente];
   if (!c) return '';
@@ -127,17 +119,17 @@ function renderCard(v, clientiMap, rollingMap) {
     </div>`;
 }
 
+// ── Rendering calendario ──────────────────────────────────────────────
 function renderCalendario(container, anno, mese, visite, clientiMap, rollingMap) {
-  const weeks   = getCalWeeks(anno, mese);
-  const today   = new Date(); today.setHours(0,0,0,0);
-  const byDate  = {};
+  const weeks  = getCalWeeks(anno, mese);
+  const today  = new Date(); today.setHours(0,0,0,0);
+  const byDate = {};
   for (const v of visite) {
     if (!byDate[v.data_visita]) byDate[v.data_visita] = [];
     byDate[v.data_visita].push(v);
   }
 
   const clientiConGiorno = Object.values(clientiMap).filter(c => giornoToIdx(c.giorno_visita));
-
   const toolbar = visite.length
     ? `<div class="ag-toolbar">
         <span class="ag-count">${visite.length} visite · ${visite.filter(v=>v.completata).length} completate</span>
@@ -148,7 +140,7 @@ function renderCalendario(container, anno, mese, visite, clientiMap, rollingMap)
         <div class="ag-empty-text">Nessuna visita pianificata</div>
         ${clientiConGiorno.length
           ? `<button class="ag-btn-prim" onclick="agendaGenera()">✦ Genera agenda automatica</button>`
-          : `<p style="font-size:13px;color:var(--text2)">Imposta il giorno di visita nelle schede clienti (Impostazioni) per generare l'agenda.</p>`}
+          : `<p style="font-size:13px;color:var(--text2)">Imposta il giorno di visita nelle schede clienti.</p>`}
        </div>`;
 
   container.innerHTML = `
@@ -160,18 +152,44 @@ function renderCalendario(container, anno, mese, visite, clientiMap, rollingMap)
       ${weeks.map(week => `
         <div class="cal-week-row">
           ${week.map(date => {
-            const ds     = date.toISOString().split('T')[0];
-            const inMese = date.getMonth() === mese - 1;
-            const isToday = date.getTime() === today.getTime();
-            const isPast  = date < today && inMese;
-            const dayV    = byDate[ds] || [];
+            const ds         = date.toISOString().split('T')[0];
+            const inMese     = date.getMonth() === mese - 1;
+            const isToday    = date.getTime() === today.getTime();
+            const isPast     = date < today;
+            const dayV       = byDate[ds] || [];
+            const giorno     = _giorniMap[ds];
+            const isBloccato = giorno?.tipo === 'bloccato';
+            const isFesta    = giorno?.tipo === 'festa';
+            const isFeria    = giorno?.tipo === 'feria';
+            const isSpeciale = isFesta || isFeria;
+
+            // Pulsanti azione — solo per giorni del mese non nel passato
+            const dayActions = inMese && !isPast ? `
+              <div class="cal-day-btns">
+                ${isSpeciale
+                  ? `<button class="cal-badge-speciale" onclick="agendaRimuoviSpeciale('${ds}')"
+                            title="Rimuovi">${isFesta ? 'Festa' : 'Ferie'} ✕</button>`
+                  : `<button class="cal-btn-mini" onclick="agendaSetFesta('${ds}','festa')" title="Segna come festa">F</button>
+                     <button class="cal-btn-mini" onclick="agendaSetFesta('${ds}','feria')" title="Segna come ferie">V</button>`
+                }
+                ${!isSpeciale ? `
+                  <button class="cal-btn-mini ${isBloccato ? 'cal-btn-locked' : ''}"
+                          onclick="agendaToggleBlocco('${ds}')"
+                          title="${isBloccato ? 'Sblocca giornata' : 'Conferma giornata'}">
+                    ${isBloccato ? '🔒' : '🔓'}
+                  </button>` : ''}
+              </div>` : '';
+
             return `
-              <div class="cal-day${!inMese ? ' cal-out' : ''}${isToday ? ' cal-today' : ''}${isPast ? ' cal-past' : ''}"
+              <div class="cal-day${!inMese ? ' cal-out' : ''}${isToday ? ' cal-today' : ''}${isPast && inMese ? ' cal-past' : ''}${isBloccato ? ' cal-locked' : ''}${isSpeciale ? ' cal-speciale' : ''}"
                    data-date="${ds}"
                    ondragover="event.preventDefault();this.classList.add('cal-dragover')"
                    ondragleave="this.classList.remove('cal-dragover')"
                    ondrop="agendaDrop(event,'${ds}')">
-                <div class="cal-num${isToday ? ' cal-num-today' : ''}">${date.getDate()}</div>
+                <div class="cal-num-row">
+                  <div class="cal-num${isToday ? ' cal-num-today' : ''}">${inMese ? date.getDate() : ''}</div>
+                  ${dayActions}
+                </div>
                 <div class="cal-cards" id="cal-${ds}">
                   ${dayV.map(v => renderCard(v, clientiMap, rollingMap)).join('')}
                 </div>
@@ -199,7 +217,7 @@ async function loadAgenda() {
   const d2 = new Date(y, _agendaMese, 0).toISOString().split('T')[0];
 
   try {
-    const [{ data: visite }, { data: clientiRaw }, rolling] = await Promise.all([
+    const [{ data: visite }, { data: clientiRaw }, rolling, { data: giorniRaw }] = await Promise.all([
       sb.from('agenda_visite')
         .select('id, codice_cliente, data_visita, completata, note')
         .gte('data_visita', d1).lte('data_visita', d2),
@@ -207,8 +225,10 @@ async function loadAgenda() {
         .select('codice_cliente, ragione_sociale, giorno_visita, settori(nome)')
         .eq('attivo', true),
       loadRollingEnriched(),
+      sb.from('agenda_giorni').gte('data', d1).lte('data', d2),
     ]);
 
+    _giorniMap = Object.fromEntries((giorniRaw || []).map(g => [g.data, g]));
     const clientiMap = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c]));
     const rollingMap = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
 
@@ -220,34 +240,50 @@ async function loadAgenda() {
 
 // ── Genera / Rigenera ─────────────────────────────────────────────────
 async function _eseguiGenera(conferma) {
-  if (conferma && !confirm(`Genera agenda automatica per ${MESI_AGENDA[_agendaMese-1]}? Verranno sovrascritte le visite esistenti.`)) return;
+  if (conferma && !confirm(`Rigenera agenda per ${MESI_AGENDA[_agendaMese-1]}?\nI giorni confermati (🔒) non verranno toccati.`)) return;
 
   const container = document.getElementById('agenda-cal');
   container.innerHTML = '<div class="loading">Generazione in corso…</div>';
 
+  const y  = _agendaAnno;
+  const m  = String(_agendaMese).padStart(2,'0');
+  const d1 = `${y}-${m}-01`;
+  const d2 = new Date(y, _agendaMese, 0).toISOString().split('T')[0];
+
   try {
-    const [{ data: clientiRaw }, rolling] = await Promise.all([
+    const [{ data: clientiRaw }, rolling, { data: giorniRaw }, { data: existingVisite }] = await Promise.all([
       sb.from('clienti').select('codice_cliente, giorno_visita').eq('attivo', true),
       loadRollingEnriched(),
+      sb.from('agenda_giorni').gte('data', d1).lte('data', d2),
+      sb.from('agenda_visite').select('id, data_visita').gte('data_visita', d1).lte('data_visita', d2),
     ]);
 
-    const clientiList = (clientiRaw || []).filter(c => giornoToIdx(c.giorno_visita));
-    const rollingMap  = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
-    const assignments = algoritmoAgenda(_agendaAnno, _agendaMese, clientiList, rollingMap);
+    _giorniMap = Object.fromEntries((giorniRaw || []).map(g => [g.data, g]));
 
-    if (!assignments.length) {
-      container.innerHTML = `<div class="loading">Nessun cliente ha il giorno di visita impostato.</div>`;
-      return;
+    // Giorni bloccati: non toccare le visite esistenti
+    const bloccati = new Set(Object.values(_giorniMap)
+      .filter(g => g.tipo === 'bloccato').map(g => g.data));
+
+    // Giorni speciali (festa/feria/bloccato): escludi dalla generazione
+    const giorniSpeciali = new Set(Object.keys(_giorniMap));
+
+    // Elimina solo le visite sui giorni NON bloccati
+    const toDelete = (existingVisite || [])
+      .filter(v => !bloccati.has(v.data_visita))
+      .map(v => v.id);
+    if (toDelete.length) {
+      await sb.from('agenda_visite').delete().in('id', toDelete);
     }
 
-    const y = _agendaAnno, m = String(_agendaMese).padStart(2,'0');
-    await sb.from('agenda_visite').delete()
-      .gte('data_visita',`${y}-${m}-01`)
-      .lte('data_visita', new Date(y, _agendaMese, 0).toISOString().split('T')[0]);
+    const clientiList  = (clientiRaw || []).filter(c => giornoToIdx(c.giorno_visita));
+    const rollingMap   = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
+    const assignments  = algoritmoAgenda(y, _agendaMese, clientiList, rollingMap, giorniSpeciali);
 
-    await sb.from('agenda_visite').insert(
-      assignments.map(a => ({ ...a, completata: false, generata_auto: true }))
-    );
+    if (assignments.length) {
+      await sb.from('agenda_visite').insert(
+        assignments.map(a => ({ ...a, completata: false, generata_auto: true }))
+      );
+    }
 
     await loadAgenda();
   } catch (err) {
@@ -257,6 +293,38 @@ async function _eseguiGenera(conferma) {
 
 function agendaGenera()   { _eseguiGenera(false); }
 function agendaRigenera() { _eseguiGenera(true);  }
+
+// ── Giorni speciali (festa / ferie) ───────────────────────────────────
+async function agendaSetFesta(data, tipo) {
+  try {
+    await sb.from('agenda_giorni').upsert({ data, tipo });
+    _giorniMap[data] = { data, tipo };
+    await loadAgenda();
+  } catch(err) { alert('Errore: ' + err.message); }
+}
+
+async function agendaRimuoviSpeciale(data) {
+  try {
+    await sb.from('agenda_giorni').delete().eq('data', data).eq('tipo', _giorniMap[data]?.tipo);
+    delete _giorniMap[data];
+    await loadAgenda();
+  } catch(err) { alert('Errore: ' + err.message); }
+}
+
+// ── Blocco giornata ───────────────────────────────────────────────────
+async function agendaToggleBlocco(data) {
+  const isBloccato = _giorniMap[data]?.tipo === 'bloccato';
+  try {
+    if (isBloccato) {
+      await sb.from('agenda_giorni').delete().eq('data', data);
+      delete _giorniMap[data];
+    } else {
+      await sb.from('agenda_giorni').upsert({ data, tipo: 'bloccato' });
+      _giorniMap[data] = { data, tipo: 'bloccato' };
+    }
+    await loadAgenda();
+  } catch(err) { alert('Errore: ' + err.message); }
+}
 
 // ── Navigazione mese ──────────────────────────────────────────────────
 function agendaMesePrev() {
@@ -282,20 +350,15 @@ async function agendaDrop(e, newDate) {
   e.preventDefault();
   e.currentTarget.classList.remove('cal-dragover');
   if (!_dragCard) return;
-
   const oldDate = _dragCard.dataset.date;
   _dragCard.classList.remove('ac-dragging');
   if (oldDate === newDate) { _dragCard = null; return; }
-
-  const id  = _dragCard.dataset.id;
+  const id = _dragCard.dataset.id;
   const card = _dragCard;
   _dragCard  = null;
-
-  // Sposta DOM subito (ottimistico)
   const targetCards = document.getElementById('cal-' + newDate);
   card.dataset.date = newDate;
   targetCards?.appendChild(card);
-
   try {
     await sb.from('agenda_visite').update({ data_visita: newDate }).eq('id', id);
   } catch (err) {
