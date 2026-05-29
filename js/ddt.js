@@ -40,7 +40,9 @@ function navToDDTFiltro(filtro) {
 function _isRitardo(d, todayMs) {
   const isConsegnato = d.stato === 'consegnato' ||
     (d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery'));
-  return !isConsegnato && d.eta_shippeo &&
+  // ORDER_CONFIRMED = non ancora ritirato dal corriere → ETA non affidabile, non è "in ritardo"
+  const isPreTransito = d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED');
+  return !isConsegnato && !isPreTransito && d.eta_shippeo &&
     new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs;
 }
 

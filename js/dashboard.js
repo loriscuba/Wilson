@@ -51,7 +51,11 @@ async function loadDashboard() {
     const todayMs          = new Date().setHours(0, 0, 0, 0);
     const _ddtNonConsegnati = (ddtData || []).filter(d => !(d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery')));
     const ddtCount         = _ddtNonConsegnati.filter(d => d.stato === 'spedito').length;
-    const ddtRitardoCount  = _ddtNonConsegnati.filter(d => d.eta_shippeo && new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs).length;
+    const ddtRitardoCount  = _ddtNonConsegnati.filter(d =>
+      d.eta_shippeo &&
+      new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs &&
+      !(d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED'))
+    ).length;
     // Solo l'ultimo import CEDI (filtra per la data_aggiornamento più recente)
     const allCedi     = cediData || [];
     const cediDate    = allCedi.length ? allCedi[0].data_aggiornamento : '';
