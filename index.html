@@ -51,7 +51,6 @@
             -webkit-backdrop-filter: saturate(180%) blur(20px);
             display: flex;
             align-items: center;
-            justify-content: space-between;
             padding: 0 16px;
             z-index: 200;
         }
@@ -61,30 +60,7 @@
             font-size: 17px;
             color: #fff;
         }
-        .mobile-topbar-right {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .mobile-topbar-sync-time {
-            font-size: 11px;
-            color: rgba(255,255,255,0.55);
-            white-space: nowrap;
-        }
-        .mobile-sync-btn {
-            background: rgba(255,255,255,0.12);
-            border: 1px solid rgba(255,255,255,0.18);
-            border-radius: 8px;
-            color: #fff;
-            font-size: 16px;
-            padding: 5px 11px;
-            cursor: pointer;
-            line-height: 1;
-            transition: background 0.15s;
-        }
-        .mobile-sync-btn:active { background: rgba(255,255,255,0.22); }
-        .mobile-sync-btn.success { background: rgba(74,222,128,0.25); border-color: rgba(74,222,128,0.4); }
-        .mobile-sync-btn.error   { background: rgba(239,68,68,0.22);  border-color: rgba(239,68,68,0.4); }
+        .mobile-only-card { display: block; }
 
         /* ── Main content ── */
         .main-content {
@@ -762,6 +738,7 @@
 
         @media (min-width: 769px) {
             .mobile-topbar { display: none !important; }
+            .mobile-only-card { display: none !important; }
             .bottom-nav,
             .mobile-drawer-overlay,
             .mobile-drawer {
@@ -1115,12 +1092,6 @@
 
     <div class="mobile-topbar" id="mobile-topbar">
       <span class="mobile-topbar-brand">Wilson</span>
-      <div class="mobile-topbar-right">
-        <span class="mobile-topbar-sync-time" id="mobile-ultimo-sync">—</span>
-        <button class="mobile-sync-btn" id="mobile-sync-btn" onclick="triggerSync()">
-          <span id="mobile-sync-icon">↻</span>
-        </button>
-      </div>
     </div>
 
     <div class="main-content" id="main-content">
@@ -1333,6 +1304,18 @@
         <div id="impostazioni" class="page">
             <h1>Impostazioni</h1>
             <div id="cfg-token-root" style="margin-bottom:2rem"></div>
+            <div class="mobile-only-card" style="margin-bottom:2rem">
+              <p class="b-sec" style="margin-top:0">aggiornamento dati</p>
+              <div class="b-panel" style="padding:1rem 1.25rem;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+                <div style="flex:1;min-width:160px">
+                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.06em;margin-bottom:4px">Ultimo aggiornamento</div>
+                  <span id="mobile-ultimo-sync" style="font-size:14px;color:var(--text)">—</span>
+                </div>
+                <button class="sync-btn" id="mobile-sync-btn" onclick="triggerSync()">
+                  <span id="mobile-sync-icon">↻</span> <span id="mobile-sync-label">Aggiorna dati</span>
+                </button>
+              </div>
+            </div>
             <div id="cfg-clienti-root">
                 <div class="loading">Caricamento…</div>
             </div>
@@ -1392,7 +1375,7 @@
     <script src="js/impostazioni.js?v=5"></script>
     <script src="js/agenda.js?v=5"></script>
     <script src="js/statistiche.js?v=1"></script>
-    <script src="js/app.js?v=16"></script>
+    <script src="js/app.js?v=17"></script>
     <script>
         // placeholder — tutto il codice è nei moduli js/
     </script>

@@ -117,23 +117,26 @@ function _reloadActivePage() {
 }
 
 function _syncDone(btn, icon, label, ok) {
-  const mBtn  = document.getElementById('mobile-sync-btn');
-  const mIcon = document.getElementById('mobile-sync-icon');
+  const mBtn   = document.getElementById('mobile-sync-btn');
+  const mIcon  = document.getElementById('mobile-sync-icon');
+  const mLabel = document.getElementById('mobile-sync-label');
 
   icon.className   = '';
   icon.textContent = ok ? '✓' : '⚠';
-  if (label) label.textContent = ok ? 'Aggiornato' : 'Timeout';
+  if (label)  label.textContent  = ok ? 'Aggiornato' : 'Timeout';
   btn.classList.add(ok ? 'success' : 'error');
-  if (mIcon) { mIcon.className = ''; mIcon.textContent = ok ? '✓' : '⚠'; }
-  if (mBtn)  mBtn.classList.add(ok ? 'success' : 'error');
+  if (mIcon)  { mIcon.className = ''; mIcon.textContent = ok ? '✓' : '⚠'; }
+  if (mLabel) mLabel.textContent = ok ? 'Aggiornato' : 'Timeout';
+  if (mBtn)   mBtn.classList.add(ok ? 'success' : 'error');
 
   setTimeout(() => {
     btn.classList.remove('success', 'error');
     icon.textContent  = '↻';
-    if (label) label.textContent = 'Aggiorna dati';
+    if (label)  label.textContent  = 'Aggiorna dati';
     btn.disabled = false;
-    if (mBtn)  { mBtn.classList.remove('success', 'error'); mBtn.disabled = false; }
-    if (mIcon) mIcon.textContent = '↻';
+    if (mBtn)   { mBtn.classList.remove('success', 'error'); mBtn.disabled = false; }
+    if (mIcon)  mIcon.textContent  = '↻';
+    if (mLabel) mLabel.textContent = 'Aggiorna dati';
   }, 3000);
 }
 
@@ -141,17 +144,19 @@ async function triggerSync() {
   const btn   = document.getElementById('sync-btn');
   const icon  = document.getElementById('sync-icon');
   const label = document.getElementById('sync-label');
-  const mBtn  = document.getElementById('mobile-sync-btn');
-  const mIcon = document.getElementById('mobile-sync-icon');
-  const token = window.__env?.GITHUB_TOKEN;
+  const mBtn   = document.getElementById('mobile-sync-btn');
+  const mIcon  = document.getElementById('mobile-sync-icon');
+  const mLabel = document.getElementById('mobile-sync-label');
+  const token  = window.__env?.GITHUB_TOKEN;
 
   btn.disabled = true;
   btn.classList.remove('success', 'error');
   icon.className    = 'spin';
   icon.textContent  = '↻';
-  if (label) label.textContent = 'Aggiorna dati';
-  if (mBtn)  { mBtn.disabled = true; mBtn.classList.remove('success', 'error'); }
-  if (mIcon) { mIcon.className = 'spin'; mIcon.textContent = '↻'; }
+  if (label)  label.textContent  = 'Aggiorna dati';
+  if (mBtn)   { mBtn.disabled = true; mBtn.classList.remove('success', 'error'); }
+  if (mIcon)  { mIcon.className = 'spin'; mIcon.textContent = '↻'; }
+  if (mLabel) mLabel.textContent = 'Aggiorna…';
 
   // Senza token: ricarica solo la UI
   if (!token) {
@@ -194,7 +199,9 @@ async function triggerSync() {
 
   const pollTimer = setInterval(async () => {
     elapsed += POLL_MS;
-    label.textContent = `in corso… ${Math.round(elapsed / 1000)}s`;
+    const prog = `in corso… ${Math.round(elapsed / 1000)}s`;
+    label.textContent = prog;
+    if (mLabel) mLabel.textContent = prog;
 
     if (elapsed >= MAX_MS) {
       clearInterval(pollTimer);
