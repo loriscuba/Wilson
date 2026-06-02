@@ -49,7 +49,7 @@ async function loadDashboard() {
     const ordiniCount      = ordiniData?.length || 0;
     const ordiniValue      = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
     const todayMs          = new Date().setHours(0, 0, 0, 0);
-    const _ddtNonConsegnati = (ddtData || []).filter(d => !(d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery')));
+    const _ddtNonConsegnati = (ddtData || []).filter(d => !(d.stato_shippeo && d.stato_shippeo.toLowerCase() === 'deliverycompliant'));
     const ddtCount         = _ddtNonConsegnati.filter(d => d.stato === 'spedito').length;
     const ddtRitardoCount  = _ddtNonConsegnati.filter(d =>
       d.eta_shippeo &&

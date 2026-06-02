@@ -39,7 +39,7 @@ function navToDDTFiltro(filtro) {
 
 function _isRitardo(d, todayMs) {
   const isConsegnato = d.stato === 'consegnato' ||
-    (d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery'));
+    (d.stato_shippeo && d.stato_shippeo.toLowerCase() === 'deliverycompliant');
   // ORDER_CONFIRMED = non ancora ritirato dal corriere → ETA non affidabile, non è "in ritardo"
   const isPreTransito = d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED');
   return !isConsegnato && !isPreTransito && d.eta_shippeo &&
@@ -100,7 +100,7 @@ function _renderDDTTabella(todayMs) {
   tbody.innerHTML = rows.map(d => {
     let statoBadge;
     const isConsegnato = d.stato === 'consegnato' ||
-      (d.stato_shippeo && d.stato_shippeo.toLowerCase().includes('delivery'));
+      (d.stato_shippeo && d.stato_shippeo.toLowerCase() === 'deliverycompliant');
     if (isConsegnato) {
       const dt = d.data_consegna_effettiva ? ' · ' + fmtDate(d.data_consegna_effettiva) : '';
       statoBadge = `<span class="badge badge-green">✓ Consegnato${dt}</span>`;
