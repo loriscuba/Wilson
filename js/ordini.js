@@ -94,8 +94,95 @@ async function loadOrdini() {
         <td colspan="8"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>
       </tr>`).join('');
 
+    // Aggiorna gli stati in background senza bloccare il render
+    _refreshOrdiniStati(data).catch(() => {});
+
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
+  }
+}
+
+async function _refreshOrdiniStati(orders) {
+  if (!orders.length) return;
+
+  const numeroOrdini = orders.map(o => o.numero_ordine).filter(Boolean);
+  const ordineIds    = orders.map(o => o.id).filter(Boolean);
+
+  const [{ data: ddtRaw }, { data: righeOrd }] = await Promise.all([
+    sb.from('ddt')
+      .select('id, numero_ordine, stato')
+      .in('numero_ordine', numeroOrdini),
+    sb.from('righe_ordine')
+      .select('ordine_id, codice_articolo')
+      .in('ordine_id', ordineIds),
+  ]);
+
+  if (!ddtRaw?.length && !righeOrd?.length) return;
+
+  const ddtIds = (ddtRaw || []).map(d => d.id);
+  let righeDdt = [];
+  if (ddtIds.length) {
+    const { data: rd } = await sb.from('righe_ddt')
+      .select('ddt_id, codice_articolo')
+      .in('ddt_id', ddtIds);
+    righeDdt = rd || [];
+  }
+
+  // Mappa numero_ordine → DDT[] con righe attaccate
+  const ddtByOrdine = {};
+  for (const ddt of (ddtRaw || [])) {
+    if (!ddtByOrdine[ddt.numero_ordine]) ddtByOrdine[ddt.numero_ordine] = [];
+    ddtByOrdine[ddt.numero_ordine].push({
+      ...ddt,
+      righe_ddt: righeDdt.filter(r => r.ddt_id === ddt.id),
+    });
+  }
+
+  // Mappa ordine_id → righe_ordine
+  const righeByOrdine = {};
+  for (const r of (righeOrd || [])) {
+    if (!righeByOrdine[r.ordine_id]) righeByOrdine[r.ordine_id] = [];
+    righeByOrdine[r.ordine_id].push(r);
+  }
+
+  const _key = cod => String(cod || '').replace(/^0+/, '') || String(cod);
+
+  for (const order of orders) {
+    const ddts  = ddtByOrdine[order.numero_ordine] || [];
+    const righe = righeByOrdine[order.id]          || [];
+    if (!righe.length) continue;
+
+    const ordineSet     = new Set(righe.map(r => _key(r.codice_articolo)).filter(Boolean));
+    const speditiSet    = new Set();
+    const consegnatiSet = new Set();
+    for (const d of ddts) {
+      for (const riga of (d.righe_ddt || [])) {
+        const k = _key(riga.codice_articolo);
+        if (!k) continue;
+        speditiSet.add(k);
+        if (d.stato === 'consegnato') consegnatiSet.add(k);
+      }
+    }
+
+    const tot        = ordineSet.size;
+    const spediti    = [...ordineSet].filter(k => speditiSet.has(k)).length;
+    const consegnati = [...ordineSet].filter(k => consegnatiSet.has(k)).length;
+
+    let nuovoStato;
+    if (tot > 0 && consegnati === tot)   nuovoStato = 'consegnato';
+    else if (tot > 0 && spediti === tot) nuovoStato = 'spedito';
+    else if (spediti > 0)                nuovoStato = 'parzialmente spedito';
+    else                                 nuovoStato = 'confermato';
+
+    if (nuovoStato === order.stato) continue;
+
+    // Aggiorna badge nella riga della tabella
+    const righeRow = document.getElementById('righe-' + order.id);
+    if (righeRow) {
+      const badgeEl = righeRow.previousElementSibling?.querySelector('.badge');
+      if (badgeEl) badgeEl.outerHTML = statoBadgeOrdine(nuovoStato);
+    }
+    sb.from('ordini').update({ stato: nuovoStato }).eq('id', order.id).then(() => {});
   }
 }
 
