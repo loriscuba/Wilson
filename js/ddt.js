@@ -56,7 +56,9 @@ function _renderDDTFiltri() {
 
   const ritardoCount = _ddtRows.filter(r => _isRitardo(r, todayMs)).length;
 
-  const allKeys = ['tutti', ...stati, ...(ritardoCount > 0 ? ['in_ritardo'] : [])];
+  // Mostra il chip 'in_ritardo' se ci sono DDT in ritardo OPPURE se il filtro è già attivo
+  const showRitardo = ritardoCount > 0 || _ddtFilter === 'in_ritardo';
+  const allKeys = ['tutti', ...stati, ...(showRitardo ? ['in_ritardo'] : [])];
   const chips = allKeys.map(s => {
     const active = (s === 'tutti' && !_ddtFilter) || s === _ddtFilter;
     const label  = s === 'tutti' ? 'Tutti' : s === 'in_ritardo' ? `⚠ In ritardo (${ritardoCount})` : _labelStato(s);
