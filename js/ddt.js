@@ -40,10 +40,13 @@ function navToDDTFiltro(filtro) {
 function _isRitardo(d, todayMs) {
   const isConsegnato = d.stato === 'consegnato' ||
     (d.stato_shippeo && d.stato_shippeo.toLowerCase() === 'deliverycompliant');
-  // ORDER_CONFIRMED = non ancora ritirato dal corriere → ETA non affidabile, non è "in ritardo"
-  const isPreTransito = d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED');
-  return !isConsegnato && !isPreTransito && d.eta_shippeo &&
-    new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs;
+  const etaMs = d.eta_shippeo ? new Date(d.eta_shippeo).setHours(0,0,0,0) : null;
+  // ORDER_CONFIRMED = non ancora ritirato dal corriere → ETA non affidabile solo se ETA è futura.
+  // Se l'ETA è già scaduta, è in ritardo a prescindere dallo stato.
+  const isPreTransito = d.stato_shippeo &&
+    d.stato_shippeo.toUpperCase().includes('CONFIRMED') &&
+    etaMs !== null && etaMs >= todayMs;
+  return !isConsegnato && !isPreTransito && etaMs !== null && etaMs < todayMs;
 }
 
 function _renderDDTFiltri() {

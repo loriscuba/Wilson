@@ -51,11 +51,13 @@ async function loadDashboard() {
     const todayMs          = new Date().setHours(0, 0, 0, 0);
     const _ddtNonConsegnati = (ddtData || []).filter(d => !(d.stato_shippeo && d.stato_shippeo.toLowerCase() === 'deliverycompliant'));
     const ddtCount         = _ddtNonConsegnati.filter(d => d.stato === 'spedito').length;
-    const ddtRitardoCount  = _ddtNonConsegnati.filter(d =>
-      d.eta_shippeo &&
-      new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs &&
-      !(d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED'))
-    ).length;
+    const ddtRitardoCount  = _ddtNonConsegnati.filter(d => {
+      if (!d.eta_shippeo) return false;
+      const etaMs = new Date(d.eta_shippeo).setHours(0,0,0,0);
+      // ORDER_CONFIRMED: non in ritardo solo se ETA è ancora futura
+      if (d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED') && etaMs >= todayMs) return false;
+      return etaMs < todayMs;
+    }).length;
     // Solo l'ultimo import CEDI (filtra per la data_aggiornamento più recente)
     const allCedi     = cediData || [];
     const cediDate    = allCedi.length ? allCedi[0].data_aggiornamento : '';
