@@ -23,7 +23,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Installa dipendenze
+      - name: Installa dipendenze di sistema
+        run: |
+          sudo apt-get install -y poppler-utils
+
+      - name: Installa dipendenze Python
         run: |
           pip install pdfplumber openpyxl xlrd pandas python-dotenv supabase google-auth google-api-python-client
 

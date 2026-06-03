@@ -57,6 +57,8 @@ def tipo_file(filename):
             return 'avanzamento'
         if 'monitoraggio_promo' in nome_norm:
             return 'monitoraggio'
+        if nome_norm.startswith('griglie_fl_listino') or 'listino' in nome_norm and 'griglie' in nome_norm:
+            return 'listino'
         return 'sconosciuto'
 
     # TXT: nome = solo cifre (numero consegna)
@@ -180,6 +182,17 @@ def dispatch(filepath, client):
             log_importazione(client, filepath, t, 'skip', 'parser non disponibile')
             return False
 
+    elif t == 'listino':
+        try:
+            from parse_listino import importa_listino
+            ok = importa_listino(filepath, client)
+            log_importazione(client, filepath, t, 'ok' if ok else 'errore')
+            return ok
+        except ImportError:
+            print("  ⚠️  parse_listino.py non disponibile — file ignorato")
+            log_importazione(client, filepath, t, 'skip', 'parser non disponibile')
+            return False
+
     else:
         print(f"  ⚠️  Tipo non riconosciuto — file ignorato")
         log_importazione(client, filepath, t, 'skip', 'tipo non riconosciuto')
@@ -230,7 +243,7 @@ def main():
     # 2. DDT (collegati agli ordini)
     # 3. Tracking (collegati ai DDT)
     # 4. Excel (indipendenti)
-    ORDINE_PROCESSING = ['ordine', 'ddt', 'tracking', 'rolling', 'cedi', 'gamma', 'avanzamento', 'monitoraggio', 'sconosciuto']
+    ORDINE_PROCESSING = ['ordine', 'ddt', 'tracking', 'rolling', 'cedi', 'gamma', 'avanzamento', 'monitoraggio', 'listino', 'sconosciuto']
     files_ordinati = sorted(files, key=lambda f: ORDINE_PROCESSING.index(tipo_file(f))
                             if tipo_file(f) in ORDINE_PROCESSING else 99)
 
