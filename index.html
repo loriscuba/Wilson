@@ -1068,6 +1068,8 @@
           <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
         <a class="top-nav-link" data-page="statistiche" data-tip="Statistiche" href="#" onclick="showPage('statistiche',event)">
           <i class="ti ti-chart-line top-nav-icon"></i><span class="top-nav-label">Statistiche</span></a>
+        <a class="top-nav-link" data-page="listino" data-tip="Listino FL" href="#" onclick="showPage('listino',event)">
+          <i class="ti ti-tag top-nav-icon"></i><span class="top-nav-label">Listino</span></a>
         <a class="top-nav-link" data-page="impostazioni" data-tip="Impostazioni" href="#" onclick="showPage('impostazioni',event)">
           <i class="ti ti-adjustments top-nav-icon"></i><span class="top-nav-label">Impostazioni</span></a>
       </div>
@@ -1286,6 +1288,11 @@
             <div id="agenda-cal"><div class="loading">Caricamento…</div></div>
         </div>
 
+        <div id="listino" class="page">
+            <h1>Listino FL <span id="listino-count" style="font-size:14px;font-weight:400;color:var(--text2);margin-left:6px"></span></h1>
+            <div id="listino-root"><div class="loading">Caricamento…</div></div>
+        </div>
+
         <div id="impostazioni" class="page">
             <h1>Impostazioni</h1>
             <div id="cfg-token-root" style="margin-bottom:2rem"></div>
@@ -1340,6 +1347,7 @@
             <div class="drawer-links">
                 <button type="button" onclick="mobileNavSelect('agenda', event); closeMobileDrawer()">Agenda</button>
                 <button type="button" onclick="navToPage('statistiche'); closeMobileDrawer()">Statistiche</button>
+                <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Listino FL</button>
                 <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
         </div>
@@ -1360,7 +1368,8 @@
     <script src="js/impostazioni.js?v=5"></script>
     <script src="js/agenda.js?v=5"></script>
     <script src="js/statistiche.js?v=1"></script>
-    <script src="js/app.js?v=18"></script>
+    <script src="js/listino.js?v=1"></script>
+    <script src="js/app.js?v=19"></script>
     <script>
         // placeholder — tutto il codice è nei moduli js/
     </script>

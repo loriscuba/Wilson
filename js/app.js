@@ -37,6 +37,7 @@ const PAGE_LOADERS = {
   budget:       loadBudget,
   statistiche:  loadStatistiche,
   agenda:       loadAgenda,
+  listino:      loadListino,
   impostazioni: loadImpostazioni,
 };
 
