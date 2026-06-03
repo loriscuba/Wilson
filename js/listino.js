@@ -13,11 +13,12 @@ async function loadListino() {
 
   try {
     // Legge tutte le edizioni disponibili e i prodotti dell'ultima
-    const { data: edizioni } = await sb.from('listino_fl')
+    const { data: edizioni, error: edzErr } = await sb.from('listino_fl')
       .select('edizione, data_listino')
       .order('data_listino', { ascending: false })
       .limit(10);
 
+    if (edzErr) throw edzErr;
     if (!edizioni?.length) {
       root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun listino importato.<br>Importa il PDF con <code>python parse_listino.py &lt;file.pdf&gt;</code></p>';
       return;
