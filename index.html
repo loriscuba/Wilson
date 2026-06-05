@@ -249,6 +249,14 @@
         }
         .table-header-bar span { font-size: 13px; color: var(--text2); }
         .table-count { font-weight: 700; color: var(--text); }
+        .bulk-giorno-bar { display: flex; align-items: center; gap: 8px; }
+        .bulk-giorno-label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+        .giorno-sel {
+            font-size: 11px; border: 1px solid var(--border); border-radius: 4px;
+            padding: 2px 4px; background: transparent; color: var(--text);
+            cursor: pointer; max-width: 95px;
+        }
+        .giorno-sel:focus { border-color: var(--accent); outline: none; }
 
         /* ── Filtri ── */
         .filter-bar {
@@ -1307,6 +1315,20 @@
                 </div>
                 <div class="table-header-bar">
                     <span>Clienti attivi · <span class="table-count" id="clienti-count">—</span></span>
+                    <div class="bulk-giorno-bar">
+                        <span class="bulk-giorno-label" id="bulk-giorno-label"></span>
+                        <select id="bulk-giorno-select" class="giorno-sel" style="max-width:120px">
+                            <option value="">Cambia giorno…</option>
+                            <option>Lunedì</option>
+                            <option>Martedì</option>
+                            <option>Mercoledì</option>
+                            <option>Giovedì</option>
+                            <option>Venerdì</option>
+                            <option>Sabato</option>
+                            <option value="__rimuovi__">— Rimuovi —</option>
+                        </select>
+                        <button class="ag-btn-sec" onclick="applicaGiornoMassivo()">Applica a tutti</button>
+                    </div>
                 </div>
                 <div class="table-scroll">
                     <table class="table" id="clienti-table">

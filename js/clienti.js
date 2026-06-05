@@ -1,6 +1,9 @@
 let _clientiData        = [];   // raw clienti records
+let _clientiFiltrati    = [];   // subset attualmente visibile (usato per bulk edit)
 let _rollingByCode      = {};   // codice_cliente → enriched rolling record
 let _pendingOpenCodice  = null; // auto-espandi questo cliente dopo il caricamento
+
+const _GIORNI_VISITA = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 
 function apriClienteDaDashboard(codice) {
   _pendingOpenCodice = codice;
@@ -23,7 +26,7 @@ function filterClienti(q) {
   const statoFilt = document.getElementById('filtro-stato')?.value || '';
   const needle    = q.trim().toLowerCase();
 
-  const filtered = _clientiData.filter(c => {
+  _clientiFiltrati = _clientiData.filter(c => {
     const matchQ = !needle ||
       (c.ragione_sociale || '').toLowerCase().includes(needle) ||
       (c.citta           || '').toLowerCase().includes(needle) ||
@@ -35,8 +38,16 @@ function filterClienti(q) {
     return matchQ && matchSt;
   });
 
-  countEl.textContent = filtered.length;
-  renderClientiRows(filtered);
+  countEl.textContent = _clientiFiltrati.length;
+  renderClientiRows(_clientiFiltrati);
+  _aggiornaBulkBar();
+}
+
+function _aggiornaBulkBar() {
+  const lbl = document.getElementById('bulk-giorno-label');
+  if (!lbl) return;
+  const n = _clientiFiltrati.length;
+  lbl.textContent = n > 0 ? `${n} visibili` : '';
 }
 
 function renderClientiRows(data) {
@@ -52,6 +63,8 @@ function renderClientiRows(data) {
     const stBadge = rolling
       ? `<span class="badge ${statoBadgeCls(rolling._stato.id)}">${rolling._stato.label}</span>`
       : '<span class="badge badge-gray">—</span>';
+    const giornoOpts = '<option value="">—</option>' +
+      _GIORNI_VISITA.map(g => `<option${c.giorno_visita === g ? ' selected' : ''}>${g}</option>`).join('');
     return `
     <tr class="cliente-row" onclick="toggleClienteDetail('${cod}', '${nome}', this)">
       <td><button class="expand-btn" id="cexp-${cod}">▶</button></td>
@@ -60,7 +73,11 @@ function renderClientiRows(data) {
       <td>${c.provincia || '—'}</td>
       <td>${c.settori?.nome || '—'}</td>
       <td>${c.categorie?.nome || '—'}</td>
-      <td>${c.giorno_visita || '—'}</td>
+      <td class="td-giorno" onclick="event.stopPropagation()">
+        <select class="giorno-sel" id="gsel-${cod}" onchange="salvaGiornoVisita('${cod}',this.value)">
+          ${giornoOpts}
+        </select>
+      </td>
       <td>${stBadge}</td>
     </tr>
     <tr class="cliente-detail-row" id="cdetail-row-${cod}">
@@ -85,6 +102,7 @@ async function loadClienti() {
     if (error) throw error;
 
     _clientiData   = clienti || [];
+    _clientiFiltrati = _clientiData;
     _rollingByCode = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
 
     countEl.textContent = _clientiData.length;
@@ -93,6 +111,7 @@ async function loadClienti() {
       filterClienti(q);
     } else {
       renderClientiRows(_clientiData);
+      _aggiornaBulkBar();
     }
 
     if (_pendingOpenCodice) {
@@ -339,6 +358,46 @@ function goToOrdiniFiltered(codice) {
   _filtroStatoOrdine = null;
   document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
   loadOrdini();
+}
+
+// ── Modifica giorno visita ─────────────────────────────────────────────
+
+async function salvaGiornoVisita(codice, giorno) {
+  const valore = giorno || null;
+  try {
+    await sb.from('clienti').update({ giorno_visita: valore }).eq('codice_cliente', codice);
+    const upd = c => { if (c.codice_cliente === codice) c.giorno_visita = valore; };
+    _clientiData.forEach(upd);
+    _clientiFiltrati.forEach(upd);
+  } catch (err) {
+    alert('Errore nel salvataggio: ' + err.message);
+    // Ripristina la select al valore precedente
+    const sel = document.getElementById('gsel-' + codice);
+    const prev = (_clientiData.find(c => c.codice_cliente === codice) || {}).giorno_visita || '';
+    if (sel) sel.value = prev;
+  }
+}
+
+async function applicaGiornoMassivo() {
+  const raw = document.getElementById('bulk-giorno-select')?.value;
+  if (!raw) { alert('Seleziona prima un giorno dal menu "Cambia giorno…".'); return; }
+  const giorno = raw === '__rimuovi__' ? null : raw;
+  const n = _clientiFiltrati.length;
+  if (!n) return;
+  const label = giorno ? `"${giorno}"` : 'nessun giorno (rimuovi)';
+  if (!confirm(`Impostare ${label} come giorno di visita per ${n} client${n === 1 ? 'e' : 'i'} visibili?`)) return;
+
+  const codici = _clientiFiltrati.map(c => c.codice_cliente);
+  try {
+    await sb.from('clienti').update({ giorno_visita: giorno }).in('codice_cliente', codici);
+    const upd = c => { if (codici.includes(c.codice_cliente)) c.giorno_visita = giorno; };
+    _clientiData.forEach(upd);
+    _clientiFiltrati.forEach(upd);
+    renderClientiRows(_clientiFiltrati);
+    document.getElementById('bulk-giorno-select').value = '';
+  } catch (err) {
+    alert('Errore: ' + err.message);
+  }
 }
 
 function goToOrdineFromDDT(numeroOrdine) {
