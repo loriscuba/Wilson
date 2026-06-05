@@ -113,8 +113,10 @@ async function getLatestGammaDate() {
 
 async function loadRollingEnriched(force) {
   if (_rollingEnriched && !force) return _rollingEnriched;
-  await _loadClientiConfigCache();
-  const date = await getLatestRollingDate();
+  const [, date] = await Promise.all([
+    _loadClientiConfigCache(),
+    getLatestRollingDate(),
+  ]);
   if (!date) return [];
   const { data, error } = await sb.from('rolling_fatturato')
     .select([
@@ -122,6 +124,7 @@ async function loadRollingEnriched(force) {
       'mese_consegnato, mese_in_preparazione, mese_da_spedire, ordinato_oltre_mese',
       'spedito_ordinato_mese, fatt_mese_anno_prec, variazione_mese',
       'fatt_prog_anno_prec, fatt_prog_anno_corr, variazione_progressivo',
+      'fatt_prog_gen_apr_2026',
       'fatt_gen_2025, fatt_feb_2025, fatt_mar_2025, fatt_apr_2025',
       'fatt_mag_2025, fatt_giu_2025, fatt_lug_2025, fatt_ago_2025',
       'fatt_set_2025, fatt_ott_2025, fatt_nov_2025, fatt_dic_2025',

@@ -21,8 +21,9 @@ async function loadDashboard() {
     const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     const today     = now.toISOString().split('T')[0];
 
-    const [rows, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }] = await Promise.all([
+    const [rows, rollingDate, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }] = await Promise.all([
       loadRollingEnriched(),
+      getLatestRollingDate(),
       sb.from('ordini').select('totale_ordine, data_ordine')
         .gte('data_ordine', startMese).lte('data_ordine', endMese),
       sb.from('ddt').select('stato, stato_shippeo, eta_shippeo').neq('stato', 'consegnato'),
@@ -38,8 +39,15 @@ async function loadDashboard() {
     ]);
 
     // KPI aggregati
-    const totProg26  = rows.reduce((s, r) => s + (r.fatt_prog_anno_corr || 0), 0);
-    const totProg25  = rows.reduce((s, r) => s + (r.fatt_prog_anno_prec || 0), 0);
+    // Progressivo consuntivo: usa fatt_prog_gen_apr_2026 (col fissa = gen→mese precedente completo)
+    // così non include dati parziali del mese in corso
+    const totProg26  = rows.reduce((s, r) => s + (r.fatt_prog_gen_apr_2026 || 0), 0);
+    const totProg25  = rows.reduce((s, r) => s + (r.fatt_prog_anno_prec    || 0), 0);
+    // Etichetta periodo: data_aggiornamento rolling → mese precedente completo
+    const _MESI_BREVI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+    const _rDate = rollingDate ? new Date(rollingDate + 'T00:00:00') : new Date();
+    const _prevMonth = new Date(_rDate.getFullYear(), _rDate.getMonth() - 1, 1);
+    const progLabel = `gen–${_MESI_BREVI[_prevMonth.getMonth()]} ${_prevMonth.getFullYear()}`;
     const totCons    = rows.reduce((s, r) => s + (r.mese_consegnato     || 0), 0);
     const totPrep    = rows.reduce((s, r) => s + (r.mese_in_preparazione || 0), 0);
     const totMese26  = rows.reduce((s, r) => s + (r.spedito_ordinato_mese || 0), 0);
@@ -98,7 +106,7 @@ async function loadDashboard() {
         </div>
       </div>
       <div class="kpi-card">
-        <h3>Progressivo ${annoC}</h3>
+        <h3>Consuntivo ${progLabel}</h3>
         <div class="kpi-value">€${fmt(totProg26)}</div>
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
         ${varProgPct != null ? `<div class="kpi-change ${varProgPct >= 0 ? 'positive' : 'negative'}">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</div>` : ''}
