@@ -31,7 +31,7 @@ async function loadDashboard() {
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
         .order('data_aggiornamento', { ascending: false })
         .order('valore_ridistribuito', { ascending: false }),
-      sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento, budget_gen_apr')
+      sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento, budget_gen_apr, evaso_ordinato_resi')
         .lte('data_aggiornamento', today)
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false })
@@ -49,9 +49,12 @@ async function loadDashboard() {
     const _rDate = rollingDate ? new Date(rollingDate + 'T00:00:00') : new Date();
     const _prevMonth = new Date(_rDate.getFullYear(), _rDate.getMonth() - 1, 1);
     const progLabel = `gen–${_MESI_BREVI[_prevMonth.getMonth()]} ${_prevMonth.getFullYear()}`;
+    const budget       = budgetArr?.[0] || null;
     const totCons    = rows.reduce((s, r) => s + (r.mese_consegnato     || 0), 0);
     const totPrep    = rows.reduce((s, r) => s + (r.mese_in_preparazione || 0), 0);
-    const totMese26  = rows.reduce((s, r) => s + (r.spedito_ordinato_mese || 0), 0);
+    const totMese26  = budget?.evaso_ordinato_resi != null
+      ? Number(budget.evaso_ordinato_resi)
+      : rows.reduce((s, r) => s + (r.spedito_ordinato_mese || 0), 0);
     const totMese25  = rows.reduce((s, r) => s + (r.fatt_mese_anno_prec   || 0), 0);
     const varProgPct = totProg25 > 0 ? ((totProg26 - totProg25) / totProg25) * 100 : null;
 
@@ -73,7 +76,6 @@ async function loadDashboard() {
     const latestCedi  = allCedi.filter(r => r.data_aggiornamento === cediDate);
     const totCEDI     = latestCedi.reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
     const totOrdinato  = totMese26 + totCEDI;
-    const budget       = budgetArr?.[0] || null;
     const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
     const budgetColor  = budgetPct == null ? 'var(--text2)' : budgetPct >= 100 ? 'var(--green)' : budgetPct >= 80 ? '#378ADD' : budgetPct >= 40 ? '#D97706' : 'var(--red)';
 
