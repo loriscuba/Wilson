@@ -160,7 +160,7 @@ function renderCard(v, clientiMap, rollingMap, ordiniMap = {}) {
   let ultOrdLine = '';
   if (ritmo?.ultOrd) {
     const d   = new Date(ritmo.ultOrd);
-    const fmt = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const fmt = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(2)}`;
     ultOrdLine = `<div class="ac-ult-ord" title="Ultimo ordine">↩ ${fmt}</div>`;
   }
 
@@ -291,7 +291,7 @@ async function loadAgenda() {
         .eq('attivo', true),
       loadRollingEnriched(),
       sb.from('agenda_giorni').select('*').gte('data', d1).lte('data', d2),
-      sb.from('ordini').select('codice_cliente, data_ordine, totale_ordine').gte('data_ordine', cutoff),
+      sb.from('ordini').select('codice_cliente, data_ordine, totale_ordine').gte('data_ordine', cutoff).limit(5000),
     ]);
 
     _giorniMap = Object.fromEntries((giorniRaw || []).map(g => [g.data, g]));
@@ -327,7 +327,7 @@ async function _eseguiGenera(conferma) {
       loadRollingEnriched(),
       sb.from('agenda_giorni').select('*').gte('data', d1).lte('data', d2),
       sb.from('agenda_visite').select('id, data_visita').gte('data_visita', d1).lte('data_visita', d2),
-      sb.from('ordini').select('codice_cliente, data_ordine, totale_ordine').gte('data_ordine', cutoff),
+      sb.from('ordini').select('codice_cliente, data_ordine, totale_ordine').gte('data_ordine', cutoff).limit(5000),
     ]);
 
     _giorniMap = Object.fromEntries((giorniRaw || []).map(g => [g.data, g]));
