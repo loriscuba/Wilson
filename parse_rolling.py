@@ -114,32 +114,39 @@ def parse_rolling(filepath):
     """Legge il file rolling e restituisce lista di record per cliente."""
     df = pd.read_excel(filepath, sheet_name='REPORT', header=None)
 
-    # ── Data aggiornamento (riga 1, colonna 2) ──────────────────────────────
-    data_raw  = df.iloc[1][2]
-    data_agg  = None
-    today_str = datetime.today().strftime("%Y-%m-%d")
+    # Data aggiornamento: priorità al nome file (es. consuntivo-04-06-2026_...)
+    # La cella Excel contiene spesso la data dell'ultimo batch interno Fischer,
+    # che può essere settimane precedente rispetto alla data effettiva del file.
+    data_agg = None
+    m = re.search(r'consuntivo-(\d{2}-\d{2}-\d{4})', os.path.basename(filepath))
+    if m:
+        data_agg = datetime.strptime(m.group(1), "%d-%m-%Y").strftime("%Y-%m-%d")
+        print(f"  📅 Data da nome file: {data_agg}")
 
-    if hasattr(data_raw, 'strftime'):
-        candidate = data_raw.strftime("%Y-%m-%d")
-        if candidate <= today_str:
-            data_agg = candidate
-        else:
-            print(f"  ⚠️  Data cella Excel futura ({candidate}), uso nome file come fallback")
-    elif isinstance(data_raw, str):
-        for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y"):
-            try:
-                candidate = datetime.strptime(data_raw.strip(), fmt).strftime("%Y-%m-%d")
-                if candidate <= today_str:
-                    data_agg = candidate
-                else:
-                    print(f"  ⚠️  Data cella Excel futura ({candidate}), uso nome file come fallback")
-                break
-            except ValueError:
-                continue
-
+    # Fallback alla cella Excel solo se il nome file non ha una data valida
     if not data_agg:
-        m = re.search(r'consuntivo-(\d{2}-\d{2}-\d{4})', os.path.basename(filepath))
-        data_agg = datetime.strptime(m.group(1), "%d-%m-%Y").strftime("%Y-%m-%d") if m else None
+        data_raw = df.iloc[1][2]
+        today_str = datetime.today().strftime("%Y-%m-%d")
+        if hasattr(data_raw, 'strftime'):
+            candidate = data_raw.strftime("%Y-%m-%d")
+            if candidate <= today_str:
+                data_agg = candidate
+                print(f"  📅 Data da cella Excel: {data_agg}")
+            else:
+                print(f"  ⚠️  Data cella Excel futura ({candidate}), nessuna data disponibile")
+        elif isinstance(data_raw, str):
+            for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    today_str = datetime.today().strftime("%Y-%m-%d")
+                    candidate = datetime.strptime(data_raw.strip(), fmt).strftime("%Y-%m-%d")
+                    if candidate <= today_str:
+                        data_agg = candidate
+                        print(f"  📅 Data da cella Excel (stringa): {data_agg}")
+                    else:
+                        print(f"  ⚠️  Data cella Excel futura ({candidate}), nessuna data disponibile")
+                    break
+                except ValueError:
+                    continue
 
     # ── Mappa intestazioni ──────────────────────────────────────────────────
     col_map = _build_col_map(df)

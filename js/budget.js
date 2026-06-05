@@ -180,7 +180,7 @@ async function loadBudgetPremio() {
             <div class="pr-row-sub">obiettivo ${_eur(_prObjFat)} · peso 65% · <span style="color:var(--text)">consegnato mese: ${_eur(consMese)}</span></div>
           </div>
           <div class="pr-row-input">
-            <input type="number" id="pr-inp-fat" value="${initFat}" step="100" min="0" oninput="prCalc()">
+            <input type="number" id="pr-inp-fat" value="${Math.round(initFat)}" step="1" min="0" readonly oninput="prCalc()">
             <span class="pr-row-pct" id="pr-pct-fat">—</span>
           </div>
           <div class="pr-bbg"><div class="pr-bfill" id="pr-bar-fat" style="background:#378ADD;width:0%"></div></div>

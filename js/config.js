@@ -58,6 +58,7 @@ function statoBadgeCls(id) {
 
 let _latestRollingDate  = null;
 let _rollingEnriched    = null;
+let _gammaDates         = null;   // [latestDate, prevDate, ...]
 let _clientiEsclusi     = null;  // Set codici esclusi
 let _ordinaDiPersonaSet = null;  // Set codici che ordinano di persona
 
@@ -90,6 +91,24 @@ async function getLatestRollingDate() {
     .single();
   _latestRollingDate = data?.data_aggiornamento || null;
   return _latestRollingDate;
+}
+
+async function getGammaDates() {
+  if (_gammaDates) return _gammaDates;
+  const { data } = await sb.from('gamma_penetrazione')
+    .select('data_aggiornamento')
+    .order('data_aggiornamento', { ascending: false })
+    .limit(500);
+  const seen = new Set();
+  _gammaDates = (data || []).reduce((acc, r) => {
+    if (!seen.has(r.data_aggiornamento)) { seen.add(r.data_aggiornamento); acc.push(r.data_aggiornamento); }
+    return acc;
+  }, []);
+  return _gammaDates;
+}
+
+async function getLatestGammaDate() {
+  return (await getGammaDates())[0] || null;
 }
 
 async function loadRollingEnriched(force) {

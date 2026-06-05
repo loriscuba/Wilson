@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /workspaces/Wilson ls-files env.js)",
+      "WebFetch(domain:view.shippeo.com)",
+      "WebFetch(domain:doc.shippeo.com)",
+      "WebFetch(domain:api.shippeo.com)",
+      "WebSearch",
+      "WebFetch(domain:apitracker.io)"
+    ]
+  }
+}

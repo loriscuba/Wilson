@@ -126,9 +126,14 @@ async function loadClienteDetail(codice, nome, container) {
   try {
     const now     = new Date();
     const annoP   = now.getFullYear() - 1;
-    const latestDate = await getLatestRollingDate();
+    const [latestDate, gammaDates] = await Promise.all([
+      getLatestRollingDate(),
+      getGammaDates(),
+    ]);
+    const latestGammaDate = gammaDates[0] || null;
+    const prevGammaDate   = gammaDates[1] || null;
 
-    const [{ data: rollingRec }, { data: ordiniAttivi }, { data: gammaData }, { data: ordiniStorico }, { data: gammaRefData }] =
+    const [{ data: rollingRec }, { data: ordiniAttivi }, { data: gammaData }, { data: ordiniStorico }, { data: gammaRefData }, { data: gammaPrevData }] =
       await Promise.all([
         sb.from('rolling_fatturato')
           .select([
@@ -147,6 +152,7 @@ async function loadClienteDetail(codice, nome, container) {
         sb.from('gamma_penetrazione')
           .select('settore, pct_immancabili, pct_strategiche, fatturato_anno, prodotti_acquistati, data_aggiornamento')
           .eq('codice_cliente', codice)
+          .eq('data_aggiornamento', latestGammaDate)
           .order('settore'),
         sb.from('ordini')
           .select('data_ordine, totale_ordine')
@@ -155,7 +161,14 @@ async function loadClienteDetail(codice, nome, container) {
           .order('data_ordine', { ascending: false })
           .limit(24),
         sb.from('gamma_penetrazione')
-          .select('settore, prodotti_acquistati'),
+          .select('settore, prodotti_acquistati')
+          .eq('data_aggiornamento', latestGammaDate),
+        prevGammaDate
+          ? sb.from('gamma_penetrazione')
+              .select('settore, prodotti_acquistati')
+              .eq('codice_cliente', codice)
+              .eq('data_aggiornamento', prevGammaDate)
+          : Promise.resolve({ data: [] }),
       ]);
 
     const r       = enrichRecord(rollingRec || {});
@@ -180,6 +193,12 @@ async function loadClienteDetail(codice, nome, container) {
       }
     }
 
+    // Mappa prodotti mese precedente per evidenziare i nuovi: settore → Set(label.lower)
+    const prevProdMap = {};
+    for (const row of (gammaPrevData || [])) {
+      prevProdMap[row.settore] = new Set(Object.keys(row.prodotti_acquistati || {}).map(p => p.toLowerCase()));
+    }
+
     // Gamma HTML
     const gamma = gammaData || [];
     const gammaHTML = gamma.length
@@ -190,6 +209,7 @@ async function loadClienteDetail(codice, nome, container) {
           const mancanti    = [...refMap.entries()].filter(([k]) => !acquistatiK.has(k)).map(([, v]) => v);
           const pctImm = g.pct_immancabili != null ? (g.pct_immancabili * 100).toFixed(0) : null;
           const pctStr = g.pct_strategiche  != null ? (g.pct_strategiche  * 100).toFixed(0) : null;
+          const prevProds = prevProdMap[g.settore] || new Set();
           return `<div class="gamma-settore-card">
             <div class="gamma-settore-header">
               <span class="gamma-settore-nome">${g.settore}</span>
@@ -199,7 +219,10 @@ async function loadClienteDetail(codice, nome, container) {
               </div>
             </div>
             ${(prods.length || mancanti.length) ? `<div class="gamma-prodotti">
-              ${prods.map(([l, v]) => `<span class="gamma-prod-tag" title="€${fmt(v)}">✓ ${l}</span>`).join('')}
+              ${prods.map(([l, v]) => {
+                const isNew = prevGammaDate && prevProds.size > 0 && !prevProds.has(l.toLowerCase());
+                return `<span class="gamma-prod-tag${isNew ? ' gamma-prod-new' : ''}" title="€${fmt(v)}">✓ ${l}</span>`;
+              }).join('')}
               ${mancanti.map(l => `<span class="gamma-prod-tag gamma-prod-missing">✗ ${l}</span>`).join('')}
             </div>` : ''}
           </div>`;
