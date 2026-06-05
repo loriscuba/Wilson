@@ -85,25 +85,30 @@ async function loadDashboard() {
     const gapOrdinato       = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totOrdinato)    : null;
     const gapCons           = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totConsConCedi) : null;
 
-    kpiGrid.innerHTML = `
-      <div class="kpi-card">
-        <h3>Ordinato del mese</h3>
-        <div class="kpi-value">€${fmt(totOrdinato)}</div>
-        ${totCEDI > 0 ? `<div class="kpi-sub" style="font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          ${varOrdinatoPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varOrdinatoPct >= 0 ? '+' : ''}${varOrdinatoPct.toFixed(1)}% vs ${annoP}</span>` : ''}
-          ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
-          ${gapOrdinato > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapOrdinato)} al budget</span>` : ''}
-        </div>
-      </div>
-      <div class="kpi-card">
-        <h3>Consegnato del mese</h3>
-        <div class="kpi-value">€${fmt(totConsConCedi)}</div>
-        ${totCEDI > 0 ? `<div class="kpi-sub" style="font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          ${varConsPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varConsPct >= 0 ? '+' : ''}${varConsPct.toFixed(1)}% vs ${annoP}</span>` : ''}
-          ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
-          ${gapCons > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapCons)} al budget</span>` : ''}
+      <div class="flip-card-wrap" onclick="this.classList.toggle('flipped')" title="Clicca per vedere consegnato/ordinato">
+        <div class="flip-card-inner">
+          <div class="flip-card-front">
+            <h3>Ordinato del mese</h3>
+            <div class="kpi-value">€${fmt(totOrdinato)}</div>
+            ${totCEDI > 0 ? `<div class="kpi-sub">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+              ${varOrdinatoPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varOrdinatoPct >= 0 ? '+' : ''}${varOrdinatoPct.toFixed(1)}% vs ${annoP}</span>` : ''}
+              ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
+              ${gapOrdinato > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapOrdinato)} al budget</span>` : ''}
+            </div>
+            <span class="flip-hint">↩ consegnato</span>
+          </div>
+          <div class="flip-card-back">
+            <h3>Consegnato del mese</h3>
+            <div class="kpi-value">€${fmt(totConsConCedi)}</div>
+            ${totCEDI > 0 ? `<div class="kpi-sub">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+              ${varConsPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varConsPct >= 0 ? '+' : ''}${varConsPct.toFixed(1)}% vs ${annoP}</span>` : ''}
+              ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
+              ${gapCons > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapCons)} al budget</span>` : ''}
+            </div>
+            <span class="flip-hint">↩ ordinato</span>
+          </div>
         </div>
       </div>
       <div class="kpi-card">
@@ -130,6 +135,19 @@ async function loadDashboard() {
         <div class="kpi-value" style="color:${ddtRitardoCount > 0 ? '#C84B2F' : 'var(--text2)'}">${ddtRitardoCount}</div>
         <div class="kpi-sub">ETA superata, non consegnato</div>
       </div>`;
+
+    // Aggiusta altezza flip card in base al contenuto reale delle due facce
+    requestAnimationFrame(() => {
+      const wrap = kpiGrid.querySelector('.flip-card-wrap');
+      if (!wrap) return;
+      const front = wrap.querySelector('.flip-card-front');
+      const back  = wrap.querySelector('.flip-card-back');
+      if (front && back) {
+        const h = Math.max(front.scrollHeight, back.scrollHeight);
+        wrap.style.minHeight = h + 'px';
+        wrap.querySelector('.flip-card-inner').style.minHeight = h + 'px';
+      }
+    });
 
     renderStatoMese(rows);
 
