@@ -97,7 +97,6 @@ async function loadDashboard() {
               ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
               ${gapOrdinato > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapOrdinato)} al budget</span>` : ''}
             </div>
-            <span class="flip-hint">↩ consegnato</span>
           </div>
           <div class="flip-card-back">
             <h3>Consegnato del mese</h3>
@@ -108,7 +107,6 @@ async function loadDashboard() {
               ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
               ${gapCons > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapCons)} al budget</span>` : ''}
             </div>
-            <span class="flip-hint">↩ ordinato</span>
           </div>
         </div>
       </div>
