@@ -89,7 +89,7 @@ async function loadDashboard() {
     const gapBudgetProg     = budgetProg > 0 ? totProg26 - budgetProg : null;
 
     kpiGrid.innerHTML = `
-      <div class="flip-card-wrap" onclick="this.classList.toggle('flipped')" title="Clicca per vedere consegnato/ordinato">
+      <div class="flip-card-wrap" onclick="this.classList.toggle('flipped')">
         <div class="flip-card-inner">
           <div class="flip-card-front">
             <h3>Ordinato del mese</h3>
