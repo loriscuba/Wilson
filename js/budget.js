@@ -5,6 +5,7 @@ let _bcFilter       = null;   // stato filter chip attivo
 let _bcSort         = { col: 'priority', dir: 1 };
 let _bcRows         = [];
 let _bcQuery        = '';
+let _plCache        = null;   // { budgetMese, baseTotale, dataAgg }
 
 // ── Tab switch ────────────────────────────────────────────────────────────────
 function swBudget(tab, btn) {
@@ -453,6 +454,7 @@ async function loadBudgetClienti() {
       return;
     }
 
+    _plCache = null;  // invalida cache pipeline quando i dati rolling vengono ricaricati
     _bcRows = rows.filter(r => !r._escluso).map(r => {
       const row = {
         cliente:         r.ragione_sociale || '—',
@@ -460,6 +462,7 @@ async function loadBudgetClienti() {
         divisione:       r.divisione || '',
         stato:           r._stato,
         _ordinaDiPersona: r._ordinaDiPersona || false,
+        _media:     r._media                 || 0,
         bud:        r.fatt_mese_anno_prec    || 0,
         ord:        r.spedito_ordinato_mese  || 0,
         cons:       r.mese_consegnato        || 0,
@@ -535,6 +538,10 @@ function _renderClienti(root) {
       <div class="bc-kpi"><div class="bc-kpi-label">ordinato mese</div><div class="bc-kpi-val ${_cls(dMese)}">${_eur(totOrd)}</div><div class="bc-kpi-sub ${_cls(dMese)}">${_pct(dMese)} vs anno prec</div></div>
       <div class="bc-kpi bc-kpi-neg"><div class="bc-kpi-label">gap da recuperare</div><div class="bc-kpi-val neg">–${_eur(totGap)}</div></div>
       <div class="bc-kpi"><div class="bc-kpi-label">progressivo 2026</div><div class="bc-kpi-val">${_eur(totP26)}</div><div class="bc-kpi-sub ${_cls(dProg)}">${_pct(dProg)} vs 2025</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:.75rem">
+      <button class="pl-open-btn" onclick="openPipeline()">Pipeline →</button>
+      <span style="font-size:12px;color:var(--text2)">chi chiamare per raggiungere il budget</span>
     </div>
     <div class="bc-chips" id="bc-chips">${chipHtml}</div>
     <div class="bc-toolbar">
@@ -677,4 +684,156 @@ function onBcSort(col) {
     if (arrow) arrow.outerHTML = _sortArrow(m[1]);
   });
   _renderBcRows();
+}
+
+// ── PIPELINE ──────────────────────────────────────────────────────────────────
+
+async function openPipeline() {
+  const modal = document.getElementById('pl-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  const body = document.getElementById('pl-body');
+  body.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text2)">Caricamento…</div>';
+
+  try {
+    if (!_plCache) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await sb.from('budget')
+        .select('budget_mese, evaso_ordinato_resi, data_aggiornamento')
+        .lte('data_aggiornamento', today)
+        .not('budget_mese', 'is', null)
+        .order('data_aggiornamento', { ascending: false })
+        .limit(1);
+      const b = data?.[0];
+      _plCache = {
+        budgetMese: b?.budget_mese         || 0,
+        baseTotale: b?.evaso_ordinato_resi  || 0,
+        dataAgg:    b?.data_aggiornamento   || null,
+      };
+    }
+
+    const { budgetMese, baseTotale, dataAgg } = _plCache;
+    const meseLabel = _nomeMese(dataAgg || new Date().toISOString().split('T')[0]);
+
+    document.getElementById('pl-header-title').textContent = `Pipeline — ${meseLabel}`;
+
+    // Barra progresso
+    const pct   = budgetMese > 0 ? Math.min(100, baseTotale / budgetMese * 100) : 0;
+    const manca = budgetMese - baseTotale;
+    document.getElementById('pl-progress').innerHTML = `
+      <div class="pl-stats">
+        <span><strong>${_eur(baseTotale)}</strong> ordinato</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:var(--text2)">${_eur(budgetMese)} budget</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:${manca > 0 ? '#C84B2F' : '#2D7D4F'};font-weight:600">
+          ${manca > 0 ? '–' + _eur(manca) + ' da recuperare' : '✓ budget raggiunto'}
+        </span>
+      </div>
+      <div class="pl-bar-bg">
+        <div class="pl-bar-fill" style="width:${pct.toFixed(1)}%">
+          <span class="pl-bar-pct">${pct.toFixed(1)}%</span>
+        </div>
+      </div>`;
+
+    if (!_bcRows.length) {
+      body.innerHTML = '<p style="padding:1.5rem;color:var(--text2)">Nessun dato disponibile. Carica prima il tab Budget Clienti.</p>';
+      return;
+    }
+
+    // Separa in 3 gruppi: urgenti (0 ord + target), parziali, in target
+    const g0 = _bcRows.filter(r => r.ord === 0 && r.bud > 0)
+                      .sort((a, b) => b.bud - a.bud);
+    const g1 = _bcRows.filter(r => r.ord > 0 && r.gap > 0)
+                      .sort((a, b) => b.gap - a.gap);
+    const g2 = _bcRows.filter(r => r.gap === 0 && r.ord > 0)
+                      .sort((a, b) => b.ord - a.ord);
+
+    // Cumulative: parte dal totale attuale, aggiunge il gap di ogni cliente urgente
+    let running    = baseTotale;
+    let budgetHit  = false;
+    let budgetHitAfterIdx = -1;
+
+    const urgent = [...g0, ...g1];
+    const urgentRows = urgent.map((r, i) => {
+      running += r.gap;
+      const hitNow = !budgetHit && running >= budgetMese;
+      if (hitNow) { budgetHit = true; budgetHitAfterIdx = i; }
+      return { r, cum: running, hitAfter: hitNow, group: r.ord === 0 ? 0 : 1 };
+    });
+
+    let html = `<table class="pl-tbl">
+      <thead><tr>
+        <th>Cliente</th>
+        <th class="num-right">Stesso mese 2025</th>
+        <th class="num-right">Già ordinato</th>
+        <th class="num-right">Da ordinare</th>
+        <th class="num-right">Cumulato</th>
+      </tr></thead>
+      <tbody>`;
+
+    let lastGroup = -1;
+    for (const { r, cum, hitAfter, group } of urgentRows) {
+      if (group !== lastGroup) {
+        const label = group === 0 ? 'Da visitare — nessun ordine questo mese' : 'Parziali — ordine in corso';
+        const color = group === 0 ? '#C84B2F' : '#D97706';
+        html += `<tr class="pl-group-hdr"><td colspan="5" style="color:${color}">${label}</td></tr>`;
+        lastGroup = group;
+      }
+
+      const statoId    = r.stato?.id || 'inattivo';
+      const statoColor = STATO_COLOR[statoId] || '#9B9B97';
+      const cumColor   = cum >= budgetMese ? '#2D7D4F' : cum >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
+
+      html += `<tr class="pl-row">
+        <td>
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+                background:${statoColor};margin-right:7px;flex-shrink:0"></span>${r.cliente}
+          ${r.divisione ? `<div style="font-size:11px;color:var(--text2);margin-top:1px;margin-left:15px">${r.divisione}</div>` : ''}
+        </td>
+        <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
+        <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
+        <td class="num-right" style="font-weight:600;color:#C84B2F">–${_eur(r.gap)}</td>
+        <td class="num-right" style="font-weight:600;color:${cumColor}">${_eur(cum)}</td>
+      </tr>`;
+
+      if (hitAfter) {
+        html += `<tr class="pl-budget-line">
+          <td colspan="5">🎯 Budget raggiunto — ${_eur(budgetMese)}</td>
+        </tr>`;
+      }
+    }
+
+    if (!budgetHit && urgentRows.length) {
+      const still = budgetMese - running;
+      html += `<tr class="pl-group-hdr">
+        <td colspan="5" style="color:#C84B2F">
+          Budget non raggiunto anche completando tutti i gap — mancano ancora ${_eur(still)}
+        </td>
+      </tr>`;
+    }
+
+    if (g2.length) {
+      html += `<tr class="pl-group-hdr"><td colspan="5" style="color:#2D7D4F">In target (${g2.length} clienti)</td></tr>`;
+      html += g2.map(r => `<tr class="pl-row pl-row-ok">
+        <td>${r.cliente}${r.divisione ? ` <span style="font-size:11px;color:var(--text2)">${r.divisione}</span>` : ''}</td>
+        <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
+        <td class="num-right">${_eur(r.ord)}</td>
+        <td class="num-right" style="color:#2D7D4F;font-weight:600">in target</td>
+        <td></td>
+      </tr>`).join('');
+    }
+
+    html += '</tbody></table>';
+    body.innerHTML = html;
+
+  } catch(err) {
+    document.getElementById('pl-body').innerHTML =
+      `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
+
+function closePipeline() {
+  const modal = document.getElementById('pl-modal');
+  if (modal) modal.style.display = 'none';
 }

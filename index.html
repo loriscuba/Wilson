@@ -529,6 +529,57 @@
         .bc-det-oltre { background:#f0fdf4; color:#2D7D4F; }
         .bc-row:hover td { background:var(--bg); }
 
+        /* ── Pipeline Modal ── */
+        .pl-overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.45);
+                      display:flex; align-items:center; justify-content:center; padding:16px; }
+        .pl-modal   { background:var(--surface); border-radius:16px;
+                      box-shadow:0 20px 60px rgba(0,0,0,.25);
+                      width:100%; max-width:800px; max-height:88vh;
+                      display:flex; flex-direction:column; overflow:hidden; }
+        .pl-mhdr    { display:flex; justify-content:space-between; align-items:center;
+                      padding:.9rem 1.25rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+        .pl-mhdr h2 { font-size:16px; font-weight:600; margin:0; }
+        .pl-close   { background:none; border:none; font-size:22px; cursor:pointer;
+                      color:var(--text2); line-height:1; padding:0 4px; font-family:sans-serif; }
+        .pl-close:hover { color:var(--text); }
+        .pl-progress{ padding:.75rem 1.25rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+        .pl-stats   { display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+                      font-size:13px; margin-bottom:8px; }
+        .pl-stats-sep { color:var(--border); }
+        .pl-bar-bg  { height:8px; background:var(--border); border-radius:4px; overflow:visible;
+                      position:relative; }
+        .pl-bar-fill{ height:100%; background:#378ADD; border-radius:4px; transition:width .5s;
+                      position:relative; }
+        .pl-bar-pct { position:absolute; right:0; top:-18px; font-size:11px; font-weight:700;
+                      color:#378ADD; }
+        .pl-body    { overflow-y:auto; flex:1; }
+        .pl-tbl     { width:100%; border-collapse:collapse; font-size:13px; }
+        .pl-tbl th  { font-size:11px; font-weight:600; color:var(--text2); padding:8px 12px;
+                      border-bottom:1px solid var(--border); text-align:left;
+                      white-space:nowrap; position:sticky; top:0; background:var(--surface); z-index:1; }
+        .pl-tbl td  { padding:7px 12px; border-bottom:1px solid var(--border);
+                      vertical-align:middle; }
+        .pl-row:hover td { background:var(--bg); }
+        .pl-row-ok td { opacity:.55; }
+        .pl-row-ok:hover td { opacity:1; }
+        .pl-budget-line { background:#f0fdf4; }
+        .pl-budget-line td { padding:7px 12px; font-size:12px; font-weight:700;
+                             color:#2D7D4F; text-align:center;
+                             border-top:2px solid #2D7D4F; border-bottom:2px solid #2D7D4F; }
+        .pl-group-hdr td { padding:6px 12px; font-size:10px; font-weight:700;
+                           color:var(--text2); letter-spacing:.07em; text-transform:uppercase;
+                           background:var(--bg); border-bottom:1px solid var(--border); }
+        .pl-open-btn { font-size:13px; font-weight:600; padding:6px 16px; border-radius:20px;
+                       background:var(--accent); color:#fff; border:none; cursor:pointer;
+                       font-family:'DM Sans',sans-serif; flex-shrink:0; }
+        .pl-open-btn:hover { opacity:.88; }
+        @media(max-width:768px) {
+          .pl-overlay { padding:0; align-items:flex-end; }
+          .pl-modal   { border-radius:16px 16px 0 0; max-height:92vh; }
+          .pl-tbl th:nth-child(2), .pl-tbl td:nth-child(2),
+          .pl-tbl th:nth-child(5), .pl-tbl td:nth-child(5) { display:none; }
+        }
+
         /* ── Impostazioni clienti ── */
         .cfg-row-off td { opacity:.45; }
         .cfg-row-nodash td { opacity:.7; }
@@ -1423,6 +1474,19 @@
     <!-- Modal Statistiche -->
     <div class="stat-modal-overlay" id="stat-modal-overlay" onclick="handleStatModalOverlay(event)"></div>
 
+    <!-- Pipeline modal -->
+    <div id="pl-modal" class="pl-overlay" style="display:none"
+         onclick="if(event.target===this)closePipeline()">
+      <div class="pl-modal">
+        <div class="pl-mhdr">
+          <h2 id="pl-header-title">Pipeline</h2>
+          <button class="pl-close" onclick="closePipeline()">×</button>
+        </div>
+        <div id="pl-progress" class="pl-progress"></div>
+        <div id="pl-body" class="pl-body"></div>
+      </div>
+    </div>
+
     <script src="env.js?v=12"></script>
     <script src="js/config.js?v=13"></script>
     <script src="js/analytics.js?v=13"></script>
@@ -1431,7 +1495,7 @@
     <script src="js/ordini.js?v=25"></script>
     <script src="js/ddt.js?v=22"></script>
     <script src="js/fatturato.js?v=12"></script>
-    <script src="js/budget.js?v=9"></script>
+    <script src="js/budget.js?v=10"></script>
     <script src="js/impostazioni.js?v=5"></script>
     <script src="js/agenda.js?v=5"></script>
     <script src="js/statistiche.js?v=2"></script>
