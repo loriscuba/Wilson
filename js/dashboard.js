@@ -122,9 +122,8 @@ async function loadDashboard() {
           ${totProg25 > 0 ? `<span class="badge" style="background:${totProg26 >= totProg25 ? '#F0FDF4' : '#FEF2F2'};color:${totProg26 >= totProg25 ? 'var(--green)' : '#C84B2F'};">${totProg26 >= totProg25 ? '+' : ''}€${fmt(totProg26 - totProg25)}</span>` : ''}
         </div>
         ${budgetProg != null ? `
-        <div class="kpi-sub" style="margin-top:6px;">Budget ${progLabel}: €${fmt(budgetProg)}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
-          ${budgetProgPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetProgPct.toFixed(1)}% budget</span>` : ''}
+          ${budgetProgPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetProgPct.toFixed(1)}%</span>` : ''}
           ${gapBudgetProg != null ? `<span class="badge" style="background:${gapBudgetProg >= 0 ? '#FFF7ED' : '#FEF2F2'};color:${gapBudgetProg >= 0 ? '#D97706' : '#C84B2F'};">${gapBudgetProg >= 0 ? '+' : ''}€${fmt(gapBudgetProg)}</span>` : ''}
         </div>` : ''}
       </div>
