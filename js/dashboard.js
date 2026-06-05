@@ -123,7 +123,7 @@ async function loadDashboard() {
         </div>
         ${budgetProg != null ? `
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
-          ${budgetProgPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetProgPct.toFixed(1)}%</span>` : ''}
+          ${budgetProgPct != null ? `<span class="badge" style="background:${budgetProgPct >= 100 ? '#FFF7ED' : '#FEF2F2'};color:${budgetProgPct >= 100 ? '#D97706' : '#C84B2F'};">${budgetProgPct >= 100 ? '+' : ''}${(budgetProgPct - 100).toFixed(1)}%</span>` : ''}
           ${gapBudgetProg != null ? `<span class="badge" style="background:${gapBudgetProg >= 0 ? '#FFF7ED' : '#FEF2F2'};color:${gapBudgetProg >= 0 ? '#D97706' : '#C84B2F'};">${gapBudgetProg >= 0 ? '+' : ''}€${fmt(gapBudgetProg)}</span>` : ''}
         </div>` : ''}
       </div>
