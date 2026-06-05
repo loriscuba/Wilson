@@ -49,20 +49,12 @@ function getPriority(r) {
   return ord[r._stato?.id] ?? 3;
 }
 
-// Costruisce una mappa { codice_cliente: ritmoOrdini } dalle righe grezze della tabella ordini.
-// Richiede calcolaRitmoOrdini() da analytics.js.
-function buildOrdiniMap(ordini) {
-  const byCliente = {};
-  for (const o of ordini) {
-    if (!byCliente[o.codice_cliente]) byCliente[o.codice_cliente] = [];
-    byCliente[o.codice_cliente].push(o);
-  }
-  const map = {};
-  for (const [cod, ords] of Object.entries(byCliente)) {
-    const ritmo = calcolaRitmoOrdini(ords);
-    if (ritmo) map[cod] = ritmo;
-  }
-  return map;
+// Calcola la data prevista del prossimo ordine da un record di v_ordini_stats.
+// Usa mezzogiorno (T12:00:00) per evitare lo shift UTC/locale.
+function _dataProssima(ritmo) {
+  if (!ritmo?.ultimo_ordine || !ritmo?.freq_media_giorni) return null;
+  const base = new Date(ritmo.ultimo_ordine + 'T12:00:00');
+  return new Date(base.getTime() + Number(ritmo.freq_media_giorni) * 86400000);
 }
 
 // Restituisce la stringa-data (YYYY-MM-DD) in `dates` più vicina a `target` (Date).
@@ -126,21 +118,15 @@ function algoritmoAgenda(anno, mese, clientiList, rollingMap, giorniSpeciali, or
     const nonUrgent = sorted.filter(c => getPriority(rollingMap[c.codice_cliente]) > 1);
 
     urgenti.forEach(c => {
-      const ritmo = ordiniMap[c.codice_cliente];
+      const prossimo = _dataProssima(ordiniMap[c.codice_cliente]);
       let data = dates[0]; // default: primo giorno disponibile
-      // Se c'è una data ideale futura (prossimo ordine previsto), usa quella
-      if (ritmo?.prossimo && new Date(ritmo.prossimo) > oggi) {
-        data = _closestDate(dates, new Date(ritmo.prossimo));
-      }
+      if (prossimo && prossimo > oggi) data = _closestDate(dates, prossimo);
       assignments.push({ codice_cliente: c.codice_cliente, data_visita: data });
     });
 
     nonUrgent.forEach((c, i) => {
-      const ritmo = ordiniMap[c.codice_cliente];
-      let data = dates[i % dates.length]; // default: round-robin
-      if (ritmo?.prossimo) {
-        data = _closestDate(dates, new Date(ritmo.prossimo));
-      }
+      const prossimo = _dataProssima(ordiniMap[c.codice_cliente]);
+      const data = prossimo ? _closestDate(dates, prossimo) : dates[i % dates.length];
       assignments.push({ codice_cliente: c.codice_cliente, data_visita: data });
     });
   }
@@ -158,10 +144,9 @@ function renderCard(v, clientiMap, rollingMap, ordiniMap = {}) {
   const sub   = c.settori?.nome || r?._stato?.label || '';
 
   let ultOrdLine = '';
-  if (ritmo?.ultOrd) {
-    const d   = new Date(ritmo.ultOrd);
-    const fmt = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(2)}`;
-    ultOrdLine = `<div class="ac-ult-ord" title="Ultimo ordine">↩ ${fmt}</div>`;
+  if (ritmo?.ultimo_ordine) {
+    const [yy, mm, dd] = ritmo.ultimo_ordine.split('-');
+    ultOrdLine = `<div class="ac-ult-ord" title="Ultimo ordine">↩ ${dd}/${mm}/${yy.slice(2)}</div>`;
   }
 
   return `
@@ -277,12 +262,8 @@ async function loadAgenda() {
   const d1 = `${y}-${m}-01`;
   const d2 = new Date(y, _agendaMese, 0).toISOString().split('T')[0];
 
-  const due_anni_fa = new Date();
-  due_anni_fa.setFullYear(due_anni_fa.getFullYear() - 2);
-  const cutoff = due_anni_fa.toISOString().split('T')[0];
-
   try {
-    const [{ data: visite }, { data: clientiRaw }, rolling, { data: giorniRaw }, { data: ordiniRaw }] = await Promise.all([
+    const [{ data: visite }, { data: clientiRaw }, rolling, { data: giorniRaw }, { data: statsRaw }] = await Promise.all([
       sb.from('agenda_visite')
         .select('id, codice_cliente, data_visita, completata, note')
         .gte('data_visita', d1).lte('data_visita', d2),
@@ -291,13 +272,13 @@ async function loadAgenda() {
         .eq('attivo', true),
       loadRollingEnriched(),
       sb.from('agenda_giorni').select('*').gte('data', d1).lte('data', d2),
-      sb.from('ordini').select('codice_cliente, data_ordine, totale_ordine').gte('data_ordine', cutoff).limit(5000),
+      sb.from('v_ordini_stats').select('codice_cliente, ultimo_ordine, freq_media_giorni'),
     ]);
 
     _giorniMap = Object.fromEntries((giorniRaw || []).map(g => [g.data, g]));
     const clientiMap = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c]));
     const rollingMap = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
-    const ordiniMap  = buildOrdiniMap(ordiniRaw || []);
+    const ordiniMap  = Object.fromEntries((statsRaw || []).map(r => [r.codice_cliente, r]));
 
     renderCalendario(container, y, _agendaMese, visite || [], clientiMap, rollingMap, ordiniMap);
   } catch (err) {
@@ -317,17 +298,13 @@ async function _eseguiGenera(conferma) {
   const d1 = `${y}-${m}-01`;
   const d2 = new Date(y, _agendaMese, 0).toISOString().split('T')[0];
 
-  const due_anni_fa = new Date();
-  due_anni_fa.setFullYear(due_anni_fa.getFullYear() - 2);
-  const cutoff = due_anni_fa.toISOString().split('T')[0];
-
   try {
-    const [{ data: clientiRaw }, rolling, { data: giorniRaw }, { data: existingVisite }, { data: ordiniRaw }] = await Promise.all([
+    const [{ data: clientiRaw }, rolling, { data: giorniRaw }, { data: existingVisite }, { data: statsRaw }] = await Promise.all([
       sb.from('clienti').select('codice_cliente, giorno_visita').eq('attivo', true),
       loadRollingEnriched(),
       sb.from('agenda_giorni').select('*').gte('data', d1).lte('data', d2),
       sb.from('agenda_visite').select('id, data_visita').gte('data_visita', d1).lte('data_visita', d2),
-      sb.from('ordini').select('codice_cliente, data_ordine, totale_ordine').gte('data_ordine', cutoff).limit(5000),
+      sb.from('v_ordini_stats').select('codice_cliente, ultimo_ordine, freq_media_giorni'),
     ]);
 
     _giorniMap = Object.fromEntries((giorniRaw || []).map(g => [g.data, g]));
@@ -349,7 +326,7 @@ async function _eseguiGenera(conferma) {
 
     const clientiList  = (clientiRaw || []).filter(c => giornoToIdx(c.giorno_visita));
     const rollingMap   = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
-    const ordiniMap    = buildOrdiniMap(ordiniRaw || []);
+    const ordiniMap    = Object.fromEntries((statsRaw || []).map(r => [r.codice_cliente, r]));
     const assignments  = algoritmoAgenda(y, _agendaMese, clientiList, rollingMap, giorniSpeciali, ordiniMap);
 
     if (assignments.length) {
