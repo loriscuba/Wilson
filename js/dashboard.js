@@ -85,6 +85,7 @@ async function loadDashboard() {
     const gapOrdinato       = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totOrdinato)    : null;
     const gapCons           = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totConsConCedi) : null;
 
+    kpiGrid.innerHTML = `
       <div class="flip-card-wrap" onclick="this.classList.toggle('flipped')" title="Clicca per vedere consegnato/ordinato">
         <div class="flip-card-inner">
           <div class="flip-card-front">
