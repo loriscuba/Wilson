@@ -585,11 +585,45 @@
 
         @media (max-width: 768px) {
             .main-content {
-                padding-bottom: 90px;
+                padding: 12px 12px 90px;
             }
 
+            h1 { font-size: 20px; margin-bottom: 14px; }
+            h2 { font-size: 15px; margin: 16px 0 10px; }
+
             /* KPI grid: 2 colonne su mobile */
-            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .kpi-card  { padding: 10px 12px; }
+            .kpi-value { font-size: 18px; }
+            .kpi-sub   { font-size: 10px; }
+            .kpi-card h3 { font-size: 8px; }
+            .flip-card-front, .flip-card-back { padding: 10px 12px; }
+
+            /* Stato mese: font più piccoli */
+            .stato-mese-total  { font-size: 20px; }
+            .stato-mese-pct    { font-size: 15px; }
+            .stato-chip        { padding: 5px 8px; font-size: 11px; }
+            .stato-chip-count  { font-size: 13px; }
+            .stato-chip-label  { font-size: 9px; }
+            .gap-row-text      { font-size: 11px; }
+            .stato-chips       { gap: 6px; margin: 10px 0; }
+
+            /* Top-10 table: nascondi bar ordinato, progressivo, var prog */
+            #top-clienti-table th:nth-child(3),
+            #top-clienti-table td:nth-child(3),
+            #top-clienti-table th:nth-child(6),
+            #top-clienti-table td:nth-child(6),
+            #top-clienti-table th:nth-child(7),
+            #top-clienti-table td:nth-child(7) { display: none; }
+            #top-clienti-table { font-size: 12px; }
+            .bc-cliente-nome   { font-size: 12px; }
+            .bc-cliente-div    { font-size: 10px; }
+
+            /* Table wrapper: scroll orizzontale dove serve */
+            .table-wrapper { overflow-x: auto; }
+
+            /* Cliente detail: 1 colonna */
+            .cliente-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 
             /* Ordini: nascondi Data, Codice Cliente, Tipo */
             #ordini-table th:nth-child(3),
