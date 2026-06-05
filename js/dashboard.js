@@ -31,7 +31,7 @@ async function loadDashboard() {
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
         .order('data_aggiornamento', { ascending: false })
         .order('valore_ridistribuito', { ascending: false }),
-      sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento')
+      sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento, budget_gen_apr')
         .lte('data_aggiornamento', today)
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false })
@@ -84,6 +84,9 @@ async function loadDashboard() {
     const budgetConsPct     = budget?.budget_mese > 0 ? (totConsConCedi / budget.budget_mese) * 100 : null;
     const gapOrdinato       = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totOrdinato)    : null;
     const gapCons           = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totConsConCedi) : null;
+    const budgetProg        = budget?.budget_gen_apr || null;
+    const budgetProgPct     = budgetProg > 0 ? (totProg26 / budgetProg) * 100 : null;
+    const gapBudgetProg     = budgetProg > 0 ? totProg26 - budgetProg : null;
 
     kpiGrid.innerHTML = `
       <div class="flip-card-wrap" onclick="this.classList.toggle('flipped')" title="Clicca per vedere consegnato/ordinato">
@@ -114,10 +117,16 @@ async function loadDashboard() {
         <h3>Consuntivo ${progLabel}</h3>
         <div class="kpi-value">€${fmt(totProg26)}</div>
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
           ${varProgPct != null ? `<span class="badge" style="background:${varProgPct >= 0 ? '#F0FDF4' : '#FEF2F2'};color:${varProgPct >= 0 ? 'var(--green)' : '#C84B2F'};">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</span>` : ''}
           ${totProg25 > 0 ? `<span class="badge" style="background:${totProg26 >= totProg25 ? '#F0FDF4' : '#FEF2F2'};color:${totProg26 >= totProg25 ? 'var(--green)' : '#C84B2F'};">${totProg26 >= totProg25 ? '+' : ''}€${fmt(totProg26 - totProg25)}</span>` : ''}
         </div>
+        ${budgetProg != null ? `
+        <div class="kpi-sub" style="margin-top:6px;">Budget ${progLabel}: €${fmt(budgetProg)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+          ${budgetProgPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetProgPct.toFixed(1)}% budget</span>` : ''}
+          ${gapBudgetProg != null ? `<span class="badge" style="background:${gapBudgetProg >= 0 ? '#FFF7ED' : '#FEF2F2'};color:${gapBudgetProg >= 0 ? '#D97706' : '#C84B2F'};">${gapBudgetProg >= 0 ? '+' : ''}€${fmt(gapBudgetProg)}</span>` : ''}
+        </div>` : ''}
       </div>
       <div class="kpi-card kpi-card-link" onclick="navToPage('ordini')">
         <h3>Ordini del mese</h3>
