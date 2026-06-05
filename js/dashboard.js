@@ -42,7 +42,8 @@ async function loadDashboard() {
     // Progressivo consuntivo: usa fatt_prog_gen_apr_2026 (col fissa = gen→mese precedente completo)
     // così non include dati parziali del mese in corso
     const totProg26  = rows.reduce((s, r) => s + (r.fatt_prog_gen_apr_2026 || 0), 0);
-    const totProg25  = rows.reduce((s, r) => s + (r.fatt_prog_anno_prec    || 0), 0);
+    // gen-mag 2025: sottrae il mese corrente anno prec da prog_anno_prec (che nel file di giugno = gen-giu 2025)
+    const totProg25  = rows.reduce((s, r) => s + ((r.fatt_prog_anno_prec || 0) - (r.fatt_mese_anno_prec || 0)), 0);
     // Etichetta periodo: data_aggiornamento rolling → mese precedente completo
     const _MESI_BREVI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
     const _rDate = rollingDate ? new Date(rollingDate + 'T00:00:00') : new Date();
@@ -109,7 +110,10 @@ async function loadDashboard() {
         <h3>Consuntivo ${progLabel}</h3>
         <div class="kpi-value">€${fmt(totProg26)}</div>
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
-        ${varProgPct != null ? `<div class="kpi-change ${varProgPct >= 0 ? 'positive' : 'negative'}">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+          ${varProgPct != null ? `<span class="badge" style="background:${varProgPct >= 0 ? '#F0FDF4' : '#FEF2F2'};color:${varProgPct >= 0 ? 'var(--green)' : '#C84B2F'};">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</span>` : ''}
+          ${totProg25 > 0 ? `<span class="badge" style="background:${totProg26 >= totProg25 ? '#F0FDF4' : '#FEF2F2'};color:${totProg26 >= totProg25 ? 'var(--green)' : '#C84B2F'};">${totProg26 >= totProg25 ? '+' : ''}€${fmt(totProg26 - totProg25)}</span>` : ''}
+        </div>
       </div>
       <div class="kpi-card kpi-card-link" onclick="navToPage('ordini')">
         <h3>Ordini del mese</h3>
