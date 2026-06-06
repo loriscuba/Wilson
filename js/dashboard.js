@@ -119,12 +119,14 @@ async function loadDashboard() {
         <h3>Consuntivo ${progLabel}</h3>
         <div class="kpi-value">€${fmt(totProg26)}</div>
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
+          <span style="font-size:10px;color:var(--text2);">(${annoP})</span>
           ${varProgPct != null ? `<span class="badge" style="background:${varProgPct >= 0 ? '#F0FDF4' : '#FEF2F2'};color:${varProgPct >= 0 ? 'var(--green)' : '#C84B2F'};">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</span>` : ''}
           ${totProg25 > 0 ? `<span class="badge" style="background:${totProg26 >= totProg25 ? '#F0FDF4' : '#FEF2F2'};color:${totProg26 >= totProg25 ? 'var(--green)' : '#C84B2F'};">${totProg26 >= totProg25 ? '+' : ''}€${fmt(totProg26 - totProg25)}</span>` : ''}
         </div>
         ${budgetProg != null ? `
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
+          <span style="font-size:10px;color:var(--text2);">(budget)</span>
           ${budgetProgPct != null ? `<span class="badge" style="background:${budgetProgPct >= 100 ? '#FFF7ED' : '#FEF2F2'};color:${budgetProgPct >= 100 ? '#D97706' : '#C84B2F'};">${budgetProgPct >= 100 ? '+' : ''}${(budgetProgPct - 100).toFixed(1)}%</span>` : ''}
           ${gapBudgetProg != null ? `<span class="badge" style="background:${gapBudgetProg >= 0 ? '#FFF7ED' : '#FEF2F2'};color:${gapBudgetProg >= 0 ? '#D97706' : '#C84B2F'};">${gapBudgetProg >= 0 ? '+' : ''}€${fmt(gapBudgetProg)}</span>` : ''}
         </div>` : ''}
