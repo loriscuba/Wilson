@@ -560,7 +560,19 @@
                       position:relative; }
         .pl-bar-pct { position:absolute; right:0; top:-18px; font-size:11px; font-weight:700;
                       color:#378ADD; }
-        .pl-body    { overflow-y:auto; flex:1; }
+        .pl-split   { display:flex; flex:1; overflow:hidden; min-height:0; }
+        .pl-body    { overflow-y:auto; flex:1; min-width:0; }
+        .pl-art-panel { display:none; overflow-y:auto; width:460px; flex-shrink:0;
+                        border-left:1px solid var(--border); }
+        .pl-art-panel.open { display:block; }
+        .pl-modal.split { max-width:1100px; }
+        .pl-art-back { background:none; border:1px solid var(--border); border-radius:6px;
+                       padding:3px 10px; font-size:12px; cursor:pointer; color:var(--text2);
+                       font-family:'DM Sans',sans-serif; }
+        .pl-art-back:hover { background:var(--bg); }
+        .pl-art-btn { background:none; border:none; cursor:pointer; font-size:13px;
+                      padding:2px 5px; border-radius:4px; color:var(--text2); line-height:1; }
+        .pl-art-btn:hover { background:var(--bg); color:var(--text); }
         .pl-tbl     { width:100%; border-collapse:collapse; font-size:13px; }
         .pl-tbl th  { font-size:11px; font-weight:600; color:var(--text2); padding:8px 12px;
                       border-bottom:1px solid var(--border); text-align:left;
@@ -1503,13 +1515,20 @@
     <!-- Pipeline modal -->
     <div id="pl-modal" class="pl-overlay" style="display:none"
          onclick="if(event.target===this)closePipeline()">
-      <div class="pl-modal">
+      <div class="pl-modal" id="pl-modal-box">
         <div class="pl-mhdr">
-          <h2 id="pl-header-title">Pipeline</h2>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button id="pl-art-back" class="pl-art-back" style="display:none"
+                    onclick="chiudiVerificaArticoli()">← Pipeline</button>
+            <h2 id="pl-header-title">Pipeline</h2>
+          </div>
           <button class="pl-close" onclick="closePipeline()">×</button>
         </div>
         <div id="pl-progress" class="pl-progress"></div>
-        <div id="pl-body" class="pl-body"></div>
+        <div class="pl-split">
+          <div id="pl-body" class="pl-body"></div>
+          <div id="pl-art-panel" class="pl-art-panel"></div>
+        </div>
       </div>
     </div>
 

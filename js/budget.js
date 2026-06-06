@@ -769,6 +769,7 @@ async function openPipeline() {
         <th class="num-right">Già ordinato</th>
         <th class="num-right">Da ordinare</th>
         <th class="num-right">Cumulato</th>
+        <th></th>
       </tr></thead>
       <tbody>`;
 
@@ -777,7 +778,7 @@ async function openPipeline() {
       if (group !== lastGroup) {
         const label = group === 0 ? 'Da visitare — nessun ordine questo mese' : 'Parziali — ordine in corso';
         const color = group === 0 ? '#C84B2F' : '#D97706';
-        html += `<tr class="pl-group-hdr"><td colspan="5" style="color:${color}">${label}</td></tr>`;
+        html += `<tr class="pl-group-hdr"><td colspan="6" style="color:${color}">${label}</td></tr>`;
         lastGroup = group;
       }
 
@@ -785,6 +786,8 @@ async function openPipeline() {
       const statoColor = STATO_COLOR[statoId] || '#9B9B97';
       const cumColor   = cum >= budgetMese ? '#2D7D4F' : cum >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
 
+      const codEsc = r.codice.replace(/'/g, "\\'");
+      const nomEsc = r.cliente.replace(/'/g, "\\'");
       html += `<tr class="pl-row">
         <td>
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
@@ -795,11 +798,13 @@ async function openPipeline() {
         <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
         <td class="num-right" style="font-weight:600;color:#C84B2F">–${_eur(r.gap)}</td>
         <td class="num-right" style="font-weight:600;color:${cumColor}">${_eur(cum)}</td>
+        <td><button class="pl-art-btn" title="Verifica articoli"
+            onclick="apriVerificaArticoli('${codEsc}','${nomEsc}')">📋</button></td>
       </tr>`;
 
       if (hitAfter) {
         html += `<tr class="pl-budget-line">
-          <td colspan="5">🎯 Budget raggiunto — ${_eur(budgetMese)}</td>
+          <td colspan="6">🎯 Budget raggiunto — ${_eur(budgetMese)}</td>
         </tr>`;
       }
     }
@@ -807,21 +812,27 @@ async function openPipeline() {
     if (!budgetHit && urgentRows.length) {
       const still = budgetMese - running;
       html += `<tr class="pl-group-hdr">
-        <td colspan="5" style="color:#C84B2F">
+        <td colspan="6" style="color:#C84B2F">
           Budget non raggiunto anche completando tutti i gap — mancano ancora ${_eur(still)}
         </td>
       </tr>`;
     }
 
     if (g2.length) {
-      html += `<tr class="pl-group-hdr"><td colspan="5" style="color:#2D7D4F">In target (${g2.length} clienti)</td></tr>`;
-      html += g2.map(r => `<tr class="pl-row pl-row-ok">
-        <td>${r.cliente}${r.divisione ? ` <span style="font-size:11px;color:var(--text2)">${r.divisione}</span>` : ''}</td>
-        <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
-        <td class="num-right">${_eur(r.ord)}</td>
-        <td class="num-right" style="color:#2D7D4F;font-weight:600">in target</td>
-        <td></td>
-      </tr>`).join('');
+      html += `<tr class="pl-group-hdr"><td colspan="6" style="color:#2D7D4F">In target (${g2.length} clienti)</td></tr>`;
+      html += g2.map(r => {
+        const c2 = r.codice.replace(/'/g, "\\'");
+        const n2 = r.cliente.replace(/'/g, "\\'");
+        return `<tr class="pl-row pl-row-ok">
+          <td>${r.cliente}${r.divisione ? ` <span style="font-size:11px;color:var(--text2)">${r.divisione}</span>` : ''}</td>
+          <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
+          <td class="num-right">${_eur(r.ord)}</td>
+          <td class="num-right" style="color:#2D7D4F;font-weight:600">in target</td>
+          <td></td>
+          <td><button class="pl-art-btn" title="Verifica articoli"
+              onclick="apriVerificaArticoli('${c2}','${n2}')">📋</button></td>
+        </tr>`;
+      }).join('');
     }
 
     html += '</tbody></table>';
@@ -834,6 +845,124 @@ async function openPipeline() {
 }
 
 function closePipeline() {
+  chiudiVerificaArticoli();
   const modal = document.getElementById('pl-modal');
   if (modal) modal.style.display = 'none';
+}
+
+// ── Verifica articoli (pipeline) ─────────────────────────────────────────────
+
+let _plTitle = 'Pipeline';
+
+async function apriVerificaArticoli(codice, nome) {
+  const panel = document.getElementById('pl-art-panel');
+  const box   = document.getElementById('pl-modal-box');
+  const back  = document.getElementById('pl-art-back');
+  const title = document.getElementById('pl-header-title');
+
+  _plTitle = title.textContent;
+  title.textContent = nome;
+  back.style.display = 'inline-block';
+  panel.classList.add('open');
+  box.classList.add('split');
+  panel.innerHTML = '<div style="padding:1.5rem;color:var(--text2);font-size:13px">Analisi ordini…</div>';
+
+  try {
+    const data = await loadPrevisioneArticoli(codice);
+    panel.innerHTML = _renderVerificaArticoli(data, nome);
+  } catch (e) {
+    panel.innerHTML = `<div style="padding:1.5rem;color:var(--red);font-size:13px">Errore: ${e.message}</div>`;
+  }
+}
+
+function chiudiVerificaArticoli() {
+  const panel = document.getElementById('pl-art-panel');
+  const box   = document.getElementById('pl-modal-box');
+  const back  = document.getElementById('pl-art-back');
+  const title = document.getElementById('pl-header-title');
+  if (!panel) return;
+  panel.classList.remove('open');
+  box?.classList.remove('split');
+  if (back) back.style.display = 'none';
+  if (title) title.textContent = _plTitle;
+}
+
+function _renderVerificaArticoli({ products, currentYM, mancanti }, nome) {
+  const fmtQ    = n => Number.isInteger(n) ? n.toLocaleString('it-IT') : n.toFixed(1);
+  const fmtCyc  = c => c <= 1 ? 'mensile' : c <= 2 ? 'ogni 2 mesi' : `ogni ${Math.round(c)} mesi`;
+  const nomiM   = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  const ymLabel = ym => { const [y, m] = ym.split('-'); return nomiM[+m - 1] + ' ' + y; };
+
+  const dueList    = products.filter(p => p.isDue);
+  const activeList = products.filter(p => !p.isDue && p.ordNow === 0);
+  const doneList   = products.filter(p => p.ordNow > 0);
+
+  const colHdr = `<thead><tr style="font-size:10px;color:var(--text2)">
+    <th style="padding:5px 8px">Articolo</th>
+    <th style="padding:5px 8px;text-align:right">Media</th>
+    <th style="padding:5px 8px;text-align:right">Carry</th>
+    <th style="padding:5px 8px;text-align:right;font-weight:700;color:var(--accent)">Suggerito</th>
+  </tr></thead>`;
+
+  const rowDue = p => `<tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:5px 8px">
+      <div style="font-size:12px">${p.descrizione}</div>
+      <div style="font-size:10px;color:var(--text2)">${p.cod} · ${fmtCyc(p.rotCycle)} · ult. ${ymLabel(p.lastYM)}</div>
+    </td>
+    <td style="padding:5px 8px;text-align:right;font-size:12px;color:var(--text2)">${fmtQ(p.avgQty)} ${p.um}</td>
+    <td style="padding:5px 8px;text-align:right;font-size:12px;color:${p.carryover > 0 ? '#D97706' : 'var(--text2)'}">${p.carryover > 0 ? '+' + fmtQ(p.carryover) : '—'}</td>
+    <td style="padding:5px 8px;text-align:right;font-size:13px;font-weight:700;color:var(--accent)">${fmtQ(p.suggestedQty)} ${p.um}</td>
+  </tr>`;
+
+  const rowOther = p => `<tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:5px 8px">
+      <div style="font-size:12px">${p.descrizione}</div>
+      <div style="font-size:10px;color:var(--text2)">${p.cod} · ${fmtCyc(p.rotCycle)} · ult. ${ymLabel(p.lastYM)}</div>
+    </td>
+    <td style="padding:5px 8px;text-align:right;font-size:12px;color:var(--text2)">${fmtQ(p.avgQty)} ${p.um}</td>
+    <td colspan="2" style="padding:5px 8px;text-align:right;font-size:11px;color:var(--text2)">
+      ${p.ordNow > 0 ? `<span style="color:#2D7D4F">✓ ${fmtQ(p.ordNow)} ${p.um}</span>` : `fra ${Math.max(1, Math.ceil(p.rotCycle - p.mesiDa))} mes${Math.ceil(p.rotCycle - p.mesiDa) === 1 ? 'e' : 'i'}`}
+    </td>
+  </tr>`;
+
+  let html = `<div style="padding:1rem">`;
+  html += `<div style="font-size:11px;color:var(--text2);margin-bottom:1rem">${ymLabel(currentYM)} · ${products.length} articoli in storico</div>`;
+
+  if (dueList.length) {
+    html += `<div style="font-size:10px;font-weight:700;color:#C84B2F;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">⚑ Da ordinare (${dueList.length})</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:1rem">${colHdr}<tbody>${dueList.map(rowDue).join('')}</tbody></table>`;
+  } else {
+    html += `<div style="font-size:12px;color:#2D7D4F;margin-bottom:1rem">✓ Nessun articolo urgente</div>`;
+  }
+
+  if (doneList.length) {
+    html += `<details style="margin-bottom:1rem" open>
+      <summary style="font-size:10px;font-weight:700;color:#2D7D4F;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;margin-bottom:6px">✓ Già ordinati (${doneList.length})</summary>
+      <table style="width:100%;border-collapse:collapse;margin-top:6px">${colHdr}<tbody>${doneList.map(rowOther).join('')}</tbody></table>
+    </details>`;
+  }
+
+  if (activeList.length) {
+    html += `<details style="margin-bottom:1rem">
+      <summary style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;cursor:pointer;margin-bottom:6px">Articoli fissi — non in scadenza (${activeList.length})</summary>
+      <table style="width:100%;border-collapse:collapse;margin-top:6px">${colHdr}<tbody>${activeList.map(rowOther).join('')}</tbody></table>
+    </details>`;
+  }
+
+  if (mancanti?.length) {
+    const rows = mancanti.map(s => `
+      <div style="margin-bottom:10px">
+        <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:4px">${s.settore}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${s.prodotti.map(p => `<span style="font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 7px;color:#378ADD">✗ ${p}</span>`).join('')}
+        </div>
+      </div>`).join('');
+    html += `<details>
+      <summary style="font-size:10px;font-weight:700;color:#378ADD;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;margin-bottom:6px">Mai ordinati — commesse potenziali</summary>
+      <div style="margin-top:8px">${rows}</div>
+    </details>`;
+  }
+
+  html += `</div>`;
+  return html;
 }

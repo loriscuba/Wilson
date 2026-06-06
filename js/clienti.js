@@ -336,6 +336,106 @@ function buildRitmoHTML(ritmo) {
   </div>`;
 }
 
+// ── Previsione articoli ───────────────────────────────────────────────────────
+
+async function loadPrevisioneArticoli(codice) {
+  const now       = new Date();
+  const cutoffStr = new Date(now.getFullYear(), now.getMonth() - 18, 1).toISOString().split('T')[0];
+
+  const [{ data: ordiniConRighe }, { data: gammaClient }] = await Promise.all([
+    sb.from('ordini')
+      .select('data_ordine, righe_ordine(codice_articolo, descrizione_articolo, quantita, unita_misura)')
+      .eq('codice_cliente', codice)
+      .neq('stato', 'annullato')
+      .gte('data_ordine', cutoffStr)
+      .order('data_ordine'),
+    sb.from('gamma_penetrazione')
+      .select('settore, prodotti_acquistati, data_aggiornamento')
+      .eq('codice_cliente', codice)
+      .order('data_aggiornamento', { ascending: false })
+      .limit(10),
+  ]);
+
+  let mancanti = [];
+  if (gammaClient?.length) {
+    const latestDate = gammaClient[0].data_aggiornamento;
+    const settori    = [...new Set(gammaClient.map(g => g.settore))];
+    const { data: gammaRef } = await sb.from('gamma_penetrazione')
+      .select('settore, prodotti_acquistati')
+      .eq('data_aggiornamento', latestDate)
+      .in('settore', settori);
+
+    const refMap = {};
+    for (const row of (gammaRef || [])) {
+      if (!refMap[row.settore]) refMap[row.settore] = new Map();
+      for (const p of Object.keys(row.prodotti_acquistati || {}))
+        refMap[row.settore].set(p.toLowerCase(), p);
+    }
+    for (const g of gammaClient) {
+      const acquired = new Set(Object.keys(g.prodotti_acquistati || {}).map(p => p.toLowerCase()));
+      const ref      = refMap[g.settore] || new Map();
+      const missing  = [...ref.entries()].filter(([k]) => !acquired.has(k)).map(([, v]) => v);
+      if (missing.length) mancanti.push({ settore: g.settore, prodotti: missing });
+    }
+  }
+
+  return { ..._calcolaPrevioneArticoli(ordiniConRighe || [], now), mancanti };
+}
+
+function _calcolaPrevioneArticoli(ordiniConRighe, now) {
+  const pad = n => String(n).padStart(2, '0');
+  const ym  = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+
+  const currentYM = ym(now);
+  const prevYM    = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+
+  // Ultimi 12 mesi completi (escluso il mese corrente)
+  const window12 = [];
+  for (let i = 1; i <= 12; i++)
+    window12.push(ym(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+
+  // Aggrega per prodotto/mese
+  const prodMap = {};
+  for (const ord of ordiniConRighe) {
+    if (!ord.data_ordine) continue;
+    const month = ord.data_ordine.substring(0, 7);
+    for (const riga of ord.righe_ordine || []) {
+      const cod = riga.codice_articolo;
+      if (!cod) continue;
+      if (!prodMap[cod]) prodMap[cod] = { descrizione: riga.descrizione_articolo || cod, um: riga.unita_misura || '', byMonth: {} };
+      prodMap[cod].byMonth[month] = (prodMap[cod].byMonth[month] || 0) + Number(riga.quantita || 0);
+    }
+  }
+
+  const results = [];
+  for (const [cod, prod] of Object.entries(prodMap)) {
+    const activeIn12  = window12.filter(m => (prod.byMonth[m] || 0) > 0);
+    if (!activeIn12.length) continue;
+
+    const totalQty    = activeIn12.reduce((s, m) => s + prod.byMonth[m], 0);
+    const avgQty      = totalQty / activeIn12.length;
+    const rotCycle    = 12 / activeIn12.length;           // mesi tra un ordine e l'altro
+    const lastYM      = [...activeIn12].sort().pop();     // mese più recente in window12
+    const lastDate    = new Date(lastYM + '-01');
+    const mesiDa      = (now.getFullYear() - lastDate.getFullYear()) * 12
+                      + (now.getMonth() - lastDate.getMonth());
+    const ordNow      = prod.byMonth[currentYM] || 0;
+    const isDue       = mesiDa >= rotCycle && ordNow === 0;
+
+    // Carryover solo per articoli mensili (rotCycle ≤ 1.5) con ordine mese precedente < media
+    let carryover = 0;
+    if (rotCycle <= 1.5 && mesiDa === 1)
+      carryover = Math.max(0, avgQty - (prod.byMonth[prevYM] || 0));
+
+    results.push({ cod, descrizione: prod.descrizione, um: prod.um,
+      activeIn12: activeIn12.length, avgQty, rotCycle, lastYM,
+      mesiDa, isDue, carryover, suggestedQty: Math.round(avgQty + carryover), ordNow });
+  }
+
+  results.sort((a, b) => (a.isDue === b.isDue ? b.suggestedQty - a.suggestedQty : a.isDue ? -1 : 1));
+  return { products: results, currentYM };
+}
+
 async function refreshClienteDetail(codice, nome) {
   const inner = document.getElementById('cdetail-' + codice);
   if (!inner) return;
