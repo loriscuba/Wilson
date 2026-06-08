@@ -313,7 +313,10 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             const statoChip = statoLabel
               ? `<span class="badge badge-blue" style="font-size:11px;">${statoLabel}</span>`
               : '';
-            statusHTML = `${statoChip}<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>${etaChip}`;
+            const _isFercam = d.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
+            statusHTML = _isFercam
+              ? `${statoChip}<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>${etaChip}`
+              : `${statoChip}<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaChip}`;
           } else {
             statusHTML = `<span class="badge badge-gray">${statoLabel || d.stato || 'in attesa'}</span>`;
           }

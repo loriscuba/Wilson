@@ -119,9 +119,15 @@ function _renderDDTTabella(todayMs) {
       ? `<a class="ord-link" href="#" onclick="goToOrdineFromDDT('${d.numero_ordine}');return false;">${d.numero_ordine}</a>`
       : '—';
     _trkRegistry.set(d.numero_consegna, d);
-    const trkCell = (d.shippeo_url || d.fercam_url)
-      ? `<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>`
-      : '—';
+    const _isFercam = d.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
+    let trkCell;
+    if (_isFercam && (d.shippeo_url || d.fercam_url)) {
+      trkCell = `<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>`;
+    } else if (d.shippeo_url) {
+      trkCell = `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>`;
+    } else {
+      trkCell = '—';
+    }
     return `
     <tr>
       <td><strong>${d.numero_consegna || '—'}</strong></td>

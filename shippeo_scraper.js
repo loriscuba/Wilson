@@ -270,13 +270,17 @@ async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
         try {
             const goodsUrl = `https://view.shippeo.com/road/orderPublic/${token}/goods`;
             await page.goto(goodsUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-            await new Promise(r => setTimeout(r, 4000));
+            await new Promise(r => setTimeout(r, 7000));
+            // Prima cerca <a href>, poi cerca nell'innerHTML con regex (link dinamici/non standard)
             fercamUrl = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href]'));
-                const fl = links.find(a => a.href && a.href.includes('fercam'));
-                return fl ? fl.href : null;
+                const fl = links.find(a => a.href && /fercam\.com/i.test(a.href));
+                if (fl) return fl.href;
+                const m = document.body.innerHTML.match(/https?:\/\/[^"'\s]*fercam\.com[^"'\s]*/i);
+                return m ? m[0] : null;
             });
             if (fercamUrl) console.log(`  [fercam-url] ${fercamUrl}`);
+            else           console.log(`  [fercam] nessun link trovato sulla goods page`);
         } catch (e) {
             console.log(`  [fercam] goods page: ${e.message}`);
         }
@@ -360,7 +364,7 @@ async function main() {
     for (const ddt of ddts) {
         console.log(`DDT ${ddt.numero_ddt} | Ordine ${ddt.numero_ordine}`);
 
-        const isFercam = ddt.corriere && ddt.corriere.toUpperCase().includes('FERCAM');
+        const isFercam = ddt.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
         const needFercamUrl = isFercam && !ddt.fercam_url;
 
         const { status, etaRaw, deliveredAt, fercamUrl } = await getShippeoData(ddt.shippeo_url, { needFercamUrl });
