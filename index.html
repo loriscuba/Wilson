@@ -600,6 +600,52 @@
           .pl-tbl th:nth-child(5), .pl-tbl td:nth-child(5) { display:none; }
         }
 
+        /* ── Tracking Modal ── */
+        .trk-overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.45);
+                       display:flex; align-items:center; justify-content:center; padding:16px; }
+        .trk-modal   { background:var(--surface); border-radius:16px;
+                       box-shadow:0 20px 60px rgba(0,0,0,.25);
+                       width:100%; max-width:540px; max-height:88vh;
+                       display:flex; flex-direction:column; overflow:hidden; }
+        .trk-hdr     { display:flex; justify-content:space-between; align-items:center;
+                       padding:.9rem 1.25rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+        .trk-hdr h2  { font-size:16px; font-weight:600; margin:0; }
+        .trk-corriere-badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px;
+                              background:#eff8ff; color:#378ADD; }
+        .trk-body    { overflow-y:auto; flex:1; padding:0 1.25rem 1.25rem; }
+        .trk-section-title { font-size:10px; font-weight:700; color:var(--text2); letter-spacing:.08em;
+                             text-transform:uppercase; padding:1rem 0 .4rem;
+                             border-bottom:1px solid var(--border); margin-bottom:.6rem; }
+        .trk-meta-lbl { font-size:10px; color:var(--text2); }
+        .trk-info-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:.75rem; }
+        .trk-info-card { background:var(--bg); border-radius:8px; padding:8px 10px; text-align:center; }
+        .trk-info-val  { font-size:15px; font-weight:700; color:var(--text); }
+        .trk-info-lbl  { font-size:10px; color:var(--text2); margin-top:2px; }
+        .trk-nota      { background:#fffbeb; border:1px solid #FDE68A; border-radius:8px;
+                         padding:7px 10px; font-size:12px; color:#92400E; margin-bottom:.75rem; }
+        .trk-eventi    { display:flex; flex-direction:column; }
+        .trk-evento    { display:grid; grid-template-columns:60px 38px 1fr; gap:6px;
+                         padding:5px 0; border-bottom:1px solid var(--border); font-size:12px; }
+        .trk-evento:last-child { border-bottom:none; }
+        .trk-ev-data   { color:var(--text2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .trk-ev-ora    { color:var(--text2); font-variant-numeric:tabular-nums; }
+        .trk-ev-desc   { color:var(--text); }
+        .trk-footer    { display:flex; gap:8px; justify-content:flex-end; padding:.85rem 1.25rem;
+                         border-top:1px solid var(--border); flex-shrink:0; }
+        .trk-ext-link  { font-size:13px; font-weight:500; padding:6px 14px; border-radius:20px;
+                         background:var(--bg); color:var(--text); border:1px solid var(--border);
+                         text-decoration:none; }
+        .trk-ext-link:hover { background:var(--border); }
+        .trk-btn       { background:none; border:none; cursor:pointer; font-size:13px; font-weight:500;
+                         color:var(--accent); text-decoration:underline;
+                         font-family:'DM Sans',sans-serif; padding:0; }
+        .trk-btn:hover { opacity:.75; }
+        @media(max-width:600px) {
+          .trk-overlay { padding:0; align-items:flex-end; }
+          .trk-modal   { border-radius:16px 16px 0 0; max-height:90vh; }
+          .trk-info-grid { grid-template-columns:repeat(2,1fr); }
+        }
+
         /* ── Impostazioni clienti ── */
         .cfg-row-off td { opacity:.45; }
         .cfg-row-nodash td { opacity:.7; }
@@ -1512,6 +1558,12 @@
     <!-- Modal Statistiche -->
     <div class="stat-modal-overlay" id="stat-modal-overlay" onclick="handleStatModalOverlay(event)"></div>
 
+    <!-- Tracking Modal -->
+    <div id="trk-overlay" class="trk-overlay" style="display:none"
+         onclick="if(event.target===this)closeTrackingModal()">
+      <div class="trk-modal" id="trk-modal-box"></div>
+    </div>
+
     <!-- Pipeline modal -->
     <div id="pl-modal" class="pl-overlay" style="display:none"
          onclick="if(event.target===this)closePipeline()">
@@ -1537,8 +1589,8 @@
     <script src="js/analytics.js?v=13"></script>
     <script src="js/dashboard.js?v=23"></script>
     <script src="js/clienti.js?v=20"></script>
-    <script src="js/ordini.js?v=25"></script>
-    <script src="js/ddt.js?v=22"></script>
+    <script src="js/ordini.js?v=26"></script>
+    <script src="js/ddt.js?v=23"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=10"></script>
     <script src="js/impostazioni.js?v=5"></script>
@@ -1547,7 +1599,12 @@
     <script src="js/listino.js?v=2"></script>
     <script src="js/app.js?v=19"></script>
     <script>
-        // placeholder — tutto il codice è nei moduli js/
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                const trk = document.getElementById('trk-overlay');
+                if (trk && trk.style.display !== 'none') closeTrackingModal();
+            }
+        });
     </script>
 </body>
 </html>

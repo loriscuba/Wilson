@@ -121,7 +121,95 @@ async function tryDirectApi(token) {
     return null;
 }
 
-async function getShippeoData(rawUrl) {
+function parseFercamHtml(html) {
+    const clean = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(?:tr|p|div|li|h[1-6])\s*>/gi, '\n')
+        .replace(/<\/td\s*>/gi, '\t')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+        .replace(/&quot;/g, '"');
+
+    const lines = clean.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const text  = lines.join('\n');
+
+    const result = {
+        numero_spedizione: null,
+        destinatario: null,
+        colli: null, peso_kg: null, volume_mc: null,
+        servizio: null, data_spedizione: null,
+        note: null, eventi: [],
+        fetched_at: new Date().toISOString(),
+    };
+
+    const numM = text.match(/Spediz[^:\n]{0,30}:\s*([A-Z]\d{7,12})/i) || text.match(/\b([A-Z]\d{9,12})\b/);
+    if (numM) result.numero_spedizione = numM[1];
+
+    const colliM = text.match(/Colli\s*:?\s*(\d+)/i);
+    if (colliM) result.colli = parseInt(colliM[1]);
+
+    const pesoM = text.match(/Peso\s*:?\s*([\d,.]+)\s*kg/i);
+    if (pesoM) result.peso_kg = parseFloat(pesoM[1].replace(',', '.'));
+
+    const volM = text.match(/Volume\s*:?\s*([\d,.]+)\s*mc/i);
+    if (volM) result.volume_mc = parseFloat(volM[1].replace(',', '.'));
+
+    const servM = text.match(/Servizio\s*:?\s*([A-ZÀÈÌÒÙ][A-ZÀÈÌÒÙ\s]{2,30})(?=\n|Colli|Data|\d)/i);
+    if (servM) result.servizio = servM[1].trim();
+
+    const dataM = text.match(/Data\s+(?:di\s+)?[Ss]pedizione\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i)
+               || text.match(/Data\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i);
+    if (dataM) { const [d2,m2,y2]=dataM[1].split('/'); result.data_spedizione=`${y2}-${m2}-${d2}`; }
+
+    // Destinatario: riga dopo la keyword
+    const dstIdx = lines.findIndex(l => /destinatario/i.test(l));
+    if (dstIdx >= 0) {
+        const parts = lines[dstIdx].split(':');
+        result.destinatario = (parts.length > 1 ? parts.slice(1).join(':').trim()
+                               : lines[dstIdx + 1] || '').trim() || null;
+    }
+
+    const notaM = text.match(/"([A-ZÀÈÌÒÙ][^"]{5,200})"/);
+    if (notaM) result.note = notaM[1].trim();
+
+    // Tracking events: "DD/MM ore HH:MM - Desc" or "DD/MM/YYYY\tHH:MM\tDesc"
+    const evtRe = /(\d{2}\/\d{2}(?:\/\d{4})?)\s+(?:ore\s+)?(\d{2}:\d{2})\s*[-–]?\s*([^\n\d]{3,200})/g;
+    let m;
+    while ((m = evtRe.exec(text)) !== null) {
+        const desc = m[3].replace(/\s+/g, ' ').trim();
+        if (desc.length >= 3) result.eventi.push({ data: m[1], ora: m[2], descrizione: desc.substring(0, 200) });
+    }
+    // Tab-separated table fallback
+    if (!result.eventi.length) {
+        for (const line of lines) {
+            const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
+            if (parts.length >= 3 && /^\d{2}\/\d{2}/.test(parts[0]) && /^\d{2}:\d{2}$/.test(parts[1]))
+                result.eventi.push({ data: parts[0], ora: parts[1], descrizione: parts.slice(2).join(' ').substring(0, 200) });
+        }
+    }
+
+    return result;
+}
+
+async function fetchFercamData(url) {
+    try {
+        const res = await fetch(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'text/html' },
+            signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) { console.log(`  [fercam-fetch] HTTP ${res.status}`); return null; }
+        const html = await res.text();
+        return parseFercamHtml(html);
+    } catch (e) {
+        console.log(`  [fercam-fetch] ${e.message}`);
+        return null;
+    }
+}
+
+async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
     const shippeoUrl = normalizeShippeoUrl(rawUrl);
     const token = extractToken(rawUrl);
     console.log(`  [url] ${shippeoUrl}`);
@@ -175,6 +263,25 @@ async function getShippeoData(rawUrl) {
     await new Promise(r => setTimeout(r, 8000));
 
     const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+
+    // Visita goods page per estrarre link Fercam (solo se richiesto)
+    let fercamUrl = null;
+    if (needFercamUrl && token) {
+        try {
+            const goodsUrl = `https://view.shippeo.com/road/orderPublic/${token}/goods`;
+            await page.goto(goodsUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+            await new Promise(r => setTimeout(r, 4000));
+            fercamUrl = await page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a[href]'));
+                const fl = links.find(a => a.href && a.href.includes('fercam'));
+                return fl ? fl.href : null;
+            });
+            if (fercamUrl) console.log(`  [fercam-url] ${fercamUrl}`);
+        } catch (e) {
+            console.log(`  [fercam] goods page: ${e.message}`);
+        }
+    }
+
     await browser.close();
 
     let status = null, etaRaw = null, deliveredAt = null;
@@ -235,13 +342,13 @@ async function getShippeoData(rawUrl) {
     }
 
     console.log(`  [result] status=${status} eta=${etaRaw} deliveredAt=${deliveredAt} (${captured.length} API)`);
-    return { status, etaRaw, deliveredAt };
+    return { status, etaRaw, deliveredAt, fercamUrl };
 }
 
 async function main() {
     const { data: ddts, error } = await supabase
         .from('ddt')
-        .select('id, numero_ddt, numero_ordine, shippeo_url, stato')
+        .select('id, numero_ddt, numero_ordine, shippeo_url, stato, corriere, fercam_url')
         .not('shippeo_url', 'is', null)
         .neq('stato', 'consegnato');
 
@@ -253,7 +360,10 @@ async function main() {
     for (const ddt of ddts) {
         console.log(`DDT ${ddt.numero_ddt} | Ordine ${ddt.numero_ordine}`);
 
-        const { status, etaRaw, deliveredAt } = await getShippeoData(ddt.shippeo_url);
+        const isFercam = ddt.corriere && ddt.corriere.toUpperCase().includes('FERCAM');
+        const needFercamUrl = isFercam && !ddt.fercam_url;
+
+        const { status, etaRaw, deliveredAt, fercamUrl } = await getShippeoData(ddt.shippeo_url, { needFercamUrl });
         const statoMapped = mapStatus(status);
 
         console.log(`  status raw : ${status || '—'}`);
@@ -299,6 +409,18 @@ async function main() {
         } else {
             update.stato = statoMapped || 'spedito';
             console.log(`  → In transito / ETA ${etaRaw || '—'}`);
+        }
+
+        // Fercam: scopri URL (goods page) o aggiorna dati se già noto
+        const activeFercamUrl = fercamUrl || (isFercam ? ddt.fercam_url : null);
+        if (activeFercamUrl) {
+            console.log(`  [fercam] aggiornamento dati...`);
+            const fercamDati = await fetchFercamData(activeFercamUrl);
+            if (fercamDati) {
+                update.fercam_url  = activeFercamUrl;
+                update.fercam_dati = fercamDati;
+                console.log(`  ✓ Fercam: ${fercamDati.numero_spedizione || '?'} · ${fercamDati.eventi?.length || 0} eventi`);
+            }
         }
 
         if (Object.keys(update).length > 0) {

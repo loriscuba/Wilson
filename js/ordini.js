@@ -207,7 +207,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
         .eq('ordine_id', ordineId)
         .order('codice_articolo'),
       sb.from('ddt')
-        .select('id, numero_ddt, numero_consegna, data_ddt, shippeo_url, corriere, eta_shippeo, stato, stato_shippeo, data_consegna_effettiva')
+        .select('id, numero_ddt, numero_consegna, data_ddt, shippeo_url, corriere, eta_shippeo, stato, stato_shippeo, data_consegna_effettiva, fercam_url, fercam_dati')
         .eq('numero_ordine', numeroOrdine)
         .order('numero_ddt'),
     ]);
@@ -232,6 +232,9 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
       ...d,
       righe_ddt: righeDdt.filter(r => r.ddt_id === d.id),
     }));
+
+    // Registra DDT nel registry del modal tracking
+    ddts.forEach(d => { if (window._trkRegistry) window._trkRegistry.set(d.numero_consegna, d); });
 
     // Calcola stato ordine a livello di singolo articolo
     const ordineSet = new Set(
@@ -310,7 +313,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             const statoChip = statoLabel
               ? `<span class="badge badge-blue" style="font-size:11px;">${statoLabel}</span>`
               : '';
-            statusHTML = `${statoChip}<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaChip}`;
+            statusHTML = `${statoChip}<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>${etaChip}`;
           } else {
             statusHTML = `<span class="badge badge-gray">${statoLabel || d.stato || 'in attesa'}</span>`;
           }
