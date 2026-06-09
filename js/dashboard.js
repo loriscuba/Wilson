@@ -6,8 +6,8 @@ async function loadDashboard() {
   topBody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
   document.getElementById('stato-mese').innerHTML = '';
 
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    kpiGrid.innerHTML = '<div class="loading">Configurazione Supabase mancante</div>';
+  if (typeof SUPABASE_URL === 'undefined' || !SUPABASE_URL || !sb) {
+    kpiGrid.innerHTML = '<div class="loading">Errore di configurazione — ricaricare la pagina</div>';
     return;
   }
 

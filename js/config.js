@@ -10,9 +10,14 @@ function _getSafeStorage() {
   } catch { return { getItem: () => null, setItem: () => {}, removeItem: () => {} }; }
 }
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: false, storage: _getSafeStorage() },
-});
+if (!window.supabase) {
+  console.error('supabase.min.js non caricato — controllare la connessione');
+}
+const sb = window.supabase
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, storage: _getSafeStorage() },
+    })
+  : null;
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
