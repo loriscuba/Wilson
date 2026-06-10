@@ -441,9 +441,11 @@ async function main() {
 
     if (forceCodes.length) {
         query = query.in('numero_consegna', forceCodes);
+    } else if (fercamOnly) {
+        query = query.ilike('corriere', '%fercam%').is('fercam_url', null);
     } else {
-        query = query.neq('stato', 'consegnato');
-        if (fercamOnly) query = query.ilike('corriere', '%fercam%').is('fercam_url', null);
+        // Processa DDT non consegnati + qualsiasi DDT Fercam senza URL (anche consegnati)
+        query = query.or('stato.neq.consegnato,and(corriere.ilike.%fercam%,fercam_url.is.null)');
     }
 
     const { data: ddts, error } = await query;
