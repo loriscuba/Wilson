@@ -1,8 +1,14 @@
 let _ddtRows          = [];
 let _ddtClienti       = {};
 let _ddtFilter        = null;
+let _ddtMese          = null;   // 'YYYY-MM' oppure '' per tutti
 let _pendingDDTFilter = null;
 const _trkRegistry    = new Map();
+
+function _meseCorrente() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
 
 async function loadDDT() {
   const tbody   = document.querySelector('#ddt-table tbody');
@@ -42,6 +48,7 @@ async function loadDDT() {
       }
     }
 
+    if (_ddtMese === null) _ddtMese = _meseCorrente();
     _ddtFilter  = _pendingDDTFilter;
     _pendingDDTFilter = null;
 
@@ -72,26 +79,50 @@ function _isRitardo(d, todayMs) {
 }
 
 function _renderDDTFiltri() {
-  const bar     = document.getElementById('ddt-filter-bar');
+  const bar = document.getElementById('ddt-filter-bar');
   if (!bar) return;
 
   const todayMs = new Date().setHours(0, 0, 0, 0);
-  const stati   = [...new Set(_ddtRows.map(r => r.stato).filter(Boolean))].sort();
-  if (!stati.length) { bar.innerHTML = ''; return; }
 
-  const ritardoCount = _ddtRows.filter(r => _isRitardo(r, todayMs)).length;
+  // Mesi disponibili dai dati, ordinati decrescenti
+  const mesiDisp = [...new Set(
+    _ddtRows.map(r => r.data_ddt?.substring(0, 7)).filter(Boolean)
+  )].sort().reverse();
 
-  // Mostra il chip 'in_ritardo' se ci sono DDT in ritardo OPPURE se il filtro è già attivo
-  const showRitardo = ritardoCount > 0 || _ddtFilter === 'in_ritardo';
-  const allKeys = ['tutti', ...stati, ...(showRitardo ? ['in_ritardo'] : [])];
-  const chips = allKeys.map(s => {
+  const meseOpts = [
+    `<option value="">Tutti i mesi</option>`,
+    ...mesiDisp.map(m => {
+      const [y, mo] = m.split('-');
+      const label = new Date(+y, +mo - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+      return `<option value="${m}" ${_ddtMese === m ? 'selected' : ''}>${label}</option>`;
+    }),
+  ].join('');
+
+  const stati = [...new Set(_ddtRows.map(r => r.stato).filter(Boolean))].sort();
+  const rowsFiltroMese = _ddtMese
+    ? _ddtRows.filter(r => r.data_ddt?.startsWith(_ddtMese))
+    : _ddtRows;
+  const ritardoCount = rowsFiltroMese.filter(r => _isRitardo(r, todayMs)).length;
+  const showRitardo  = ritardoCount > 0 || _ddtFilter === 'in_ritardo';
+  const allKeys      = ['tutti', ...stati, ...(showRitardo ? ['in_ritardo'] : [])];
+  const chips        = allKeys.map(s => {
     const active = (s === 'tutti' && !_ddtFilter) || s === _ddtFilter;
     const label  = s === 'tutti' ? 'Tutti' : s === 'in_ritardo' ? `⚠ In ritardo (${ritardoCount})` : _labelStato(s);
     const style  = s === 'in_ritardo' && !active ? ' style="color:#C84B2F;border-color:#C84B2F40;"' : '';
     return `<button class="ddt-chip${active ? ' active' : ''}"${style} onclick="filtraDDT(${s === 'tutti' ? 'null' : `'${s}'`})">${label}</button>`;
   }).join('');
 
-  bar.innerHTML = chips;
+  bar.innerHTML = `
+    <select class="ddt-mese-sel" onchange="onDDTMeseChange(this.value)">${meseOpts}</select>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>`;
+}
+
+function onDDTMeseChange(val) {
+  _ddtMese = val;
+  _ddtFilter = null;
+  const todayMs = new Date().setHours(0, 0, 0, 0);
+  _renderDDTFiltri();
+  _renderDDTTabella(todayMs);
 }
 
 function _labelStato(s) {
@@ -110,11 +141,14 @@ function _renderDDTTabella(todayMs) {
   const tbody   = document.querySelector('#ddt-table tbody');
   const countEl = document.getElementById('ddt-count');
 
+  const base = _ddtMese
+    ? _ddtRows.filter(r => r.data_ddt?.startsWith(_ddtMese))
+    : _ddtRows;
   const rows = !_ddtFilter
-    ? _ddtRows
+    ? base
     : _ddtFilter === 'in_ritardo'
-      ? _ddtRows.filter(r => _isRitardo(r, todayMs))
-      : _ddtRows.filter(r => r.stato === _ddtFilter);
+      ? base.filter(r => _isRitardo(r, todayMs))
+      : base.filter(r => r.stato === _ddtFilter);
   countEl.textContent = rows.length;
 
   if (!rows.length) {

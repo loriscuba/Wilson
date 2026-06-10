@@ -384,6 +384,10 @@
         .ddt-chip { font-size:12px; padding:3px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text2); cursor:pointer; transition:all .15s; }
         .ddt-chip:hover { border-color:var(--text2); color:var(--text); }
         .ddt-chip.active { background:var(--text); color:var(--surface); border-color:var(--text); }
+        .ddt-mese-sel { font-size:12px; padding:3px 8px; border-radius:20px; border:1px solid var(--border);
+            background:var(--surface); color:var(--text); cursor:pointer; outline:none;
+            font-family:inherit; transition:border-color .15s; }
+        .ddt-mese-sel:focus { border-color:var(--accent); }
         .eta-chip { font-size:11px; padding:2px 7px; border-radius:4px; font-weight:600; }
         .eta-chip.eta-future { background:#FEF3C7; color:#92400E; }
         .eta-chip.eta-past   { background:var(--bg); color:var(--text2); border:1px solid var(--border); }
@@ -1433,7 +1437,7 @@
             <div class="table-wrapper">
                 <div class="table-header-bar">
                     <span>Consegne · <span class="table-count" id="ddt-count">—</span></span>
-                    <div id="ddt-filter-bar" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+                    <div id="ddt-filter-bar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"></div>
                 </div>
                 <div class="table-scroll">
                     <table class="table" id="ddt-table">
