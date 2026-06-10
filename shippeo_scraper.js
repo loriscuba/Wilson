@@ -245,8 +245,19 @@ async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8' });
 
     const captured = [];
+    let _fercamFromNetwork = null;
+
+    // Intercetta URL di richiesta dirette a fercam.com
+    page.on('request', req => {
+        if (/fercam\.com/i.test(req.url()) && !_fercamFromNetwork)
+            _fercamFromNetwork = req.url();
+    });
+
     page.on('response', async res => {
         const url = res.url();
+        // Risposta proveniente da fercam.com → salva l'URL
+        if (/fercam\.com/i.test(url) && !_fercamFromNetwork)
+            _fercamFromNetwork = url;
         const ct = res.headers()['content-type'] || '';
         if (!ct.includes('json')) return;
         try {
@@ -264,60 +275,91 @@ async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
 
     const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
 
+    // Estrae il primo URL fercam.com dall'HTML o JSON fornito
+    function _extractFercamUrl(text) {
+        if (!text) return null;
+        // Con protocollo
+        let m = text.match(/https?:\/\/[^\s"'`<>\\,)]*fercam\.com[^\s"'`<>\\,)]*/i);
+        if (m) return m[0];
+        // Senza protocollo: //tracktrace.fercam.com/...
+        m = text.match(/\/\/[^\s"'`<>\\,)]*fercam\.com[^\s"'`<>\\,)]*/i);
+        if (m) return 'https:' + m[0];
+        // Solo dominio+path: tracktrace.fercam.com/...
+        m = text.match(/tracktrace\.fercam\.com\/[^\s"'`<>\\,)]*/i);
+        if (m) return 'https://' + m[0];
+        return null;
+    }
+
     // Visita goods page per estrarre link Fercam (solo se richiesto)
     let fercamUrl = null;
     if (needFercamUrl && token) {
-        // 1. Cerca nelle risposte API già catturate (più veloce, nessuna navigazione extra)
-        for (const { body } of captured) {
-            const m = JSON.stringify(body).match(/https?:\/\/[^"'\s\\]*fercam\.com[^"'\s\\]*/i);
-            if (m) { fercamUrl = m[0]; console.log(`  [fercam-url-api] ${fercamUrl}`); break; }
-        }
+        // 1. Intercettazione di rete (richiesta diretta a fercam.com durante overview)
+        if (_fercamFromNetwork) { fercamUrl = _fercamFromNetwork; console.log(`  [fercam-net] ${fercamUrl}`); }
 
-        // 2. Cerca nella pagina overview già caricata
+        // 2. Cerca nelle risposte JSON catturate finora (overview page)
         if (!fercamUrl) {
-            fercamUrl = await page.evaluate(() => {
-                const links = Array.from(document.querySelectorAll('a[href]'));
-                const fl = links.find(a => /fercam\.com/i.test(a.href));
-                if (fl) return fl.href;
-                const m = document.body.innerHTML.match(/https?:\/\/[^"'<>\s]*fercam\.com[^"'<>\s]*/i);
-                return m ? m[0] : null;
-            }).catch(() => null);
-            if (fercamUrl) console.log(`  [fercam-url-overview] ${fercamUrl}`);
+            for (const { body } of captured) {
+                const found = _extractFercamUrl(JSON.stringify(body));
+                if (found) { fercamUrl = found; console.log(`  [fercam-json] ${fercamUrl}`); break; }
+            }
         }
 
-        // 3. Visita le tab goods e documents della goods page
+        // 3. HTML completo della pagina overview già caricata
+        if (!fercamUrl) {
+            const html = await page.content().catch(() => '');
+            fercamUrl = _extractFercamUrl(html);
+            if (fercamUrl) console.log(`  [fercam-overview-html] ${fercamUrl}`);
+        }
+
+        // 4. Visita la goods page e poi documents; aspetta il JS
         if (!fercamUrl) {
             const tabs = [
                 `https://view.shippeo.com/road/orderPublic/${token}/goods`,
                 `https://view.shippeo.com/road/orderPublic/${token}/documents`,
             ];
-            for (const goodsUrl of tabs) {
+            for (const tabUrl of tabs) {
                 if (fercamUrl) break;
                 try {
-                    await page.goto(goodsUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-                    await new Promise(r => setTimeout(r, 7000));
-                    fercamUrl = await page.evaluate(() => {
-                        const links = Array.from(document.querySelectorAll('a[href]'));
-                        const fl = links.find(a => /fercam\.com/i.test(a.href));
-                        if (fl) return fl.href;
-                        const m = document.body.innerHTML.match(/https?:\/\/[^"'<>\s]*fercam\.com[^"'<>\s]*/i);
-                        return m ? m[0] : null;
-                    }).catch(() => null);
-                    // Cerca anche nelle nuove risposte API catturate durante questa navigazione
-                    if (!fercamUrl) {
-                        for (const { body } of captured) {
-                            const m = JSON.stringify(body).match(/https?:\/\/[^"'\s\\]*fercam\.com[^"'\s\\]*/i);
-                            if (m) { fercamUrl = m[0]; break; }
+                    await page.goto(tabUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+                } catch (_) {}
+                await new Promise(r => setTimeout(r, 8000));
+
+                // 4a. Intercettazione di rete aggiornata
+                if (_fercamFromNetwork) { fercamUrl = _fercamFromNetwork; console.log(`  [fercam-net-tab] ${fercamUrl}`); break; }
+
+                // 4b. Nuove risposte JSON catturate
+                for (const { body } of captured) {
+                    const found = _extractFercamUrl(JSON.stringify(body));
+                    if (found) { fercamUrl = found; console.log(`  [fercam-json-tab] ${fercamUrl} (${tabUrl})`); break; }
+                }
+                if (fercamUrl) break;
+
+                // 4c. HTML completo della tab
+                const tabHtml = await page.content().catch(() => '');
+                fercamUrl = _extractFercamUrl(tabHtml);
+                if (fercamUrl) { console.log(`  [fercam-html-tab] ${fercamUrl} (${tabUrl})`); break; }
+
+                // 4d. Attributi DOM (data-href, src, onclick, etc.)
+                fercamUrl = await page.evaluate(() => {
+                    const all = document.querySelectorAll('*');
+                    for (const el of all) {
+                        for (const attr of el.attributes) {
+                            if (/fercam\.com/i.test(attr.value)) return attr.value;
+                        }
+                        if (/fercam\.com/i.test(el.textContent || '')) {
+                            const m = (el.textContent || '').match(/https?:\/\/[^\s"'`<>\\,)]*fercam\.com[^\s"'`<>\\,)]*/i);
+                            if (m) return m[0];
                         }
                     }
-                    if (fercamUrl) console.log(`  [fercam-url] ${fercamUrl} (da ${goodsUrl})`);
-                    else           console.log(`  [fercam] nessun link su ${goodsUrl}`);
-                } catch (e) {
-                    console.log(`  [fercam] ${goodsUrl}: ${e.message}`);
-                }
+                    return null;
+                }).catch(() => null);
+                if (fercamUrl) { console.log(`  [fercam-dom-tab] ${fercamUrl} (${tabUrl})`); break; }
+
+                console.log(`  [fercam] nessun link su ${tabUrl}`);
             }
-            if (!fercamUrl) console.log(`  [fercam] link non trovato su nessuna tab`);
         }
+
+        if (!fercamUrl) console.log(`  [fercam] link non trovato`);
     }
 
     await browser.close();
