@@ -96,6 +96,7 @@ async function openStatModal() {
   if (!_statClienti.length) {
     const { data } = await sb.from('clienti')
       .select('codice_cliente, ragione_sociale')
+      .or('solo_destinazione.eq.false,solo_destinazione.is.null')
       .order('ragione_sociale').limit(500);
     _statClienti = data || [];
   }
@@ -246,7 +247,9 @@ async function _openStat(stat) {
   // Carica clienti se non ancora disponibili
   if (!_statClienti.length) {
     const { data } = await sb.from('clienti')
-      .select('codice_cliente, ragione_sociale').order('ragione_sociale').limit(500);
+      .select('codice_cliente, ragione_sociale')
+      .or('solo_destinazione.eq.false,solo_destinazione.is.null')
+      .order('ragione_sociale').limit(500);
     _statClienti = data || [];
   }
 

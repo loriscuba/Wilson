@@ -649,6 +649,23 @@
         /* ── Impostazioni clienti ── */
         .cfg-row-off td { opacity:.45; }
         .cfg-row-nodash td { opacity:.7; }
+        .cfg-row-dest td { opacity:.8; background: rgba(var(--accent-rgb, 99,102,241),.04); }
+        .cfg-edit-btn { background:none; border:none; cursor:pointer; color:var(--text2);
+            font-size:14px; padding:3px 5px; border-radius:5px; line-height:1;
+            transition:color .15s, background .15s; }
+        .cfg-edit-btn:hover { color:var(--accent); background:rgba(99,102,241,.08); }
+        .cfg-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4);
+            display:none; align-items:center; justify-content:center;
+            z-index:1500; padding:20px; }
+        .cfg-modal-overlay.open { display:flex; }
+        .cfg-modal { background:var(--surface); border-radius:14px;
+            width:100%; max-width:520px;
+            box-shadow:0 16px 48px rgba(0,0,0,.18);
+            max-height:92vh; overflow-y:auto; }
+        .btn-secondary { padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;
+            cursor:pointer; border:1px solid var(--border); background:var(--bg);
+            color:var(--text); transition:background .15s; }
+        .btn-secondary:hover { background:var(--border); }
         .cfg-toolbar { margin-bottom:12px; }
         .cfg-note-inp { width:100%; font-size:12px; padding:4px 6px; border:1px solid var(--border);
           border-radius:4px; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
@@ -1593,7 +1610,7 @@
     <script src="js/ddt.js?v=24"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=10"></script>
-    <script src="js/impostazioni.js?v=5"></script>
+    <script src="js/impostazioni.js?v=6"></script>
     <script src="js/agenda.js?v=7"></script>
     <script src="js/statistiche.js?v=2"></script>
     <script src="js/listino.js?v=2"></script>

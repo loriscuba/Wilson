@@ -96,6 +96,7 @@ async function loadClienti() {
       sb.from('clienti')
         .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
         .eq('attivo', true)
+        .or('solo_destinazione.eq.false,solo_destinazione.is.null')
         .order('ragione_sociale', { ascending: true }),
       loadRollingEnriched(),
     ]);
