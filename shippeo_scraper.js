@@ -267,22 +267,56 @@ async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
     // Visita goods page per estrarre link Fercam (solo se richiesto)
     let fercamUrl = null;
     if (needFercamUrl && token) {
-        try {
-            const goodsUrl = `https://view.shippeo.com/road/orderPublic/${token}/goods`;
-            await page.goto(goodsUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-            await new Promise(r => setTimeout(r, 7000));
-            // Prima cerca <a href>, poi cerca nell'innerHTML con regex (link dinamici/non standard)
+        // 1. Cerca nelle risposte API già catturate (più veloce, nessuna navigazione extra)
+        for (const { body } of captured) {
+            const m = JSON.stringify(body).match(/https?:\/\/[^"'\s\\]*fercam\.com[^"'\s\\]*/i);
+            if (m) { fercamUrl = m[0]; console.log(`  [fercam-url-api] ${fercamUrl}`); break; }
+        }
+
+        // 2. Cerca nella pagina overview già caricata
+        if (!fercamUrl) {
             fercamUrl = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href]'));
-                const fl = links.find(a => a.href && /fercam\.com/i.test(a.href));
+                const fl = links.find(a => /fercam\.com/i.test(a.href));
                 if (fl) return fl.href;
-                const m = document.body.innerHTML.match(/https?:\/\/[^"'\s]*fercam\.com[^"'\s]*/i);
+                const m = document.body.innerHTML.match(/https?:\/\/[^"'<>\s]*fercam\.com[^"'<>\s]*/i);
                 return m ? m[0] : null;
-            });
-            if (fercamUrl) console.log(`  [fercam-url] ${fercamUrl}`);
-            else           console.log(`  [fercam] nessun link trovato sulla goods page`);
-        } catch (e) {
-            console.log(`  [fercam] goods page: ${e.message}`);
+            }).catch(() => null);
+            if (fercamUrl) console.log(`  [fercam-url-overview] ${fercamUrl}`);
+        }
+
+        // 3. Visita le tab goods e documents della goods page
+        if (!fercamUrl) {
+            const tabs = [
+                `https://view.shippeo.com/road/orderPublic/${token}/goods`,
+                `https://view.shippeo.com/road/orderPublic/${token}/documents`,
+            ];
+            for (const goodsUrl of tabs) {
+                if (fercamUrl) break;
+                try {
+                    await page.goto(goodsUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+                    await new Promise(r => setTimeout(r, 7000));
+                    fercamUrl = await page.evaluate(() => {
+                        const links = Array.from(document.querySelectorAll('a[href]'));
+                        const fl = links.find(a => /fercam\.com/i.test(a.href));
+                        if (fl) return fl.href;
+                        const m = document.body.innerHTML.match(/https?:\/\/[^"'<>\s]*fercam\.com[^"'<>\s]*/i);
+                        return m ? m[0] : null;
+                    }).catch(() => null);
+                    // Cerca anche nelle nuove risposte API catturate durante questa navigazione
+                    if (!fercamUrl) {
+                        for (const { body } of captured) {
+                            const m = JSON.stringify(body).match(/https?:\/\/[^"'\s\\]*fercam\.com[^"'\s\\]*/i);
+                            if (m) { fercamUrl = m[0]; break; }
+                        }
+                    }
+                    if (fercamUrl) console.log(`  [fercam-url] ${fercamUrl} (da ${goodsUrl})`);
+                    else           console.log(`  [fercam] nessun link su ${goodsUrl}`);
+                } catch (e) {
+                    console.log(`  [fercam] ${goodsUrl}: ${e.message}`);
+                }
+            }
+            if (!fercamUrl) console.log(`  [fercam] link non trovato su nessuna tab`);
         }
     }
 
@@ -418,12 +452,15 @@ async function main() {
         // Fercam: scopri URL (goods page) o aggiorna dati se già noto
         const activeFercamUrl = fercamUrl || (isFercam ? ddt.fercam_url : null);
         if (activeFercamUrl) {
+            // Salva sempre l'URL, anche se il fetch dei dati fallisce
+            update.fercam_url = activeFercamUrl;
             console.log(`  [fercam] aggiornamento dati...`);
             const fercamDati = await fetchFercamData(activeFercamUrl);
             if (fercamDati) {
-                update.fercam_url  = activeFercamUrl;
                 update.fercam_dati = fercamDati;
                 console.log(`  ✓ Fercam: ${fercamDati.numero_spedizione || '?'} · ${fercamDati.eventi?.length || 0} eventi`);
+            } else {
+                console.log(`  [fercam] fetch dati fallito, URL salvato per retry`);
             }
         }
 

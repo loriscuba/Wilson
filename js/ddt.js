@@ -241,13 +241,14 @@ function openTrackingModal(numConsegna) {
           </div>`).join('')}</div>`
     : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Nessun evento disponibile — il prossimo sync aggiornerà i dati.</div>`;
 
+  const hasFercamDati = !!(f.numero_spedizione || f.colli || f.eventi?.length);
   const fercamSection = hasFercam
     ? `<div class="trk-section-title">Merci${f.numero_spedizione ? ` · ${f.numero_spedizione}` : ''}</div>
        ${f.destinatario ? `<div style="font-size:13px;margin-bottom:.6rem"><span class="trk-meta-lbl">Destinatario</span><br>${f.destinatario}</div>` : ''}
        ${metaBits ? `<div class="trk-info-grid">${metaBits}</div>` : ''}
        ${f.note ? `<div class="trk-nota">⚠ ${f.note}</div>` : ''}
-       ${eventiHtml}`
-    : `<div style="font-size:12px;color:var(--text2);padding:.5rem 0">Dati Fercam non ancora disponibili — verranno caricati al prossimo sync.</div>`;
+       ${hasFercamDati ? eventiHtml : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Dati non ancora parsati — usa il link Fercam qui sotto per visualizzarli.</div>`}`
+    : `<div style="font-size:12px;color:var(--text2);padding:.5rem 0">Link Fercam non ancora disponibile — verrà estratto al prossimo sync.</div>`;
 
   box.innerHTML = `
     <div class="trk-hdr">
