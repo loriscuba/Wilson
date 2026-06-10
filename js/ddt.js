@@ -15,12 +15,27 @@ async function loadDDT() {
       sb.from('ddt')
         .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, stato_shippeo, shippeo_url, eta_shippeo, data_consegna_effettiva, fercam_url, fercam_dati')
         .order('data_ddt', { ascending: false }),
-      sb.from('clienti').select('codice_cliente, ragione_sociale').eq('attivo', true),
+      sb.from('clienti').select('codice_cliente, ragione_sociale'),
     ]);
     if (error) throw error;
 
     _ddtClienti = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c.ragione_sociale]));
     _ddtRows    = data || [];
+
+    // Fallback: per i codici non trovati in clienti, prendi destinazione_ragione_sociale da ordini
+    const codiciFallback = [...new Set(
+      _ddtRows.map(d => d.codice_cliente).filter(c => c && !_ddtClienti[c])
+    )];
+    if (codiciFallback.length) {
+      const { data: ordFallback } = await sb.from('ordini')
+        .select('codice_cliente, destinazione_ragione_sociale')
+        .in('codice_cliente', codiciFallback)
+        .not('destinazione_ragione_sociale', 'is', null);
+      for (const o of (ordFallback || [])) {
+        if (!_ddtClienti[o.codice_cliente]) _ddtClienti[o.codice_cliente] = o.destinazione_ragione_sociale;
+      }
+    }
+
     _ddtFilter  = _pendingDDTFilter;
     _pendingDDTFilter = null;
 
