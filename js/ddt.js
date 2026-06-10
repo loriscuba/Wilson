@@ -22,17 +22,23 @@ async function loadDDT() {
     _ddtClienti = Object.fromEntries((clientiRaw || []).map(c => [c.codice_cliente, c.ragione_sociale]));
     _ddtRows    = data || [];
 
-    // Fallback: per i codici non trovati in clienti, prendi destinazione_ragione_sociale da ordini
-    const codiciFallback = [...new Set(
-      _ddtRows.map(d => d.codice_cliente).filter(c => c && !_ddtClienti[c])
-    )];
-    if (codiciFallback.length) {
+    // Fallback: per i codici non trovati in clienti, cerca destinazione_ragione_sociale
+    // tramite numero_ordine (il codice può essere una destinazione, non il cliente ordinante)
+    const righeOrfane = _ddtRows.filter(d => d.codice_cliente && !_ddtClienti[d.codice_cliente]);
+    const numeriOrdine = [...new Set(righeOrfane.map(d => d.numero_ordine).filter(Boolean))];
+    if (numeriOrdine.length) {
       const { data: ordFallback } = await sb.from('ordini')
-        .select('codice_cliente, destinazione_ragione_sociale')
-        .in('codice_cliente', codiciFallback)
+        .select('numero_ordine, destinazione_ragione_sociale')
+        .in('numero_ordine', numeriOrdine)
         .not('destinazione_ragione_sociale', 'is', null);
-      for (const o of (ordFallback || [])) {
-        if (!_ddtClienti[o.codice_cliente]) _ddtClienti[o.codice_cliente] = o.destinazione_ragione_sociale;
+      // Mappa numero_ordine → nome destinazione
+      const nomeByOrdine = Object.fromEntries(
+        (ordFallback || []).map(o => [o.numero_ordine, o.destinazione_ragione_sociale])
+      );
+      // Propaga il nome al codice_cliente corrispondente
+      for (const d of righeOrfane) {
+        const nome = nomeByOrdine[d.numero_ordine];
+        if (nome && !_ddtClienti[d.codice_cliente]) _ddtClienti[d.codice_cliente] = nome;
       }
     }
 
