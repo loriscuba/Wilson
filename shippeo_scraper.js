@@ -426,15 +426,33 @@ async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
 }
 
 async function main() {
-    const { data: ddts, error } = await supabase
+    // --force NUMERO_CONSEGNA[,NUMERO2,...] → re-processa DDT specifici ignorando lo stato
+    const forceArg = process.argv.find(a => a.startsWith('--force'));
+    const forceCodes = forceArg
+        ? forceArg.replace('--force=', '').replace('--force', '').split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+    // --fercam-only → processa solo DDT Fercam senza fercam_url
+    const fercamOnly = process.argv.includes('--fercam-only');
+
+    let query = supabase
         .from('ddt')
-        .select('id, numero_ddt, numero_ordine, shippeo_url, stato, corriere, fercam_url')
-        .not('shippeo_url', 'is', null)
-        .neq('stato', 'consegnato');
+        .select('id, numero_ddt, numero_ordine, numero_consegna, shippeo_url, stato, corriere, fercam_url')
+        .not('shippeo_url', 'is', null);
+
+    if (forceCodes.length) {
+        query = query.in('numero_consegna', forceCodes);
+    } else {
+        query = query.neq('stato', 'consegnato');
+        if (fercamOnly) query = query.ilike('corriere', '%fercam%').is('fercam_url', null);
+    }
+
+    const { data: ddts, error } = await query;
 
     if (error) { console.error('Errore Supabase:', error); process.exit(1); }
-    if (!ddts?.length) { console.log('Nessun DDT con tracking da aggiornare.'); return; }
+    if (!ddts?.length) { console.log('Nessun DDT trovato.'); return; }
 
+    if (forceCodes.length) console.log(`Modalità --force: ${forceCodes.join(', ')}\n`);
+    else if (fercamOnly) console.log(`Modalità --fercam-only: solo Fercam senza URL\n`);
     console.log(`DDT da verificare: ${ddts.length}\n`);
 
     for (const ddt of ddts) {
