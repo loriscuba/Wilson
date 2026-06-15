@@ -199,6 +199,41 @@ function _renderDDTTabella(todayMs) {
 
 // ── Tracking Modal ──────────────────────────────────────────────
 
+const _FERCAM_STATI = {
+  'DATA RECEIVED':                              'Dati ricevuti',
+  'ORDER CREATED':                              'Ordine creato',
+  'ORDER CREATED - WAITING TO RECEIVE THE GOODS': 'Ordine creato – in attesa della merce',
+  'PLANNED FOR LOADING':                        'Pianificato per carico',
+  'LOADED':                                     'Caricato',
+  'TRAVELLING':                                 'In viaggio',
+  'IN BRANCH':                                  'In deposito',
+  'UNLOADING':                                  'In scarico',
+  'DELIVERED':                                  'Consegnato',
+  'DELIVERY':                                   'Consegnato',
+  'DELIVERY ATTEMPT':                           'Tentativo di consegna',
+  'DELIVERY FAILED':                            'Consegna fallita',
+  'NOT DELIVERED':                              'Non consegnato',
+  'RETURNED':                                   'Reso',
+  'CUSTOMS':                                    'In dogana',
+  'ON HOLD':                                    'In attesa',
+  'CANCELLED':                                  'Annullato',
+  'EXCEPTION':                                  'Anomalia',
+  'DAMAGED':                                    'Merce danneggiata',
+};
+
+function _tradFercam(desc) {
+  if (!desc) return desc;
+  // Separate the main status from the optional "— Destination branch: X" suffix
+  const sepIdx = desc.indexOf(' — ');
+  const stato  = sepIdx >= 0 ? desc.slice(0, sepIdx).trim() : desc.trim();
+  const suffix = sepIdx >= 0 ? desc.slice(sepIdx) : '';
+  const key    = stato.toUpperCase();
+  const trad   = _FERCAM_STATI[key];
+  // Translate "Destination branch: X" suffix
+  const tradSuffix = suffix.replace(/Destination branch:/i, 'Filiale destinazione:');
+  return (trad || stato) + tradSuffix;
+}
+
 function openTrackingModal(numConsegna) {
   const d = _trkRegistry.get(numConsegna)
          || _ddtRows.find(r => r.numero_consegna === numConsegna);
@@ -237,7 +272,7 @@ function openTrackingModal(numConsegna) {
          `<div class="trk-evento">
             <span class="trk-ev-data">${e.data}</span>
             <span class="trk-ev-ora">${e.ora}</span>
-            <span class="trk-ev-desc">${e.descrizione}</span>
+            <span class="trk-ev-desc">${_tradFercam(e.descrizione)}</span>
           </div>`).join('')}</div>`
     : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Nessun evento disponibile — il prossimo sync aggiornerà i dati.</div>`;
 
