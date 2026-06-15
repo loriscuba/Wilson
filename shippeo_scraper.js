@@ -403,7 +403,7 @@ async function getShippeoData(rawUrl, { needFercamUrl = false, needFedexData = f
         try {
             await page.goto(`https://view.shippeo.com/road/orderPublic/${token}/goods`, { waitUntil: 'networkidle2', timeout: 30000 });
         } catch (_) {}
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise(r => setTimeout(r, 8000));
         console.log(`  [fedex] goods page visitata`);
     }
 
@@ -471,9 +471,29 @@ async function getShippeoData(rawUrl, { needFercamUrl = false, needFedexData = f
     // Estrai dati Shippeo goods per FedEx (disponibili dopo visita goods page)
     let shippeoOrders = null, shippeoOverview = null, shippeoGoods = null;
     if (needFedexData) {
-        shippeoOrders   = captured.find(c => /\/public\/orders\?token/.test(c.url) && !c.body?.errors)?.body || null;
-        shippeoOverview = captured.find(c => /goods\/order\/overview/.test(c.url)   && !c.body?.errors)?.body || null;
-        shippeoGoods    = captured.find(c => /goods\/order\/goods/.test(c.url)      && !c.body?.errors)?.body || null;
+        // Log tutte le URL JSON catturate per debug
+        if (captured.length) {
+            console.log(`  [fedex-api] ${captured.length} risposte JSON: ${captured.map(c => c.url.replace(/^https?:\/\/[^/]+/, '').substring(0, 80)).join(' | ')}`);
+        } else {
+            console.log(`  [fedex-api] nessuna risposta JSON catturata`);
+        }
+        // Pattern flessibili: matchano varianti URL Shippeo
+        shippeoOrders   = captured.find(c => /[/]orders[/?&]|[/]orders$/.test(c.url) && !c.body?.errors && !c.body?.error)?.body || null;
+        shippeoOverview = captured.find(c => /order[/.]overview|[/]overview[/?&]|[/]overview$/.test(c.url) && !c.body?.errors && !c.body?.error)?.body || null;
+        shippeoGoods    = captured.find(c => /order[/.]goods|[/]goods[/?&]|[/]goods$/.test(c.url) && !c.body?.errors && !c.body?.error && c.body !== shippeoOverview)?.body || null;
+
+        // Fallback: cerca qualsiasi JSON con struttura stops/order (dati overview caricati durante navigazione)
+        if (!shippeoOverview) {
+            const orderLike = captured.find(c =>
+                !c.body?.errors && !c.body?.error &&
+                (c.body?.stops || c.body?.order?.stops || c.body?.data?.stops ||
+                 c.body?.currentStatus || c.body?.status?.currentStatus)
+            );
+            if (orderLike) {
+                shippeoOverview = orderLike.body?.order ?? orderLike.body?.data ?? orderLike.body;
+                console.log(`  [fedex-api] overview da fallback: ${orderLike.url.replace(/^https?:\/\/[^/]+/, '').substring(0, 80)}`);
+            }
+        }
     }
 
     return { status, etaRaw, deliveredAt, fercamUrl, shippeoOrders, shippeoOverview, shippeoGoods };
@@ -580,7 +600,7 @@ async function main() {
         const isFercam   = ddt.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
         const isFedex    = ddt.corriere?.toUpperCase().includes('FEDEX');
         const needFercamUrl  = isFercam && !ddt.fercam_url;
-        const needFedexData  = isFedex  && !ddt.tnt_dati;
+        const needFedexData  = isFedex  && (!ddt.tnt_dati || !ddt.tnt_dati.destinatario);
 
         const { status, etaRaw, deliveredAt, fercamUrl,
                 shippeoOrders, shippeoOverview, shippeoGoods } =
@@ -655,7 +675,16 @@ async function main() {
                 update.tnt_dati = tntDati;
                 console.log(`  ✓ FedEx: ${tntDati.destinatario || '?'} · ETA ${tntDati.eta || '—'} · ${tntDati.eventi.length} eventi`);
             } else if (needFedexData) {
-                console.log(`  [fedex] nessun dato Shippeo goods disponibile`);
+                // Fallback: salva tnt_dati con almeno ETA/status estratti dalla pagina
+                update.tnt_dati = {
+                    destinatario: null, citta_consegna: null,
+                    partenza: null, citta_partenza: null,
+                    eta: etaRaw ? etaRaw.substring(0, 10) : null,
+                    stato: status || null,
+                    eventi: [],
+                    fetched_at: new Date().toISOString(),
+                };
+                console.log(`  [fedex] tnt_dati parziale (ETA: ${etaRaw || '—'}, status: ${status || '—'}) — goods API non catturate`);
             }
         }
 
