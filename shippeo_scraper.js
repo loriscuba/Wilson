@@ -245,7 +245,7 @@ async function fetchFercamData(url) {
     }
 }
 
-async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
+async function getShippeoData(rawUrl, { needFercamUrl = false, needFedexData = false } = {}) {
     const shippeoUrl = normalizeShippeoUrl(rawUrl);
     const token = extractToken(rawUrl);
     console.log(`  [url] ${shippeoUrl}`);
@@ -398,6 +398,15 @@ async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
         if (!fercamUrl) console.log(`  [fercam] link non trovato`);
     }
 
+    // Per FedEx: visita goods page per catturare dati Shippeo (se non già visitata per Fercam)
+    if (needFedexData && !needFercamUrl && token) {
+        try {
+            await page.goto(`https://view.shippeo.com/road/orderPublic/${token}/goods`, { waitUntil: 'networkidle2', timeout: 30000 });
+        } catch (_) {}
+        await new Promise(r => setTimeout(r, 5000));
+        console.log(`  [fedex] goods page visitata`);
+    }
+
     await browser.close();
 
     let status = null, etaRaw = null, deliveredAt = null;
@@ -458,7 +467,79 @@ async function getShippeoData(rawUrl, { needFercamUrl = false } = {}) {
     }
 
     console.log(`  [result] status=${status} eta=${etaRaw} deliveredAt=${deliveredAt} (${captured.length} API)`);
-    return { status, etaRaw, deliveredAt, fercamUrl };
+
+    // Estrai dati Shippeo goods per FedEx (disponibili dopo visita goods page)
+    let shippeoOrders = null, shippeoOverview = null, shippeoGoods = null;
+    if (needFedexData) {
+        shippeoOrders   = captured.find(c => /\/public\/orders\?token/.test(c.url) && !c.body?.errors)?.body || null;
+        shippeoOverview = captured.find(c => /goods\/order\/overview/.test(c.url)   && !c.body?.errors)?.body || null;
+        shippeoGoods    = captured.find(c => /goods\/order\/goods/.test(c.url)      && !c.body?.errors)?.body || null;
+    }
+
+    return { status, etaRaw, deliveredAt, fercamUrl, shippeoOrders, shippeoOverview, shippeoGoods };
+}
+
+function parseShippeoGoodsFedex(orders, overview, goods) {
+    const result = {
+        destinatario: null, citta_consegna: null,
+        partenza: null, citta_partenza: null,
+        eta: null, stato: null,
+        eventi: [], fetched_at: new Date().toISOString(),
+    };
+
+    if (overview) {
+        result.stato = overview.status?.currentStatus || null;
+        const dest = (overview.stops || []).find(s => s.stopType === 'delivery');
+        const orig = (overview.stops || []).find(s => s.stopType === 'loading');
+        if (dest) {
+            const a = dest.place?.shippeoPlace?.address;
+            if (a) {
+                result.destinatario  = a.name || null;
+                result.citta_consegna = a.town ? `${a.town}${a.postalCode ? ' (' + a.postalCode + ')' : ''}` : null;
+            }
+            const etaIso = dest.dates?.plannedArrivalStartDate || dest.dates?.plannedArrivalEndDate;
+            if (etaIso) result.eta = etaIso.substring(0, 10);
+        }
+        if (orig) {
+            const a = orig.place?.shippeoPlace?.address;
+            result.partenza      = a?.name || null;
+            result.citta_partenza = a?.town || null;
+        }
+    }
+
+    // Aggiungi eventi dalla goods page (collo ritirato, ecc.)
+    for (const hu of goods?.handlingUnits || []) {
+        for (const ev of hu.events || []) {
+            if (!ev.dates?.occurredOn) continue;
+            const dt = new Date(ev.dates.occurredOn);
+            result.eventi.push({
+                data: `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`,
+                ora:  `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`,
+                tipo: ev.type,
+            });
+        }
+    }
+
+    // Aggiungi eventi dalla timeline ordine (ORDER_CONFIRMED, ecc.)
+    for (const stage of orders?.timeline || []) {
+        for (const ev of stage.events || []) {
+            if (!ev.dateEvent || !ev.type) continue;
+            const dt = new Date(ev.dateEvent);
+            const data = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
+            const ora  = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+            if (!result.eventi.some(e => e.data === data && e.ora === ora && e.tipo === ev.type))
+                result.eventi.push({ data, ora, tipo: ev.type });
+        }
+    }
+
+    // Ordina dal più recente al meno recente
+    result.eventi.sort((a, b) => {
+        const ka = a.data.split('/').reverse().join('-') + 'T' + a.ora;
+        const kb = b.data.split('/').reverse().join('-') + 'T' + b.ora;
+        return kb.localeCompare(ka);
+    });
+
+    return result;
 }
 
 async function main() {
@@ -472,7 +553,7 @@ async function main() {
 
     let query = supabase
         .from('ddt')
-        .select('id, numero_ddt, numero_ordine, numero_consegna, shippeo_url, stato, corriere, fercam_url')
+        .select('id, numero_ddt, numero_ordine, numero_consegna, shippeo_url, stato, corriere, segnacollo, fercam_url, tnt_url, tnt_dati')
         .not('shippeo_url', 'is', null);
 
     if (forceCodes.length) {
@@ -480,8 +561,8 @@ async function main() {
     } else if (fercamOnly) {
         query = query.ilike('corriere', '%fercam%').is('fercam_url', null);
     } else {
-        // Processa DDT non consegnati + qualsiasi DDT Fercam senza URL (anche consegnati)
-        query = query.or('stato.neq.consegnato,and(corriere.ilike.%fercam%,fercam_url.is.null)');
+        // Processa DDT non consegnati + Fercam senza URL + FedEx senza dati
+        query = query.or('stato.neq.consegnato,and(corriere.ilike.%fercam%,fercam_url.is.null),and(corriere.ilike.%fedex%,tnt_dati.is.null)');
     }
 
     const { data: ddts, error } = await query;
@@ -496,10 +577,14 @@ async function main() {
     for (const ddt of ddts) {
         console.log(`DDT ${ddt.numero_ddt} | Ordine ${ddt.numero_ordine}`);
 
-        const isFercam = ddt.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
-        const needFercamUrl = isFercam && !ddt.fercam_url;
+        const isFercam   = ddt.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
+        const isFedex    = ddt.corriere?.toUpperCase().includes('FEDEX');
+        const needFercamUrl  = isFercam && !ddt.fercam_url;
+        const needFedexData  = isFedex  && !ddt.tnt_dati;
 
-        const { status, etaRaw, deliveredAt, fercamUrl } = await getShippeoData(ddt.shippeo_url, { needFercamUrl });
+        const { status, etaRaw, deliveredAt, fercamUrl,
+                shippeoOrders, shippeoOverview, shippeoGoods } =
+            await getShippeoData(ddt.shippeo_url, { needFercamUrl, needFedexData });
         const statoMapped = mapStatus(status);
 
         console.log(`  status raw : ${status || '—'}`);
@@ -550,7 +635,6 @@ async function main() {
         // Fercam: scopri URL (goods page) o aggiorna dati se già noto
         const activeFercamUrl = fercamUrl || (isFercam ? ddt.fercam_url : null);
         if (activeFercamUrl) {
-            // Salva sempre l'URL, anche se il fetch dei dati fallisce
             update.fercam_url = activeFercamUrl;
             console.log(`  [fercam] aggiornamento dati...`);
             const fercamDati = await fetchFercamData(activeFercamUrl);
@@ -559,6 +643,19 @@ async function main() {
                 console.log(`  ✓ Fercam: ${fercamDati.numero_spedizione || '?'} · ${fercamDati.eventi?.length || 0} eventi`);
             } else {
                 console.log(`  [fercam] fetch dati fallito, URL salvato per retry`);
+            }
+        }
+
+        // FedEx: costruisci URL TNT da segnacollo + salva dati Shippeo goods
+        if (isFedex) {
+            const tntNum = ddt.segnacollo?.match(/^(\d+)/)?.[1];
+            if (tntNum && !ddt.tnt_url) update.tnt_url = `https://www.tnt.it/tracking/index.html?con=${tntNum}`;
+            if (shippeoOrders || shippeoOverview || shippeoGoods) {
+                const tntDati = parseShippeoGoodsFedex(shippeoOrders, shippeoOverview, shippeoGoods);
+                update.tnt_dati = tntDati;
+                console.log(`  ✓ FedEx: ${tntDati.destinatario || '?'} · ETA ${tntDati.eta || '—'} · ${tntDati.eventi.length} eventi`);
+            } else if (needFedexData) {
+                console.log(`  [fedex] nessun dato Shippeo goods disponibile`);
             }
         }
 

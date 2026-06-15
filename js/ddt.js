@@ -19,7 +19,7 @@ async function loadDDT() {
   try {
     const [{ data, error }, { data: clientiRaw }] = await Promise.all([
       sb.from('ddt')
-        .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, stato_shippeo, shippeo_url, eta_shippeo, data_consegna_effettiva, fercam_url, fercam_dati')
+        .select('numero_consegna, numero_ddt, data_ddt, codice_cliente, numero_ordine, corriere, stato, stato_shippeo, shippeo_url, eta_shippeo, data_consegna_effettiva, fercam_url, fercam_dati, tnt_url, tnt_dati')
         .order('data_ddt', { ascending: false }),
       sb.from('clienti').select('codice_cliente, ragione_sociale'),
     ]);
@@ -175,8 +175,9 @@ function _renderDDTTabella(todayMs) {
       : '—';
     _trkRegistry.set(d.numero_consegna, d);
     const _isFercam = d.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
+    const _isFedex  = d.corriere?.toUpperCase().includes('FEDEX');
     let trkCell;
-    if (_isFercam && (d.shippeo_url || d.fercam_url)) {
+    if ((_isFercam && (d.shippeo_url || d.fercam_url)) || (_isFedex && (d.shippeo_url || d.tnt_url))) {
       trkCell = `<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>`;
     } else if (d.shippeo_url) {
       trkCell = `<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>`;
@@ -198,6 +199,34 @@ function _renderDDTTabella(todayMs) {
 }
 
 // ── Tracking Modal ──────────────────────────────────────────────
+
+const _FEDEX_STATI = {
+  'ORDER_CREATED':                'Ordine creato',
+  'ORDER_PENDING':                'Ordine in attesa',
+  'ORDER_CONFIRMED':              'Ordine confermato dal corriere',
+  'loading':                      'Collo ritirato',
+  'delivery':                     'Consegnato',
+  'loadingCompliant':             'Ritirato (conforme)',
+  'deliveryCompliant':            'Consegnato (conforme)',
+  'drivingLoadingSite':           'In viaggio al punto di ritiro',
+  'onLoadingSite':                'Al punto di ritiro',
+  'onTerminal':                   'Al terminal FedEx',
+  'drivingDeliverySite':          'In viaggio per la consegna',
+  'onDeliverySite':               'In consegna',
+  'SHIPMENT_IN_TRANSIT':          'Spedizione in transito',
+  'DELIVERY_ATTEMPTED':           'Tentativo di consegna',
+  'EXCEPTION':                    'Anomalia',
+};
+
+function _tradFedex(tipo) {
+  if (!tipo) return tipo;
+  // Cerca corrispondenza esatta, poi prefix match
+  const key = tipo.toUpperCase();
+  if (_FEDEX_STATI[tipo]) return _FEDEX_STATI[tipo];
+  for (const [k, v] of Object.entries(_FEDEX_STATI))
+    if (key.startsWith(k.toUpperCase()) || k.toUpperCase().startsWith(key)) return v;
+  return tipo;
+}
 
 const _FERCAM_STATI = {
   'DATA RECEIVED':                              'Dati ricevuti',
@@ -241,8 +270,8 @@ function openTrackingModal(numConsegna) {
 
   const overlay = document.getElementById('trk-overlay');
   const box     = document.getElementById('trk-modal-box');
-  const f       = d.fercam_dati || {};
-  const eventi  = f.eventi || [];
+  const isFercam = d.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
+  const isFedex  = d.corriere?.toUpperCase().includes('FEDEX');
 
   const todayMs    = new Date().setHours(0,0,0,0);
   const isConsegnato = d.stato === 'consegnato' ||
@@ -259,31 +288,56 @@ function openTrackingModal(numConsegna) {
     statoHtml = `<span class="badge badge-gray">${d.stato || 'spedito'}</span>`;
   }
 
-  const hasFercam   = d.fercam_url || f.numero_spedizione;
-  const metaBits    = [
-    f.colli     ? `<div class="trk-info-card"><div class="trk-info-val">${f.colli}</div><div class="trk-info-lbl">Colli</div></div>` : '',
-    f.peso_kg   ? `<div class="trk-info-card"><div class="trk-info-val">${String(f.peso_kg.toFixed(2)).replace('.',',')} kg</div><div class="trk-info-lbl">Peso</div></div>` : '',
-    f.volume_mc ? `<div class="trk-info-card"><div class="trk-info-val">${f.volume_mc} mc</div><div class="trk-info-lbl">Volume</div></div>` : '',
-  ].filter(Boolean).join('');
-
-  const eventiHtml = eventi.length
+  // ── Sezione Fercam ──
+  const f = d.fercam_dati || {};
+  const hasFercam    = d.fercam_url || f.numero_spedizione;
+  const hasFercamDati = !!(f.numero_spedizione || f.colli || f.eventi?.length);
+  const fercamEventiHtml = (f.eventi || []).length
     ? `<div class="trk-section-title" style="padding-top:.5rem">Cronologia</div>
-       <div class="trk-eventi">${eventi.map(e =>
+       <div class="trk-eventi">${(f.eventi || []).map(e =>
          `<div class="trk-evento">
             <span class="trk-ev-data">${e.data}</span>
             <span class="trk-ev-ora">${e.ora}</span>
             <span class="trk-ev-desc">${_tradFercam(e.descrizione)}</span>
           </div>`).join('')}</div>`
-    : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Nessun evento disponibile — il prossimo sync aggiornerà i dati.</div>`;
-
-  const hasFercamDati = !!(f.numero_spedizione || f.colli || f.eventi?.length);
+    : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Nessun evento disponibile.</div>`;
+  const fercamMetaBits = [
+    f.colli     ? `<div class="trk-info-card"><div class="trk-info-val">${f.colli}</div><div class="trk-info-lbl">Colli</div></div>` : '',
+    f.peso_kg   ? `<div class="trk-info-card"><div class="trk-info-val">${String(f.peso_kg.toFixed(2)).replace('.',',')} kg</div><div class="trk-info-lbl">Peso</div></div>` : '',
+    f.volume_mc ? `<div class="trk-info-card"><div class="trk-info-val">${f.volume_mc} mc</div><div class="trk-info-lbl">Volume</div></div>` : '',
+  ].filter(Boolean).join('');
   const fercamSection = hasFercam
     ? `<div class="trk-section-title">Merci${f.numero_spedizione ? ` · ${f.numero_spedizione}` : ''}</div>
        ${f.destinatario ? `<div style="font-size:13px;margin-bottom:.6rem"><span class="trk-meta-lbl">Destinatario</span><br>${f.destinatario}</div>` : ''}
-       ${metaBits ? `<div class="trk-info-grid">${metaBits}</div>` : ''}
+       ${fercamMetaBits ? `<div class="trk-info-grid">${fercamMetaBits}</div>` : ''}
        ${f.note ? `<div class="trk-nota">⚠ ${f.note}</div>` : ''}
-       ${hasFercamDati ? eventiHtml : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Dati non ancora parsati — usa il link Fercam qui sotto per visualizzarli.</div>`}`
+       ${hasFercamDati ? fercamEventiHtml : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Dati non ancora parsati — usa il link Fercam qui sotto per visualizzarli.</div>`}`
     : `<div style="font-size:12px;color:var(--text2);padding:.5rem 0">Link Fercam non ancora disponibile — verrà estratto al prossimo sync.</div>`;
+
+  // ── Sezione FedEx ──
+  const tx = d.tnt_dati || {};
+  const hasFedexDati = !!(tx.destinatario || tx.eta || tx.eventi?.length);
+  const fedexEventiHtml = (tx.eventi || []).length
+    ? `<div class="trk-section-title" style="padding-top:.5rem">Cronologia</div>
+       <div class="trk-eventi">${(tx.eventi || []).map(e =>
+         `<div class="trk-evento">
+            <span class="trk-ev-data">${e.data}</span>
+            <span class="trk-ev-ora">${e.ora}</span>
+            <span class="trk-ev-desc">${_tradFedex(e.tipo)}</span>
+          </div>`).join('')}</div>`
+    : `<div style="font-size:12px;color:var(--text2);padding:.4rem 0">Nessun evento — verrà aggiornato al prossimo sync.</div>`;
+  const fedexMetaBits = [
+    tx.destinatario   ? `<div class="trk-info-card" style="grid-column:1/-1"><div class="trk-info-val" style="font-size:13px">${tx.destinatario}</div><div class="trk-info-lbl">${tx.citta_consegna || 'Destinatario'}</div></div>` : '',
+    tx.partenza       ? `<div class="trk-info-card"><div class="trk-info-val" style="font-size:12px">${tx.partenza}</div><div class="trk-info-lbl">Partenza</div></div>` : '',
+    tx.eta            ? `<div class="trk-info-card"><div class="trk-info-val">${fmtDate(tx.eta)}</div><div class="trk-info-lbl">Consegna prev.</div></div>` : '',
+  ].filter(Boolean).join('');
+  const fedexSection = hasFedexDati
+    ? `<div class="trk-section-title">Spedizione FedEx${tx.stato ? ` · ${_tradFedex(tx.stato)}` : ''}</div>
+       ${fedexMetaBits ? `<div class="trk-info-grid">${fedexMetaBits}</div>` : ''}
+       ${fedexEventiHtml}`
+    : `<div style="font-size:12px;color:var(--text2);padding:.5rem 0">Dati FedEx non ancora disponibili — verrà aggiornato al prossimo sync.</div>`;
+
+  const trackingSection = isFercam ? fercamSection : isFedex ? fedexSection : '';
 
   box.innerHTML = `
     <div class="trk-hdr">
@@ -298,10 +352,11 @@ function openTrackingModal(numConsegna) {
         ${statoHtml}
         ${d.numero_ordine ? `<span style="font-size:12px;color:var(--text2)">Ordine ${d.numero_ordine}</span>` : ''}
       </div>
-      ${fercamSection}
+      ${trackingSection}
     </div>
     <div class="trk-footer">
       ${d.fercam_url  ? `<a class="trk-ext-link" href="${d.fercam_url}"  target="_blank" rel="noopener">Fercam →</a>`  : ''}
+      ${d.tnt_url     ? `<a class="trk-ext-link" href="${d.tnt_url}"     target="_blank" rel="noopener">TNT →</a>`     : ''}
       ${d.shippeo_url ? `<a class="trk-ext-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Shippeo →</a>` : ''}
     </div>`;
 
