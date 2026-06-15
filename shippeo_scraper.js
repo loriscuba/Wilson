@@ -121,21 +121,13 @@ async function tryDirectApi(token) {
     return null;
 }
 
+function _htmlText(s) {
+    return (s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<')
+        .replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&#39;/g,"'")
+        .replace(/&quot;/g,'"').replace(/\s+/g,' ').trim();
+}
+
 function parseFercamHtml(html) {
-    const clean = html
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?<\/style>/gi, '')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/(?:tr|p|div|li|h[1-6])\s*>/gi, '\n')
-        .replace(/<\/td\s*>/gi, '\t')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-        .replace(/&nbsp;/g, ' ').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
-        .replace(/&quot;/g, '"');
-
-    const lines = clean.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const text  = lines.join('\n');
-
     const result = {
         numero_spedizione: null,
         destinatario: null,
@@ -145,49 +137,93 @@ function parseFercamHtml(html) {
         fetched_at: new Date().toISOString(),
     };
 
-    const numM = text.match(/Spediz[^:\n]{0,30}:\s*([A-Z]\d{7,12})/i) || text.match(/\b([A-Z]\d{9,12})\b/);
+    // Shipment number: from page title/heading (e.g. "Shipment O2602453234")
+    // or from hidden input, or generic letter+digits pattern
+    const numM = html.match(/Shipment\s+([A-Z]\d{6,12})/i)
+              || html.match(/Spediz[^:\n<]{0,30}:\s*([A-Z]\d{7,12})/i)
+              || html.match(/\b([A-Z]\d{9,12})\b/);
     if (numM) result.numero_spedizione = numM[1];
 
-    const colliM = text.match(/Colli\s*:?\s*(\d+)/i);
-    if (colliM) result.colli = parseInt(colliM[1]);
-
-    const pesoM = text.match(/Peso\s*:?\s*([\d,.]+)\s*kg/i);
-    if (pesoM) result.peso_kg = parseFloat(pesoM[1].replace(',', '.'));
-
-    const volM = text.match(/Volume\s*:?\s*([\d,.]+)\s*mc/i);
-    if (volM) result.volume_mc = parseFloat(volM[1].replace(',', '.'));
-
-    const servM = text.match(/Servizio\s*:?\s*([A-ZÀÈÌÒÙ][A-ZÀÈÌÒÙ\s]{2,30})(?=\n|Colli|Data|\d)/i);
-    if (servM) result.servizio = servM[1].trim();
-
-    const dataM = text.match(/Data\s+(?:di\s+)?[Ss]pedizione\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i)
-               || text.match(/Data\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i);
-    if (dataM) { const [d2,m2,y2]=dataM[1].split('/'); result.data_spedizione=`${y2}-${m2}-${d2}`; }
-
-    // Destinatario: riga dopo la keyword
-    const dstIdx = lines.findIndex(l => /destinatario/i.test(l));
-    if (dstIdx >= 0) {
-        const parts = lines[dstIdx].split(':');
-        result.destinatario = (parts.length > 1 ? parts.slice(1).join(':').trim()
-                               : lines[dstIdx + 1] || '').trim() || null;
+    // Field extractor: finds label keyword then captures the next div value
+    function _field(re) {
+        const m = html.match(re);
+        return m ? _htmlText(m[1]) : null;
     }
 
-    const notaM = text.match(/"([A-ZÀÈÌÒÙ][^"]{5,200})"/);
-    if (notaM) result.note = notaM[1].trim();
+    // Packages / Colli
+    const colliVal = _field(/Packages?[\s\S]{0,300}?<div[^>]*>\s*(\d+)\s*<\/div>/i)
+                  || _field(/Colli[\s\S]{0,300}?<div[^>]*>\s*(\d+)\s*<\/div>/i);
+    if (colliVal) result.colli = parseInt(colliVal);
 
-    // Tracking events: "DD/MM ore HH:MM - Desc" or "DD/MM/YYYY\tHH:MM\tDesc"
-    const evtRe = /(\d{2}\/\d{2}(?:\/\d{4})?)\s+(?:ore\s+)?(\d{2}:\d{2})\s*[-–]?\s*([^\n\d]{3,200})/g;
+    // Weight / Peso (value without unit suffix)
+    const pesoVal = _field(/Weight[\s\S]{0,300}?<div[^>]*>\s*([\d.,]+)\s*<\/div>/i)
+                 || _field(/Peso[\s\S]{0,300}?<div[^>]*>\s*([\d.,]+)\s*(?:kg)?\s*<\/div>/i);
+    if (pesoVal) result.peso_kg = parseFloat(pesoVal.replace(',', '.'));
+
+    // Cubic metres / Volume
+    const volVal = _field(/Cubic\s+metres[\s\S]{0,300}?<div[^>]*>\s*([\d.,]+)\s*<\/div>/i)
+                || _field(/Volume[\s\S]{0,300}?<div[^>]*>\s*([\d.,]+)\s*(?:mc)?\s*<\/div>/i);
+    if (volVal) result.volume_mc = parseFloat(volVal.replace(',', '.'));
+
+    // Service / Servizio
+    const servVal = _field(/Service[\s\S]{0,300}?<div[^>]*>\s*([A-Z][A-Z\s]{2,40}?)\s*<\/div>/i)
+                 || _field(/Servizio[\s\S]{0,300}?<div[^>]*>\s*([A-ZÀÈÌÒÙ][A-ZÀÈÌÒÙ\s]{2,40}?)\s*<\/div>/i);
+    if (servVal) result.servizio = servVal.trim();
+
+    // Shipment date (DD/MM/YYYY)
+    const dataM = html.match(/for="Shipment_Data"[\s\S]{0,300}?<div[^>]*>\s*(\d{2}\/\d{2}\/\d{4})\s*<\/div>/i)
+               || html.match(/Data[\s\S]{0,100}?<div[^>]*>\s*(\d{2}\/\d{2}\/\d{4})\s*<\/div>/i);
+    if (dataM) {
+        const [d2, m2, y2] = dataM[1].split('/');
+        result.data_spedizione = `${y2}-${m2}-${d2}`;
+    }
+
+    // Timeline events from <span class="time"> + <span class="descMov"> structure.
+    // Time format is DD/MM/YYYY H:MM:SS AM/PM (12h), events are server-rendered.
+    const timelineRe = /<span\s+class="time">\s*([\d\/]+)\s+([\d:]+)\s*(AM|PM)?\s*<\/span>([\s\S]*?)<span\s+class="descMov">([\s\S]*?)<\/span>([\s\S]{0,400}?)<\/div>/gi;
     let m;
-    while ((m = evtRe.exec(text)) !== null) {
-        const desc = m[3].replace(/\s+/g, ' ').trim();
-        if (desc.length >= 3) result.eventi.push({ data: m[1], ora: m[2], descrizione: desc.substring(0, 200) });
+    while ((m = timelineRe.exec(html)) !== null) {
+        const dateStr = m[1].trim();
+        const timeStr = m[2].trim();
+        const ampm    = (m[3] || '').trim().toUpperCase();
+        const desc    = _htmlText(m[5]);
+        // Include destination branch if present
+        const branchM = m[6].match(/destination_branch[^>]*>([\s\S]*?)<\/span>/i);
+        const branch  = branchM ? _htmlText(branchM[1]) : null;
+        const fullDesc = branch ? `${desc} — ${branch}` : desc;
+
+        // Convert 12h → 24h
+        const tp = timeStr.split(':');
+        let hh = parseInt(tp[0]);
+        const min = tp[1] || '00';
+        if (ampm === 'PM' && hh !== 12) hh += 12;
+        if (ampm === 'AM' && hh === 12) hh = 0;
+        const displayTime = `${String(hh).padStart(2, '0')}:${min}`;
+
+        if (fullDesc.length >= 2)
+            result.eventi.push({ data: dateStr, ora: displayTime, descrizione: fullDesc.substring(0, 250) });
     }
-    // Tab-separated table fallback
+
+    // Fallback: text-based parsing for older/different Fercam page formats
     if (!result.eventi.length) {
+        const clean = html
+            .replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(?:tr|p|div|li|h[1-6])\s*>/gi, '\n')
+            .replace(/<\/td\s*>/gi, '\t').replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+            .replace(/&nbsp;/g,' ').replace(/&#39;/g,"'").replace(/&quot;/g,'"');
+        const lines = clean.split('\n').map(l => l.replace(/\s+/g,' ').trim()).filter(Boolean);
+        const text  = lines.join('\n');
+        const evtRe = /(\d{2}\/\d{2}(?:\/\d{4})?)\s+(?:ore\s+)?(\d{1,2}:\d{2})\s*[-–]?\s*([^\n\d]{3,200})/g;
+        let em;
+        while ((em = evtRe.exec(text)) !== null) {
+            const desc = em[3].replace(/\s+/g,' ').trim();
+            if (desc.length >= 3) result.eventi.push({ data: em[1], ora: em[2], descrizione: desc.substring(0,200) });
+        }
         for (const line of lines) {
             const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
-            if (parts.length >= 3 && /^\d{2}\/\d{2}/.test(parts[0]) && /^\d{2}:\d{2}$/.test(parts[1]))
-                result.eventi.push({ data: parts[0], ora: parts[1], descrizione: parts.slice(2).join(' ').substring(0, 200) });
+            if (parts.length >= 3 && /^\d{2}\/\d{2}/.test(parts[0]) && /^\d{1,2}:\d{2}$/.test(parts[1]))
+                result.eventi.push({ data: parts[0], ora: parts[1], descrizione: parts.slice(2).join(' ').substring(0,200) });
         }
     }
 
