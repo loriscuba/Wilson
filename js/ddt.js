@@ -175,7 +175,8 @@ function _renderDDTTabella(todayMs) {
       : '—';
     _trkRegistry.set(d.numero_consegna, d);
     const _isFercam = d.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
-    const _isFedex  = d.corriere?.toUpperCase().includes('FEDEX');
+    const _corrU    = d.corriere?.toUpperCase() || '';
+    const _isFedex  = _corrU.includes('FEDEX') || _corrU.includes('TNT');
     let trkCell;
     if ((_isFercam && (d.shippeo_url || d.fercam_url)) || (_isFedex && (d.shippeo_url || d.tnt_url))) {
       trkCell = `<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>`;
@@ -271,7 +272,8 @@ function openTrackingModal(numConsegna) {
   const overlay = document.getElementById('trk-overlay');
   const box     = document.getElementById('trk-modal-box');
   const isFercam = d.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
-  const isFedex  = d.corriere?.toUpperCase().includes('FEDEX');
+  const _cU      = d.corriere?.toUpperCase() || '';
+  const isFedex  = _cU.includes('FEDEX') || _cU.includes('TNT');
 
   const todayMs    = new Date().setHours(0,0,0,0);
   const isConsegnato = d.stato === 'consegnato' ||

@@ -326,6 +326,13 @@ async function getShippeoData(rawUrl, { needFercamUrl = false, needFedexData = f
         return null;
     }
 
+    function _extractTntUrl(text) {
+        if (!text) return null;
+        const m = text.match(/https?:\/\/[^\s"'`<>\\,)]*tnt\.it\/tracking[^\s"'`<>\\,)]*/i);
+        if (m) return decodeURIComponent(m[0]).includes('?') ? m[0] : m[0];
+        return null;
+    }
+
     // Visita goods page per estrarre link Fercam (solo se richiesto)
     let fercamUrl = null;
     if (needFercamUrl && token) {
@@ -398,13 +405,49 @@ async function getShippeoData(rawUrl, { needFercamUrl = false, needFedexData = f
         if (!fercamUrl) console.log(`  [fercam] link non trovato`);
     }
 
-    // Per FedEx: visita goods page per catturare dati Shippeo (se non già visitata per Fercam)
+    // Per FedEx: visita goods page per catturare dati Shippeo e link TNT
+    let tntUrl = null;
     if (needFedexData && !needFercamUrl && token) {
-        try {
-            await page.goto(`https://view.shippeo.com/road/orderPublic/${token}/goods`, { waitUntil: 'networkidle2', timeout: 30000 });
-        } catch (_) {}
-        await new Promise(r => setTimeout(r, 8000));
-        console.log(`  [fedex] goods page visitata`);
+        const tabs = [
+            `https://view.shippeo.com/road/orderPublic/${token}/goods`,
+            `https://view.shippeo.com/road/orderPublic/${token}/documents`,
+        ];
+        for (const tabUrl of tabs) {
+            if (tntUrl) break;
+            try {
+                await page.goto(tabUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, 8000));
+            console.log(`  [fedex] visitata ${tabUrl}`);
+
+            // 1. Cerca nelle risposte JSON catturate
+            for (const { body } of captured) {
+                const found = _extractTntUrl(JSON.stringify(body));
+                if (found) { tntUrl = found; console.log(`  [tnt-json] ${tntUrl}`); break; }
+            }
+            if (tntUrl) break;
+
+            // 2. HTML completo della pagina
+            const tabHtml = await page.content().catch(() => '');
+            tntUrl = _extractTntUrl(tabHtml);
+            if (tntUrl) { console.log(`  [tnt-html] ${tntUrl}`); break; }
+
+            // 3. Attributi DOM (href, data-href, onclick, ecc.)
+            tntUrl = await page.evaluate(() => {
+                for (const el of document.querySelectorAll('*')) {
+                    for (const attr of el.attributes) {
+                        if (/tnt\.it\/tracking/i.test(attr.value)) return attr.value;
+                    }
+                    const m = (el.textContent || '').match(/https?:\/\/[^\s"'`<>\\,)]*tnt\.it\/tracking[^\s"'`<>\\,)]*/i);
+                    if (m) return m[0];
+                }
+                return null;
+            }).catch(() => null);
+            if (tntUrl) { console.log(`  [tnt-dom] ${tntUrl}`); break; }
+
+            console.log(`  [tnt] nessun link su ${tabUrl}`);
+        }
+        if (!tntUrl) console.log(`  [tnt] link non trovato`);
     }
 
     await browser.close();
@@ -496,7 +539,7 @@ async function getShippeoData(rawUrl, { needFercamUrl = false, needFedexData = f
         }
     }
 
-    return { status, etaRaw, deliveredAt, fercamUrl, shippeoOrders, shippeoOverview, shippeoGoods };
+    return { status, etaRaw, deliveredAt, fercamUrl, tntUrl, shippeoOrders, shippeoOverview, shippeoGoods };
 }
 
 function parseShippeoGoodsFedex(orders, overview, goods) {
@@ -581,8 +624,8 @@ async function main() {
     } else if (fercamOnly) {
         query = query.ilike('corriere', '%fercam%').is('fercam_url', null);
     } else {
-        // Processa DDT non consegnati + Fercam senza URL + FedEx senza dati
-        query = query.or('stato.neq.consegnato,and(corriere.ilike.%fercam%,fercam_url.is.null),and(corriere.ilike.%fedex%,tnt_dati.is.null)');
+        // Processa DDT non consegnati + Fercam senza URL + FedEx/TNT senza dati
+        query = query.or('stato.neq.consegnato,and(corriere.ilike.%fercam%,fercam_url.is.null),and(corriere.ilike.%fedex%,tnt_dati.is.null),and(corriere.ilike.%tnt%,tnt_dati.is.null)');
     }
 
     const { data: ddts, error } = await query;
@@ -598,11 +641,12 @@ async function main() {
         console.log(`DDT ${ddt.numero_ddt} | Ordine ${ddt.numero_ordine}`);
 
         const isFercam   = ddt.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
-        const isFedex    = ddt.corriere?.toUpperCase().includes('FEDEX');
+        const corrU      = ddt.corriere?.toUpperCase() || '';
+        const isFedex    = corrU.includes('FEDEX') || corrU.includes('TNT');
         const needFercamUrl  = isFercam && !ddt.fercam_url;
         const needFedexData  = isFedex  && (!ddt.tnt_dati || !ddt.tnt_dati.destinatario);
 
-        const { status, etaRaw, deliveredAt, fercamUrl,
+        const { status, etaRaw, deliveredAt, fercamUrl, tntUrl,
                 shippeoOrders, shippeoOverview, shippeoGoods } =
             await getShippeoData(ddt.shippeo_url, { needFercamUrl, needFedexData });
         const statoMapped = mapStatus(status);
@@ -666,10 +710,19 @@ async function main() {
             }
         }
 
-        // FedEx: costruisci URL TNT da segnacollo + salva dati Shippeo goods
+        // FedEx: salva URL TNT (da pagina Shippeo o costruito da segnacollo) + dati goods
         if (isFedex) {
-            const tntNum = ddt.segnacollo?.match(/^(\d+)/)?.[1];
-            if (tntNum && !ddt.tnt_url) update.tnt_url = `https://www.tnt.it/tracking/index.html?con=${tntNum}`;
+            if (tntUrl) {
+                // URL estratto dalla goods page (formato ?pp=... da Shippeo) → preferito
+                if (!ddt.tnt_url || ddt.tnt_url !== tntUrl) {
+                    update.tnt_url = tntUrl;
+                    console.log(`  [tnt] url aggiornato: ${tntUrl}`);
+                }
+            } else if (!ddt.tnt_url) {
+                // Fallback: URL costruito dal segnacollo (formato ?con=...)
+                const tntNum = ddt.segnacollo?.match(/^(\d+)/)?.[1];
+                if (tntNum) update.tnt_url = `https://www.tnt.it/tracking/index.html?con=${tntNum}`;
+            }
             if (shippeoOrders || shippeoOverview || shippeoGoods) {
                 const tntDati = parseShippeoGoodsFedex(shippeoOrders, shippeoOverview, shippeoGoods);
                 update.tnt_dati = tntDati;
