@@ -14,6 +14,7 @@ function swBudget(tab, btn) {
   document.querySelectorAll('.budget-pane').forEach(p => p.classList.remove('on'));
   document.getElementById('bpane-' + tab)?.classList.add('on');
   btn.classList.add('on');
+  if (tab === 'dettaglio') renderDettaglioPipeline();
 }
 
 async function loadBudget() {
@@ -484,6 +485,7 @@ async function loadBudgetClienti() {
     _bcQuery  = '';
     _bcSort   = { col: 'priority', dir: 1 };
     _renderClienti(root);
+    renderDettaglioPipeline();
   } catch(err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
   }
@@ -769,7 +771,6 @@ async function openPipeline() {
         <th class="num-right">Già ordinato</th>
         <th class="num-right">Da ordinare</th>
         <th class="num-right">Cumulato</th>
-        <th></th>
       </tr></thead>
       <tbody>`;
 
@@ -778,7 +779,7 @@ async function openPipeline() {
       if (group !== lastGroup) {
         const label = group === 0 ? 'Da visitare — nessun ordine questo mese' : 'Parziali — ordine in corso';
         const color = group === 0 ? '#C84B2F' : '#D97706';
-        html += `<tr class="pl-group-hdr"><td colspan="6" style="color:${color}">${label}</td></tr>`;
+        html += `<tr class="pl-group-hdr"><td colspan="5" style="color:${color}">${label}</td></tr>`;
         lastGroup = group;
       }
 
@@ -786,8 +787,6 @@ async function openPipeline() {
       const statoColor = STATO_COLOR[statoId] || '#9B9B97';
       const cumColor   = cum >= budgetMese ? '#2D7D4F' : cum >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
 
-      const codEsc = r.codice.replace(/'/g, "\\'");
-      const nomEsc = r.cliente.replace(/'/g, "\\'");
       html += `<tr class="pl-row">
         <td>
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
@@ -798,8 +797,6 @@ async function openPipeline() {
         <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
         <td class="num-right" style="font-weight:600;color:#C84B2F">–${_eur(r.gap)}</td>
         <td class="num-right" style="font-weight:600;color:${cumColor}">${_eur(cum)}</td>
-        <td><button class="pl-art-btn" title="Verifica articoli"
-            onclick="apriVerificaArticoli('${codEsc}','${nomEsc}')">📋</button></td>
       </tr>`;
 
       if (hitAfter) {
@@ -812,27 +809,21 @@ async function openPipeline() {
     if (!budgetHit && urgentRows.length) {
       const still = budgetMese - running;
       html += `<tr class="pl-group-hdr">
-        <td colspan="6" style="color:#C84B2F">
+        <td colspan="5" style="color:#C84B2F">
           Budget non raggiunto anche completando tutti i gap — mancano ancora ${_eur(still)}
         </td>
       </tr>`;
     }
 
     if (g2.length) {
-      html += `<tr class="pl-group-hdr"><td colspan="6" style="color:#2D7D4F">In target (${g2.length} clienti)</td></tr>`;
-      html += g2.map(r => {
-        const c2 = r.codice.replace(/'/g, "\\'");
-        const n2 = r.cliente.replace(/'/g, "\\'");
-        return `<tr class="pl-row pl-row-ok">
+      html += `<tr class="pl-group-hdr"><td colspan="5" style="color:#2D7D4F">In target (${g2.length} clienti)</td></tr>`;
+      html += g2.map(r => `<tr class="pl-row pl-row-ok">
           <td>${r.cliente}${r.divisione ? ` <span style="font-size:11px;color:var(--text2)">${r.divisione}</span>` : ''}</td>
           <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
           <td class="num-right">${_eur(r.ord)}</td>
           <td class="num-right" style="color:#2D7D4F;font-weight:600">in target</td>
           <td></td>
-          <td><button class="pl-art-btn" title="Verifica articoli"
-              onclick="apriVerificaArticoli('${c2}','${n2}')">📋</button></td>
-        </tr>`;
-      }).join('');
+        </tr>`).join('');
     }
 
     html += '</tbody></table>';
@@ -845,46 +836,126 @@ async function openPipeline() {
 }
 
 function closePipeline() {
-  chiudiVerificaArticoli();
   const modal = document.getElementById('pl-modal');
   if (modal) modal.style.display = 'none';
 }
 
-// ── Verifica articoli (pipeline) ─────────────────────────────────────────────
+// ── Dettaglio Pipeline ────────────────────────────────────────────────────────
 
-let _plTitle = 'Pipeline';
+async function renderDettaglioPipeline() {
+  const root = document.getElementById('bpane-dettaglio');
+  if (!root) return;
 
-async function apriVerificaArticoli(codice, nome) {
-  const panel = document.getElementById('pl-art-panel');
-  const box   = document.getElementById('pl-modal-box');
-  const back  = document.getElementById('pl-art-back');
-  const title = document.getElementById('pl-header-title');
-
-  _plTitle = title.textContent;
-  title.textContent = nome;
-  back.style.display = 'inline-block';
-  panel.classList.add('open');
-  box.classList.add('split');
-  panel.innerHTML = '<div style="padding:1.5rem;color:var(--text2);font-size:13px">Analisi ordini…</div>';
+  if (!_bcRows.length) {
+    root.innerHTML = '<p style="color:var(--text2);padding:1rem">Carica prima il tab "Budget Clienti".</p>';
+    return;
+  }
 
   try {
-    const data = await loadPrevisioneArticoli(codice);
-    panel.innerHTML = _renderVerificaArticoli(data, nome);
-  } catch (e) {
-    panel.innerHTML = `<div style="padding:1.5rem;color:var(--red);font-size:13px">Errore: ${e.message}</div>`;
-  }
-}
+    if (!_plCache) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await sb.from('budget')
+        .select('budget_mese, evaso_ordinato_resi, data_aggiornamento')
+        .lte('data_aggiornamento', today)
+        .not('budget_mese', 'is', null)
+        .order('data_aggiornamento', { ascending: false })
+        .limit(1);
+      const b = data?.[0];
+      _plCache = {
+        budgetMese: b?.budget_mese        || 0,
+        baseTotale: b?.evaso_ordinato_resi || 0,
+        dataAgg:    b?.data_aggiornamento  || null,
+      };
+    }
 
-function chiudiVerificaArticoli() {
-  const panel = document.getElementById('pl-art-panel');
-  const box   = document.getElementById('pl-modal-box');
-  const back  = document.getElementById('pl-art-back');
-  const title = document.getElementById('pl-header-title');
-  if (!panel) return;
-  panel.classList.remove('open');
-  box?.classList.remove('split');
-  if (back) back.style.display = 'none';
-  if (title) title.textContent = _plTitle;
+    const { budgetMese, baseTotale, dataAgg } = _plCache;
+    const meseLabel = _nomeMese(dataAgg || new Date().toISOString().split('T')[0]);
+    const manca     = budgetMese - baseTotale;
+    const pct       = budgetMese > 0 ? Math.min(100, baseTotale / budgetMese * 100) : 0;
+
+    const progressHtml = `
+      <div class="pl-stats">
+        <span><strong>${_eur(baseTotale)}</strong> ordinato</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:var(--text2)">${_eur(budgetMese)} budget</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:${manca > 0 ? '#C84B2F' : '#2D7D4F'};font-weight:600">
+          ${manca > 0 ? '–' + _eur(manca) + ' da recuperare' : '✓ budget raggiunto'}
+        </span>
+      </div>
+      <div class="pl-bar-bg" style="margin-bottom:1.5rem">
+        <div class="pl-bar-fill" style="width:${pct.toFixed(1)}%">
+          <span class="pl-bar-pct">${pct.toFixed(1)}%</span>
+        </div>
+      </div>`;
+
+    const STATI_TARGET = ['indietro', 'in_linea'];
+    const _tableGroup  = (statoId, label, color) => {
+      const rows = _bcRows
+        .filter(r => (r.stato?.id || 'inattivo') === statoId && r.gap > 0)
+        .sort((a, b) => b.gap - a.gap);
+      if (!rows.length) return '';
+
+      let running    = baseTotale;
+      let budgetHit  = false;
+
+      const tRows = rows.map(r => {
+        running += r.gap;
+        const hitNow = !budgetHit && running >= budgetMese;
+        if (hitNow) budgetHit = true;
+        const cumColor = running >= budgetMese ? '#2D7D4F' : running >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
+        return { r, cum: running, hitNow, cumColor };
+      });
+
+      const totGap = rows.reduce((s, r) => s + r.gap, 0);
+
+      let html = `
+        <div style="margin-bottom:1.5rem">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                      color:${color};margin-bottom:.5rem">
+            ${label} <span style="font-weight:400;opacity:.7">(${rows.length} clienti · da recuperare ${_eur(totGap)})</span>
+          </div>
+          <table class="pl-tbl" style="width:100%">
+            <thead><tr>
+              <th>Cliente</th>
+              <th class="num-right">Budget mese</th>
+              <th class="num-right">Già ordinato</th>
+              <th class="num-right">Da recuperare</th>
+              <th class="num-right">Cumulativo</th>
+            </tr></thead>
+            <tbody>`;
+
+      for (const { r, cum, hitNow, cumColor } of tRows) {
+        const statoColor = STATO_COLOR[r.stato?.id] || '#9B9B97';
+        html += `<tr class="pl-row">
+          <td>
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+                  background:${statoColor};margin-right:7px"></span>${r.cliente}
+            ${r.divisione ? `<div style="font-size:11px;color:var(--text2);margin-left:15px">${r.divisione}</div>` : ''}
+          </td>
+          <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
+          <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
+          <td class="num-right" style="font-weight:600;color:#C84B2F">–${_eur(r.gap)}</td>
+          <td class="num-right" style="font-weight:600;color:${cumColor}">${_eur(cum)}</td>
+        </tr>`;
+        if (hitNow) {
+          html += `<tr class="pl-budget-line"><td colspan="5">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
+        }
+      }
+
+      html += '</tbody></table></div>';
+      return html;
+    };
+
+    root.innerHTML = `
+      <h2 style="margin-bottom:1rem">Dettaglio Pipeline — ${meseLabel}</h2>
+      ${progressHtml}
+      ${_tableGroup('indietro', 'Indietro', STATO_COLOR.indietro)}
+      ${_tableGroup('in_linea', 'In linea',  STATO_COLOR.in_linea)}`;
+
+  } catch (err) {
+    root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
 }
 
 function _renderVerificaArticoli({ products, currentYM, mancanti }, nome) {
