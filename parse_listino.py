@@ -57,7 +57,7 @@ UM_SET   = {'CZ', 'PZ', 'BOX', 'CF', 'MT', 'KG', 'PZT'}
 CAT_RE = re.compile(
     r'^(Ancoranti chimici|Barre filettate|Schiume poliuretaniche|Sigillanti|'
     r'Fissaggi|Tasselli a percussione|Viti PowerFast|Viti per cartongesso|'
-    r'FIS-HK|Pistola pneumatica).*$'
+    r'FIS-HK|Pistola pneumatica|UPAT).*$'
 )
 
 

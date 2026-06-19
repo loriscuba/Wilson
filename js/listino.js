@@ -106,6 +106,11 @@ function _shortCat(cat) {
     'Fissaggi per ponteggi':           'Ponteggi',
     'Viti PowerFast II CTP':           'PowerFast CTP',
     'Viti per cartongesso':            'Cartongesso',
+    'UPAT UVD II':                     'UPAT UVD II',
+    'UPAT UN S / UN F':                'UPAT UN',
+    'UPAT UK / UKH':                   'UPAT UK',
+    'UPAT USA':                        'UPAT USA',
+    'UPAT UM':                         'UPAT UM',
   };
   return MAP[cat] || cat.slice(0, 18);
 }
