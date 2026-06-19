@@ -302,21 +302,9 @@ async function loadClienteDetail(codice, nome, container) {
         <h4>Penetrazione gamma${gamma.length ? ' · agg. ' + fmtDate(gamma[0].data_aggiornamento) : ''}</h4>
         ${gammaHTML}
       </div>
-      <div class="gamma-section" id="va-section-${codice}">
-        <h4>Verifica Articoli</h4>
-        <div class="loading" style="padding:8px 0">Analisi ordini in corso…</div>
       </div>`;
 
     container.dataset.loaded = '1';
-
-    // Carica verifica articoli in background e aggiorna il placeholder
-    loadPrevisioneArticoli(codice).then(vaData => {
-      const vaSection = document.getElementById('va-section-' + codice);
-      if (vaSection) vaSection.innerHTML = '<h4>Verifica Articoli</h4>' + _renderVerificaArticoli(vaData, nome);
-    }).catch(e => {
-      const vaSection = document.getElementById('va-section-' + codice);
-      if (vaSection) vaSection.innerHTML = `<h4>Verifica Articoli</h4><div class="cks">Errore: ${e.message}</div>`;
-    });
   } catch (err) {
     container.innerHTML = `<div class="loading" style="padding:12px 0">Errore: ${err.message}</div>`;
   }

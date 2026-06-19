@@ -541,10 +541,6 @@ function _renderClienti(root) {
       <div class="bc-kpi bc-kpi-neg"><div class="bc-kpi-label">gap da recuperare</div><div class="bc-kpi-val neg">–${_eur(totGap)}</div></div>
       <div class="bc-kpi"><div class="bc-kpi-label">progressivo 2026</div><div class="bc-kpi-val">${_eur(totP26)}</div><div class="bc-kpi-sub ${_cls(dProg)}">${_pct(dProg)} vs 2025</div></div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:.75rem">
-      <button class="pl-open-btn" onclick="openPipeline()">Pipeline →</button>
-      <span style="font-size:12px;color:var(--text2)">chi chiamare per raggiungere il budget</span>
-    </div>
     <div class="bc-chips" id="bc-chips">${chipHtml}</div>
     <div class="bc-toolbar">
       <input type="text" class="b-srch" id="bc-srch" placeholder="cerca cliente…" value="${_bcQuery}" oninput="onBcSearch(this.value)">
@@ -560,6 +556,7 @@ function _renderClienti(root) {
           <th class="bc-th-detail">CONS · PREP · SPED</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('prog26')">PROG 2026 ${_sortArrow('prog26')}</th>
           <th class="bc-th-narrow bc-srt" onclick="onBcSort('varProg')">Δ% PROG ${_sortArrow('varProg')}</th>
+          <th style="width:36px"></th>
         </tr></thead>
         <tbody id="bc-tbody"></tbody>
       </table>
@@ -607,7 +604,7 @@ function _renderBcRows() {
   });
 
   if (!visible.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
     return;
   }
 
@@ -637,6 +634,9 @@ function _renderBcRows() {
       r.oltre > 0 ? `<span class="bc-det-item bc-det-oltre">+${_eur(r.oltre)} oltre</span>` : '',
     ].filter(Boolean).join(' ');
 
+    const cod = r.codice.replace(/'/g, "\\'");
+    const nom = r.cliente.replace(/'/g, "\\'");
+
     return `<tr class="bc-row bc-row-${statoId}">
       <td>${statoBadge}</td>
       <td>
@@ -657,6 +657,9 @@ function _renderBcRows() {
         <div style="font-size:11px;color:var(--text2)">${_eur(r.prog25)} 2025</div>
       </td>
       <td>${varProgBadge}</td>
+      <td style="text-align:center">
+        <button class="pl-art-btn" title="Verifica articoli" onclick="apriVerificaArticoli('${cod}','${nom}')">📋</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -840,6 +843,26 @@ function closePipeline() {
   if (modal) modal.style.display = 'none';
 }
 
+async function apriVerificaArticoli(codice, nome) {
+  const modal = document.getElementById('pl-modal');
+  const title = document.getElementById('pl-header-title');
+  const prog  = document.getElementById('pl-progress');
+  const body  = document.getElementById('pl-body');
+  if (!modal) return;
+
+  title.textContent = nome;
+  if (prog) prog.innerHTML = '';
+  body.innerHTML = '<div style="padding:1.5rem;color:var(--text2);font-size:13px">Analisi ordini…</div>';
+  modal.style.display = 'flex';
+
+  try {
+    const data = await loadPrevisioneArticoli(codice);
+    body.innerHTML = _renderVerificaArticoli(data, nome);
+  } catch (e) {
+    body.innerHTML = `<div style="padding:1.5rem;color:var(--red);font-size:13px">Errore: ${e.message}</div>`;
+  }
+}
+
 // ── Dettaglio Pipeline ────────────────────────────────────────────────────────
 
 async function renderDettaglioPipeline() {
@@ -889,10 +912,9 @@ async function renderDettaglioPipeline() {
         </div>
       </div>`;
 
-    const STATI_TARGET = ['indietro', 'in_linea'];
-    const _tableGroup  = (statoId, label, color) => {
+    const _tableGroup = (filterFn, label, color) => {
       const rows = _bcRows
-        .filter(r => (r.stato?.id || 'inattivo') === statoId && r.gap > 0)
+        .filter(filterFn)
         .sort((a, b) => b.gap - a.gap);
       if (!rows.length) return '';
 
@@ -950,8 +972,8 @@ async function renderDettaglioPipeline() {
     root.innerHTML = `
       <h2 style="margin-bottom:1rem">Dettaglio Pipeline — ${meseLabel}</h2>
       ${progressHtml}
-      ${_tableGroup('indietro', 'Indietro', STATO_COLOR.indietro)}
-      ${_tableGroup('in_linea', 'In linea',  STATO_COLOR.in_linea)}`;
+      ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0, 'Non ancora ordinato (vs anno scorso)', STATO_COLOR.da_visitare || '#D97706')}
+      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0, 'Indietro — ordine insufficiente', STATO_COLOR.indietro)}`;
 
   } catch (err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
