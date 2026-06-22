@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '*/15 * * * *'   # ogni 15 minuti
   workflow_dispatch:
+    inputs:
+      args:
+        description: 'Argomenti extra (es. --month, --month=2026-05, --force=2010668261)'
+        required: false
+        default: ''
 
 jobs:
   shippeo-sync:
@@ -30,4 +35,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: node shippeo_scraper.js
+        run: node shippeo_scraper.js ${{ github.event.inputs.args }}
