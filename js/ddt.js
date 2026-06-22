@@ -318,7 +318,9 @@ function openTrackingModal(numConsegna) {
 
   // ── Sezione FedEx ──
   const tx = d.tnt_dati || {};
-  const hasFedexDati = !!(tx.destinatario || tx.eta || tx.eventi?.length);
+  // "dati reali" = almeno destinatario o eventi; solo ETA/stato senza questi è dati parziali
+  const hasFedexDati    = !!(tx.destinatario || tx.eventi?.length);
+  const hasFedexPartial = !hasFedexDati && !!(tx.eta || tx.stato);
   const fedexEventiHtml = (tx.eventi || []).length
     ? `<div class="trk-section-title" style="padding-top:.5rem">Cronologia</div>
        <div class="trk-eventi">${(tx.eventi || []).map(e =>
@@ -337,6 +339,10 @@ function openTrackingModal(numConsegna) {
     ? `<div class="trk-section-title">Spedizione FedEx${tx.stato ? ` · ${_tradFedex(tx.stato)}` : ''}</div>
        ${fedexMetaBits ? `<div class="trk-info-grid">${fedexMetaBits}</div>` : ''}
        ${fedexEventiHtml}`
+    : hasFedexPartial
+    ? `<div class="trk-section-title">Spedizione FedEx${tx.stato ? ` · ${_tradFedex(tx.stato)}` : ''}</div>
+       ${fedexMetaBits ? `<div class="trk-info-grid">${fedexMetaBits}</div>` : ''}
+       <div style="font-size:12px;color:var(--text2);padding:.4rem 0">Dettagli destinatario non ancora disponibili — verrà aggiornato al prossimo sync.</div>`
     : `<div style="font-size:12px;color:var(--text2);padding:.5rem 0">Dati FedEx non ancora disponibili — verrà aggiornato al prossimo sync.</div>`;
 
   const trackingSection = isFercam ? fercamSection : isFedex ? fedexSection : '';

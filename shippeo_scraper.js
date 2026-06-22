@@ -550,8 +550,14 @@ function parseShippeoGoodsFedex(orders, overview, goods) {
         eventi: [], fetched_at: new Date().toISOString(),
     };
 
+    // Normalizza overview: l'API Shippeo può restituire { order: {...} } o { data: {...} } o direttamente i dati
     if (overview) {
-        result.stato = overview.status?.currentStatus || null;
+        if (overview.order && (overview.order.stops || overview.order.status)) overview = overview.order;
+        else if (overview.data && (overview.data.stops || overview.data.status)) overview = overview.data;
+    }
+
+    if (overview) {
+        result.stato = overview.status?.currentStatus || overview.currentStatus || null;
         const dest = (overview.stops || []).find(s => s.stopType === 'delivery');
         const orig = (overview.stops || []).find(s => s.stopType === 'loading');
         if (dest) {
@@ -616,7 +622,7 @@ async function main() {
 
     let query = supabase
         .from('ddt')
-        .select('id, numero_ddt, numero_ordine, numero_consegna, shippeo_url, stato, corriere, segnacollo, fercam_url, tnt_url, tnt_dati')
+        .select('id, numero_ddt, numero_ordine, numero_consegna, shippeo_url, stato, corriere, segnacollo, fercam_url, fercam_dati, tnt_url, tnt_dati')
         .not('shippeo_url', 'is', null);
 
     if (forceCodes.length) {
@@ -624,8 +630,8 @@ async function main() {
     } else if (fercamOnly) {
         query = query.ilike('corriere', '%fercam%').is('fercam_url', null);
     } else {
-        // Processa DDT non consegnati + Fercam senza URL + FedEx/TNT senza dati
-        query = query.or('stato.neq.consegnato,and(corriere.ilike.%fercam%,fercam_url.is.null),and(corriere.ilike.%fedex%,tnt_dati.is.null),and(corriere.ilike.%tnt%,tnt_dati.is.null)');
+        // Processa DDT non consegnati + Fercam senza URL/dati + FedEx/TNT senza dati
+        query = query.or('stato.neq.consegnato,and(corriere.ilike.%fercam%,fercam_url.is.null),and(corriere.ilike.%fercam%,fercam_dati.is.null),and(corriere.ilike.%fedex%,tnt_dati.is.null),and(corriere.ilike.%tnt%,tnt_dati.is.null)');
     }
 
     const { data: ddts, error } = await query;
@@ -644,6 +650,8 @@ async function main() {
         const corrU      = ddt.corriere?.toUpperCase() || '';
         const isFedex    = corrU.includes('FEDEX') || corrU.includes('TNT');
         const needFercamUrl  = isFercam && !ddt.fercam_url;
+        // needFercamData: anche quando fercam_url esiste ma fercam_dati è assente o senza eventi
+        const needFercamData = isFercam && ddt.fercam_url && (!ddt.fercam_dati || !ddt.fercam_dati.numero_spedizione);
         const needFedexData  = isFedex  && (!ddt.tnt_dati || !ddt.tnt_dati.destinatario);
 
         const { status, etaRaw, deliveredAt, fercamUrl, tntUrl,
@@ -696,17 +704,20 @@ async function main() {
             console.log(`  → In transito / ETA ${etaRaw || '—'}`);
         }
 
-        // Fercam: scopri URL (goods page) o aggiorna dati se già noto
+        // Fercam: scopri URL (goods page) o aggiorna dati se già noto o mancante
         const activeFercamUrl = fercamUrl || (isFercam ? ddt.fercam_url : null);
         if (activeFercamUrl) {
             update.fercam_url = activeFercamUrl;
-            console.log(`  [fercam] aggiornamento dati...`);
-            const fercamDati = await fetchFercamData(activeFercamUrl);
-            if (fercamDati) {
-                update.fercam_dati = fercamDati;
-                console.log(`  ✓ Fercam: ${fercamDati.numero_spedizione || '?'} · ${fercamDati.eventi?.length || 0} eventi`);
-            } else {
-                console.log(`  [fercam] fetch dati fallito, URL salvato per retry`);
+            // Rifetch se: url appena trovato, dati mancanti o senza numero_spedizione
+            if (fercamUrl || needFercamData) {
+                console.log(`  [fercam] aggiornamento dati...`);
+                const fercamDati = await fetchFercamData(activeFercamUrl);
+                if (fercamDati) {
+                    update.fercam_dati = fercamDati;
+                    console.log(`  ✓ Fercam: ${fercamDati.numero_spedizione || '?'} · ${fercamDati.eventi?.length || 0} eventi`);
+                } else {
+                    console.log(`  [fercam] fetch dati fallito, URL salvato per retry`);
+                }
             }
         }
 
