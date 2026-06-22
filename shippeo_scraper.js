@@ -619,6 +619,18 @@ async function main() {
         : [];
     // --fercam-only → processa solo DDT Fercam senza fercam_url
     const fercamOnly = process.argv.includes('--fercam-only');
+    // --month[=YYYY-MM] → re-processa tutti i DDT del mese (default: mese corrente)
+    const monthArg = process.argv.find(a => a.startsWith('--month'));
+    let monthFilter = null;
+    if (monthArg !== undefined) {
+        const val = monthArg.includes('=') ? monthArg.split('=')[1].trim() : null;
+        if (val && /^\d{4}-\d{2}$/.test(val)) {
+            monthFilter = val;
+        } else {
+            const now = new Date();
+            monthFilter = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+    }
 
     let query = supabase
         .from('ddt')
@@ -627,6 +639,11 @@ async function main() {
 
     if (forceCodes.length) {
         query = query.in('numero_consegna', forceCodes);
+    } else if (monthFilter) {
+        // Tutti i DDT del mese con shippeo_url, indipendentemente dallo stato
+        const [y, m] = monthFilter.split('-').map(Number);
+        const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+        query = query.gte('data_ddt', `${monthFilter}-01`).lt('data_ddt', `${nextMonth}-01`);
     } else if (fercamOnly) {
         query = query.ilike('corriere', '%fercam%').is('fercam_url', null);
     } else {
@@ -640,6 +657,7 @@ async function main() {
     if (!ddts?.length) { console.log('Nessun DDT trovato.'); return; }
 
     if (forceCodes.length) console.log(`Modalità --force: ${forceCodes.join(', ')}\n`);
+    else if (monthFilter) console.log(`Modalità --month: tutti i DDT di ${monthFilter}\n`);
     else if (fercamOnly) console.log(`Modalità --fercam-only: solo Fercam senza URL\n`);
     console.log(`DDT da verificare: ${ddts.length}\n`);
 
