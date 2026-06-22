@@ -230,6 +230,133 @@ function parseFercamHtml(html) {
     return result;
 }
 
+// Mappa stadi TNT italiano/inglese → chiavi _FEDEX_STATI usate nel UI
+const _TNT_STAGE_TO_TIPO = {
+    'RITIRATA': 'loading', 'PICKED UP': 'loading', 'LOADING': 'loading',
+    'IN PARTENZA': 'SHIPMENT_IN_TRANSIT', 'IN TRANSITO': 'SHIPMENT_IN_TRANSIT',
+    'IN TRANSIT': 'SHIPMENT_IN_TRANSIT', 'SHIPMENT IN TRANSIT': 'SHIPMENT_IN_TRANSIT',
+    'IN CONSEGNA': 'onDeliverySite', 'OUT FOR DELIVERY': 'onDeliverySite', 'ON DELIVERY SITE': 'onDeliverySite',
+    'CONSEGNATA': 'delivery', 'DELIVERED': 'delivery', 'DELIVERY': 'delivery',
+    'CONSEGNATA (CONFORME)': 'deliveryCompliant', 'DELIVERY COMPLIANT': 'deliveryCompliant',
+    'TENTATIVO DI CONSEGNA': 'DELIVERY_ATTEMPTED', 'DELIVERY ATTEMPTED': 'DELIVERY_ATTEMPTED',
+    'AL TERMINAL': 'onTerminal', 'ON TERMINAL': 'onTerminal',
+};
+
+function _parseTntSingleEvent(ev) {
+    if (!ev || typeof ev !== 'object') return null;
+    const rawDate = ev.date || ev.eventDate || ev.dateTime || ev.occurredOn || ev.timestamp || ev.statusDate || ev.eventTimestamp;
+    const rawDesc = ev.description || ev.statusDescription || ev.eventDescription || ev.type || ev.status || ev.statusCode;
+    if (!rawDate && !rawDesc) return null;
+
+    let data = null, ora = '00:00';
+    if (rawDate) {
+        const dt = new Date(rawDate);
+        if (!isNaN(dt.getTime())) {
+            data = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()}`;
+            ora  = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+        } else {
+            const m = String(rawDate).match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+            if (m) { data = `${m[1]}/${m[2]}/${m[3]}`; ora = m[4] ? `${m[4]}:${m[5]}` : '00:00'; }
+        }
+    }
+    if (!data) return null;
+
+    const descUp = String(rawDesc || '').toUpperCase().trim();
+    const tipo = _TNT_STAGE_TO_TIPO[descUp] || rawDesc || descUp;
+    return { data, ora, tipo };
+}
+
+function _extractTntEventi(body, depth = 0) {
+    if (!body || typeof body !== 'object' || depth > 6) return [];
+    if (Array.isArray(body)) {
+        for (const item of body) {
+            const sub = _extractTntEventi(item, depth + 1);
+            if (sub.length) return sub;
+        }
+        return [];
+    }
+    // Chiavi dirette che contengono array di eventi
+    for (const key of ['events', 'trackingEvents', 'shipmentEvents', 'statusHistory', 'history', 'milestones', 'stages', 'activities']) {
+        if (!Array.isArray(body[key]) || !body[key].length) continue;
+        const parsed = body[key].map(_parseTntSingleEvent).filter(Boolean);
+        if (parsed.length >= 1) return parsed;
+    }
+    // Scendi in sotto-oggetti comuni
+    for (const key of ['consignments', 'shipments', 'data', 'result', 'trackingResult', 'shipment', 'consignment']) {
+        if (!body[key]) continue;
+        const sub = _extractTntEventi(body[key], depth + 1);
+        if (sub.length) return sub;
+    }
+    return [];
+}
+
+async function fetchTntData(url) {
+    let puppeteer;
+    try {
+        const extra = require('puppeteer-extra');
+        const Stealth = require('puppeteer-extra-plugin-stealth');
+        extra.use(Stealth());
+        puppeteer = extra;
+    } catch (_) { puppeteer = require('puppeteer'); }
+
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+               '--disable-blink-features=AutomationControlled'],
+        headless: 'new',
+    });
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8' });
+
+    const captured = [];
+    page.on('response', async res => {
+        const ct = res.headers()['content-type'] || '';
+        if (!ct.includes('json')) return;
+        try { captured.push({ url: res.url(), body: await res.json() }); } catch (_) {}
+    });
+
+    try { await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }); } catch (_) {}
+    await new Promise(r => setTimeout(r, 5000));
+
+    const pageText = await page.evaluate(() => document.body?.innerText || '').catch(() => '');
+    await browser.close();
+
+    console.log(`  [tnt-fetch] ${captured.length} JSON da tnt.it`);
+    if (captured.length)
+        console.log(`  [tnt-urls] ${captured.map(c => c.url.replace(/^https?:\/\/[^/]+/, '').substring(0, 80)).join(' | ')}`);
+
+    // Cerca il response con più eventi
+    let bestEventi = [];
+    for (const { body } of captured) {
+        const found = _extractTntEventi(body);
+        if (found.length > bestEventi.length) bestEventi = found;
+    }
+
+    // Fallback testo pagina: almeno l'evento consegna con timestamp
+    if (!bestEventi.length && pageText) {
+        const delivM = pageText.match(/DATA\s+CONSEGNA\s+(\d{2}\/\d{2}\/\d{4})[,\s]+(\d{2}:\d{2})/i);
+        const stages = ['RITIRATA','IN PARTENZA','IN TRANSITO','IN CONSEGNA','CONSEGNATA'];
+        for (const stage of stages) {
+            if (!pageText.toUpperCase().includes(stage)) continue;
+            if (stage === 'CONSEGNATA' && delivM) {
+                bestEventi.push({ data: delivM[1], ora: delivM[2].substring(0,5), tipo: 'delivery' });
+            }
+        }
+    }
+
+    if (!bestEventi.length) return null;
+
+    // Ordina dal più recente
+    bestEventi.sort((a, b) => {
+        const ka = a.data.split('/').reverse().join('-') + 'T' + a.ora;
+        const kb = b.data.split('/').reverse().join('-') + 'T' + b.ora;
+        return kb.localeCompare(ka);
+    });
+
+    console.log(`  ✓ TNT: ${bestEventi.length} eventi`);
+    return { eventi: bestEventi, fetched_at: new Date().toISOString() };
+}
+
 async function fetchFercamData(url) {
     try {
         const res = await fetch(url, {
@@ -523,7 +650,10 @@ async function getShippeoData(rawUrl, { needFercamUrl = false, needFedexData = f
         // Pattern flessibili: matchano varianti URL Shippeo
         shippeoOrders   = captured.find(c => /[/]orders[/?&]|[/]orders$/.test(c.url) && !c.body?.errors && !c.body?.error)?.body || null;
         shippeoOverview = captured.find(c => /order[/.]overview|[/]overview[/?&]|[/]overview$/.test(c.url) && !c.body?.errors && !c.body?.error)?.body || null;
-        shippeoGoods    = captured.find(c => /order[/.]goods|[/]goods[/?&]|[/]goods$/.test(c.url) && !c.body?.errors && !c.body?.error && c.body !== shippeoOverview)?.body || null;
+        shippeoGoods    = captured.find(c => /[/]goods[/?&#]|[/]goods$|[/]handlingUnits[/?&#]|[/]handlingUnits$/.test(c.url) && !c.body?.errors && !c.body?.error && c.body !== shippeoOverview)?.body
+                       // Fallback strutturale: qualsiasi body con handlingUnits array
+                       || captured.find(c => !c.body?.errors && !c.body?.error && c.body !== shippeoOverview && Array.isArray(c.body?.handlingUnits))?.body
+                       || null;
 
         // Fallback: cerca qualsiasi JSON con struttura stops/order (dati overview caricati durante navigazione)
         if (!shippeoOverview) {
@@ -767,6 +897,20 @@ async function main() {
                     fetched_at: new Date().toISOString(),
                 };
                 console.log(`  [fedex] tnt_dati parziale (ETA: ${etaRaw || '—'}, status: ${status || '—'}) — goods API non catturate`);
+            }
+
+            // TNT: se eventi ancora vuoti, visita direttamente la pagina TNT
+            const activeTntUrl = tntUrl || ddt.tnt_url || update.tnt_url;
+            const eventiAttuali = update.tnt_dati?.eventi || ddt.tnt_dati?.eventi || [];
+            if (activeTntUrl && !eventiAttuali.length) {
+                console.log(`  [tnt] fetch dati dalla pagina TNT...`);
+                const tntPageDati = await fetchTntData(activeTntUrl);
+                if (tntPageDati?.eventi?.length) {
+                    const base = update.tnt_dati || ddt.tnt_dati || {};
+                    update.tnt_dati = { ...base, eventi: tntPageDati.eventi, fetched_at: tntPageDati.fetched_at };
+                } else {
+                    console.log(`  [tnt] nessun evento estratto dalla pagina TNT`);
+                }
             }
         }
 

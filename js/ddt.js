@@ -217,6 +217,12 @@ const _FEDEX_STATI = {
   'SHIPMENT_IN_TRANSIT':          'Spedizione in transito',
   'DELIVERY_ATTEMPTED':           'Tentativo di consegna',
   'EXCEPTION':                    'Anomalia',
+  // Stadi TNT Italia (passthrough dal parser TNT)
+  'RITIRATA':                     'Collo ritirato',
+  'IN PARTENZA':                  'In partenza',
+  'IN TRANSITO':                  'In transito',
+  'IN CONSEGNA':                  'In consegna',
+  'CONSEGNATA':                   'Consegnato',
 };
 
 function _tradFedex(tipo) {
