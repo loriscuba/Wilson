@@ -959,10 +959,14 @@ async function renderDettaglioPipeline() {
 
     const _tableGroup = (filterFn, label, color) => {
       const rows = _bcRows
-        .filter(r => filterFn(r) && r._esclusoManuale !== true)
+        .filter(r => filterFn(r))
         .sort((a, b) => {
-          const gapA = a._gapPersonalizzato !== null ? a._gapPersonalizzato : a.gap;
-          const gapB = b._gapPersonalizzato !== null ? b._gapPersonalizzato : b.gap;
+          // Esclusi in fondo
+          if (a._esclusoManuale !== b._esclusoManuale) {
+            return a._esclusoManuale ? 1 : -1;
+          }
+          const gapA = a._esclusoManuale ? 0 : (a._gapPersonalizzato !== null ? a._gapPersonalizzato : a.gap);
+          const gapB = b._esclusoManuale ? 0 : (b._gapPersonalizzato !== null ? b._gapPersonalizzato : b.gap);
           return gapB - gapA;
         });
       if (!rows.length) return '';
@@ -971,21 +975,22 @@ async function renderDettaglioPipeline() {
       let budgetHit  = false;
 
       const tRows = rows.map(r => {
-        const gap = r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap;
+        // Se escluso, non contribuisce al cumulativo
+        const gap = r._esclusoManuale ? 0 : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap);
         running += gap;
-        const hitNow = !budgetHit && running >= budgetMese;
+        const hitNow = !budgetHit && running >= budgetMese && !r._esclusoManuale;
         if (hitNow) budgetHit = true;
         const cumColor = running >= budgetMese ? '#2D7D4F' : running >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
         return { r, gap, cum: running, hitNow, cumColor };
       });
 
-      const totGap = rows.reduce((s, r) => s + (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap), 0);
+      const totGap = rows.reduce((s, r) => s + (r._esclusoManuale ? 0 : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)), 0);
 
       let html = `
         <div style="margin-bottom:1.5rem">
           <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                       color:${color};margin-bottom:.5rem">
-            ${label} <span style="font-weight:400;opacity:.7">(${rows.length} clienti · da recuperare ${_eur(totGap)})</span>
+            ${label} <span style="font-weight:400;opacity:.7">(${rows.filter(r => !r._esclusoManuale).length} clienti · da recuperare ${_eur(totGap)})</span>
           </div>
           <table class="pl-tbl" style="width:100%">
             <thead><tr>
@@ -1003,6 +1008,7 @@ async function renderDettaglioPipeline() {
         const cod = r.codice.replace(/'/g, "\\'");
         const isModified = r._gapPersonalizzato !== null;
         const rowStyle = r._esclusoManuale ? 'opacity:0.5;background:var(--bg)' : '';
+        const inputDisabled = r._esclusoManuale ? 'disabled' : '';
         
         html += `<tr class="pl-row" style="${rowStyle}">
           <td style="width:40px;text-align:center">
@@ -1017,10 +1023,10 @@ async function renderDettaglioPipeline() {
           </td>
           <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
           <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
-          <td class="num-right" style="font-weight:600;color:#C84B2F">
-            <input type="number" value="${(gap / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${isModified ? 'style="background:#FFF5F5"' : ''}>
+          <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : '#C84B2F'}">
+            <input type="number" value="${((r._esclusoManuale ? r.gap : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)) / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${inputDisabled} ${isModified && !r._esclusoManuale ? 'style="background:#FFF5F5"' : ''}>
           </td>
-          <td class="num-right" style="font-weight:600;color:${cumColor}">${_eur(cum)}</td>
+          <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : cumColor}">${_eur(cum)}</td>
         </tr>`;
         if (hitNow) {
           html += `<tr class="pl-budget-line"><td colspan="6">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
