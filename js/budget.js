@@ -6,6 +6,7 @@ let _bcSort         = { col: 'priority', dir: 1 };
 let _bcRows         = [];
 let _bcQuery        = '';
 let _plCache        = null;   // { budgetMese, baseTotale, dataAgg }
+let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number } }
 
 // ── Tab switch ────────────────────────────────────────────────────────────────
 function swBudget(tab, btn) {
@@ -456,6 +457,7 @@ async function loadBudgetClienti() {
     }
 
     _plCache = null;  // invalida cache pipeline quando i dati rolling vengono ricaricati
+    _plModifiche = {}; // reset modifiche pipeline
     _bcRows = rows.filter(r => !r._escluso).map(r => {
       const row = {
         cliente:         r.ragione_sociale || '—',
@@ -478,8 +480,10 @@ async function loadBudgetClienti() {
         gap:        r._gap || 0,
       };
       row.priority = _bcPriority(row);
+      row._esclusoManuale = false;  // esclusione manuale nel dettaglio pipeline
+      row._gapPersonalizzato = null; // gap modificato nel dettaglio pipeline
       return row;
-    });
+    };
 
     _bcFilter = null;
     _bcQuery  = '';
@@ -893,18 +897,39 @@ async function renderDettaglioPipeline() {
 
     const { budgetMese, baseTotale, dataAgg } = _plCache;
     const meseLabel = _nomeMese(dataAgg || new Date().toISOString().split('T')[0]);
-    const manca     = budgetMese - baseTotale;
-    const pct       = budgetMese > 0 ? Math.min(100, baseTotale / budgetMese * 100) : 0;
+    
+    // Ricalcola totali considerando esclusioni e gap personalizzati
+    const _calcolaTotali = () => {
+      let totGap = 0, totGapBase = 0, contInclusi = 0;
+      for (const r of _bcRows) {
+        const escluso = r._esclusoManuale === true;
+        if (!escluso) {
+          contInclusi++;
+          const gap = r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap;
+          totGap += gap;
+          totGapBase += r.gap;
+        }
+      }
+      const manca = budgetMese - baseTotale - totGap;
+      const pct = budgetMese > 0 ? Math.min(100, (baseTotale + totGap) / budgetMese * 100) : 0;
+      return { totGap, totGapBase, contInclusi, manca, pct };
+    };
+    
+    const stats = _calcolaTotali();
+    const manca = stats.manca;
+    const pct   = stats.pct;
 
     const progressHtml = `
       <div class="pl-stats">
-        <span><strong>${_eur(baseTotale)}</strong> ordinato</span>
+        <span><strong>${_eur(baseTotale + stats.totGap)}</strong> totale (ordinato + pipeline)</span>
         <span class="pl-stats-sep">·</span>
         <span style="color:var(--text2)">${_eur(budgetMese)} budget</span>
         <span class="pl-stats-sep">·</span>
         <span style="color:${manca > 0 ? '#C84B2F' : '#2D7D4F'};font-weight:600">
           ${manca > 0 ? '–' + _eur(manca) + ' da recuperare' : '✓ budget raggiunto'}
         </span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:var(--text2);font-size:11px">${stats.contInclusi} clienti inclusi</span>
       </div>
       <div class="pl-bar-bg" style="margin-bottom:1.5rem">
         <div class="pl-bar-fill" style="width:${pct.toFixed(1)}%">
@@ -914,22 +939,27 @@ async function renderDettaglioPipeline() {
 
     const _tableGroup = (filterFn, label, color) => {
       const rows = _bcRows
-        .filter(filterFn)
-        .sort((a, b) => b.gap - a.gap);
+        .filter(r => filterFn(r) && r._esclusoManuale !== true)
+        .sort((a, b) => {
+          const gapA = a._gapPersonalizzato !== null ? a._gapPersonalizzato : a.gap;
+          const gapB = b._gapPersonalizzato !== null ? b._gapPersonalizzato : b.gap;
+          return gapB - gapA;
+        });
       if (!rows.length) return '';
 
       let running    = baseTotale;
       let budgetHit  = false;
 
       const tRows = rows.map(r => {
-        running += r.gap;
+        const gap = r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap;
+        running += gap;
         const hitNow = !budgetHit && running >= budgetMese;
         if (hitNow) budgetHit = true;
         const cumColor = running >= budgetMese ? '#2D7D4F' : running >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
-        return { r, cum: running, hitNow, cumColor };
+        return { r, gap, cum: running, hitNow, cumColor };
       });
 
-      const totGap = rows.reduce((s, r) => s + r.gap, 0);
+      const totGap = rows.reduce((s, r) => s + (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap), 0);
 
       let html = `
         <div style="margin-bottom:1.5rem">
@@ -939,6 +969,7 @@ async function renderDettaglioPipeline() {
           </div>
           <table class="pl-tbl" style="width:100%">
             <thead><tr>
+              <th></th>
               <th>Cliente</th>
               <th class="num-right">Budget mese</th>
               <th class="num-right">Già ordinato</th>
@@ -947,9 +978,18 @@ async function renderDettaglioPipeline() {
             </tr></thead>
             <tbody>`;
 
-      for (const { r, cum, hitNow, cumColor } of tRows) {
+      for (const { r, gap, cum, hitNow, cumColor } of tRows) {
         const statoColor = STATO_COLOR[r.stato?.id] || '#9B9B97';
-        html += `<tr class="pl-row">
+        const cod = r.codice.replace(/'/g, "\\'");
+        const isModified = r._gapPersonalizzato !== null;
+        const rowStyle = r._esclusoManuale ? 'opacity:0.5;background:var(--bg)' : '';
+        
+        html += `<tr class="pl-row" style="${rowStyle}">
+          <td style="width:40px;text-align:center">
+            <button class="btn-action" onclick="togglePlEstcluso('${cod}');return false" title="${r._esclusoManuale ? 'Includi' : 'Escludi'}" style="color:${r._esclusoManuale ? '#999' : 'var(--text)'}">
+              <i class="ti ${r._esclusoManuale ? 'ti-eye-off' : 'ti-eye'}"></i>
+            </button>
+          </td>
           <td>
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
                   background:${statoColor};margin-right:7px"></span>${r.cliente}
@@ -957,11 +997,13 @@ async function renderDettaglioPipeline() {
           </td>
           <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
           <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
-          <td class="num-right" style="font-weight:600;color:#C84B2F">–${_eur(r.gap)}</td>
+          <td class="num-right" style="font-weight:600;color:#C84B2F">
+            <input type="number" value="${(gap / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${isModified ? 'style="background:#FFF5F5"' : ''}>
+          </td>
           <td class="num-right" style="font-weight:600;color:${cumColor}">${_eur(cum)}</td>
         </tr>`;
         if (hitNow) {
-          html += `<tr class="pl-budget-line"><td colspan="5">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
+          html += `<tr class="pl-budget-line"><td colspan="6">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
         }
       }
 
@@ -977,6 +1019,25 @@ async function renderDettaglioPipeline() {
 
   } catch (err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
+
+// Toggle include/esclude cliente nel dettaglio pipeline
+function togglePlEstcluso(codice) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (r) {
+    r._esclusoManuale = !r._esclusoManuale;
+    renderDettaglioPipeline();
+  }
+}
+
+// Aggiorna gap personalizzato e ricalcola
+function updatePlGap(codice, valore) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (r) {
+    const v = parseFloat(valore) || 0;
+    r._gapPersonalizzato = v > 0 ? v : null;
+    renderDettaglioPipeline();
   }
 }
 
