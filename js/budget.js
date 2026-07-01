@@ -7,6 +7,7 @@ let _bcRows         = [];
 let _bcQuery        = '';
 let _plCache        = null;   // { budgetMese, baseTotale, dataAgg }
 let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number } }
+let _plSearchQuery  = '';     // ricerca clienti nella pipeline detail
 
 // Helper per localStorage della pipeline
 function _loadPlModifiche() {
@@ -496,6 +497,19 @@ async function loadBudgetClienti() {
                       ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100
                       : null,
         gap:        r._gap || 0,
+        // Dati mensili 2025 per il calcolo fatturato totale
+        fatt_gen_2025: r.fatt_gen_2025 || 0,
+        fatt_feb_2025: r.fatt_feb_2025 || 0,
+        fatt_mar_2025: r.fatt_mar_2025 || 0,
+        fatt_apr_2025: r.fatt_apr_2025 || 0,
+        fatt_mag_2025: r.fatt_mag_2025 || 0,
+        fatt_giu_2025: r.fatt_giu_2025 || 0,
+        fatt_lug_2025: r.fatt_lug_2025 || 0,
+        fatt_ago_2025: r.fatt_ago_2025 || 0,
+        fatt_set_2025: r.fatt_set_2025 || 0,
+        fatt_ott_2025: r.fatt_ott_2025 || 0,
+        fatt_nov_2025: r.fatt_nov_2025 || 0,
+        fatt_dic_2025: r.fatt_dic_2025 || 0,
       };
       row.priority = _bcPriority(row);
       // Applica modifiche salvate se esistono
@@ -915,26 +929,38 @@ async function renderDettaglioPipeline() {
       };
     }
 
-    // Carica ultimi ordini 2025 per ogni cliente
-    const { data: ordini2025 } = await sb.from('ordini')
+    // Carica ordini 2025 e 2026 per ogni cliente
+    const { data: ordiniRecenti } = await sb.from('ordini')
       .select('codice_cliente, data_ordine')
       .gte('data_ordine', '2025-01-01')
-      .lte('data_ordine', '2025-12-31')
+      .lte('data_ordine', '2026-12-31')
       .order('data_ordine', { ascending: false });
     
-    const ultimoOrdinePerCliente = {};
-    if (ordini2025?.length) {
-      for (const ord of ordini2025) {
+    const ordiniPerCliente = {}; // { cod: [date1, date2, ...] }
+    if (ordiniRecenti?.length) {
+      for (const ord of ordiniRecenti) {
         const cod = String(ord.codice_cliente || '').trim();
-        if (cod && !ultimoOrdinePerCliente[cod]) {
-          ultimoOrdinePerCliente[cod] = ord.data_ordine;
+        if (cod) {
+          if (!ordiniPerCliente[cod]) ordiniPerCliente[cod] = [];
+          ordiniPerCliente[cod].push(ord.data_ordine);
         }
       }
     }
 
-    // Arricchisci _bcRows con info ordini 2025
+    // Arricchisci _bcRows con info ordini
     for (const r of _bcRows) {
-      r._ultimoOrdine2025 = ultimoOrdinePerCliente[r.codice] || null;
+      const ordini = ordiniPerCliente[r.codice] || [];
+      r._ultimoOrdine = ordini.length > 0 ? ordini[0] : null;
+      r._ultimoOrdine2025 = ordini.find(d => d.startsWith('2025')) || null;
+      r._ultimoOrdine2026 = ordini.find(d => d.startsWith('2026')) || null;
+      
+      // Somma fatturato 2025 dai mesi disponibili
+      const fatt2025 = [
+        r.fatt_gen_2025, r.fatt_feb_2025, r.fatt_mar_2025, r.fatt_apr_2025,
+        r.fatt_mag_2025, r.fatt_giu_2025, r.fatt_lug_2025, r.fatt_ago_2025,
+        r.fatt_set_2025, r.fatt_ott_2025, r.fatt_nov_2025, r.fatt_dic_2025,
+      ].reduce((s, v) => s + (v || 0), 0);
+      r._fatt2025 = fatt2025;
     }
 
     const { budgetMese, baseTotale, dataAgg } = _plCache;
@@ -981,7 +1007,7 @@ async function renderDettaglioPipeline() {
 
     const _tableGroup = (filterFn, label, color) => {
       const rows = _bcRows
-        .filter(r => filterFn(r))
+        .filter(r => filterFn(r) && (_plSearchQuery === '' || r.cliente.toLowerCase().includes(_plSearchQuery.toLowerCase()) || r.codice.includes(_plSearchQuery)))
         .sort((a, b) => {
           // Esclusi in fondo
           if (a._esclusoManuale !== b._esclusoManuale) {
@@ -1020,7 +1046,7 @@ async function renderDettaglioPipeline() {
               <th>Cliente</th>
               <th class="num-right">Budget mese</th>
               <th class="num-right">Già ordinato</th>
-              <th class="num-right">Ord. mese 2025</th>
+              <th class="num-right">Fatt. 2025</th>
               <th class="num-right">Ultimo ordine</th>
               <th class="num-right">Δ annuale</th>
               <th class="num-right">Da recuperare</th>
@@ -1050,8 +1076,8 @@ async function renderDettaglioPipeline() {
           </td>
           <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
           <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
-          <td class="num-right" style="color:${r._ultimoOrdine2025 ? 'var(--text)' : 'var(--text2)'};font-weight:600">${r._ultimoOrdine2025 ? _eur(r.ord) : '—'}</td>
-          <td class="num-right" style="font-size:11px;color:var(--text2)">${ultOrdData}</td>
+          <td class="num-right" style="color:${r._fatt2025 > 0 ? 'var(--text)' : 'var(--text2)'};font-weight:600">${r._fatt2025 > 0 ? _eur(r._fatt2025) : '—'}</td>
+          <td class="num-right" style="font-size:11px;color:var(--text2)">${r._ultimoOrdine ? new Date(r._ultimoOrdine).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}</td>
           <td class="num-right" style="font-weight:600;color:${deltaAnnColor}">${r.varProg !== null ? _pct(r.varProg) : '—'}</td>
           <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : '#C84B2F'}">
             <input type="number" value="${((r._esclusoManuale ? r.gap : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)) / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${inputDisabled} ${isModified && !r._esclusoManuale ? 'style="background:#FFF5F5"' : ''}>
@@ -1070,8 +1096,14 @@ async function renderDettaglioPipeline() {
     root.innerHTML = `
       <h2 style="margin-bottom:1rem">Dettaglio Pipeline — ${meseLabel}</h2>
       ${progressHtml}
-      ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0 && r._ultimoOrdine2025 !== null, 'Non ancora ordinato (vs anno scorso) · Attivi 2025', STATO_COLOR.da_visitare || '#D97706')}
-      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0 && r._ultimoOrdine2025 !== null, 'Indietro — ordine insufficiente · Attivi 2025', STATO_COLOR.indietro)}`;
+      <div style="margin-bottom:1rem;display:flex;gap:10px;align-items:center">
+        <input type="text" id="pl-search" placeholder="🔍 Cerca cliente..." value="${_plSearchQuery}" 
+               onkeyup="_plSearchQuery = this.value; renderDettaglioPipeline()" 
+               style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit">
+        ${_plSearchQuery ? `<button onclick="_plSearchQuery=''; document.getElementById('pl-search').value=''; renderDettaglioPipeline()" style="padding:6px 12px;background:var(--red);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px">Cancella</button>` : ''}
+      </div>
+      ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0, 'Non ancora ordinato (vs anno scorso)', STATO_COLOR.da_visitare || '#D97706')}
+      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0, 'Indietro — ordine insufficiente', STATO_COLOR.indietro)}`;
 
   } catch (err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
