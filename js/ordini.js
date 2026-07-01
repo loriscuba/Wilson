@@ -89,7 +89,7 @@ async function loadOrdini() {
         <td>${o.tipo_ordine || '—'}</td>
         <td class="num-right"><strong>€${fmt(o.importo_totale)}</strong></td>
         <td>${statoBadgeOrdine(o.stato)}</td>
-        <td><button class="btn-delete-order" onclick="event.stopPropagation();cancellaOrdine('${o.id}','${String(o.numero_ordine || '').replace(/'/g, "\\'")}' )">🗑 Cancella</button></td>
+        <td><button class="btn-action btn-delete-order" onclick="event.stopPropagation();cancellaOrdine('${o.id}','${String(o.numero_ordine || '').replace(/'/g, "\\'")}'  )" title="Cancella ordine"><i class="ti ti-trash"></i></button></td>
       </tr>
       <tr class="righe-row" id="righe-${o.id}">
         <td colspan="9"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>

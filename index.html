@@ -348,17 +348,22 @@
         .ckc.neg { color: var(--red); }
         .btn-ordini { margin-top: 8px; display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; background: none; border: none; padding: 0; }
         .btn-ordini:hover { text-decoration: underline; }
-        .btn-delete-order {
-            border: 1px solid #F5C2C7;
-            background: #FFF5F5;
-            color: #C84B2F;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 700;
+        .btn-action {
+            background: none;
+            border: none;
             cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            transition: background 0.15s, color 0.15s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text2);
+            font-size: 16px;
         }
-        .btn-delete-order:hover { background: #FDECEC; }
+        .btn-action:hover { background: rgba(0,0,0,0.05); color: var(--text); }
+        .btn-delete-order { color: var(--red); }
+        .btn-delete-order:hover { background: #FDEAEA; color: var(--red); }
         .gamma-section h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; }
         .gamma-settori { display: flex; flex-direction: column; gap: 8px; }
         .gamma-settore-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
