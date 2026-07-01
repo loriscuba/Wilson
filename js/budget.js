@@ -915,6 +915,28 @@ async function renderDettaglioPipeline() {
       };
     }
 
+    // Carica ultimi ordini 2025 per ogni cliente
+    const { data: ordini2025 } = await sb.from('ordini')
+      .select('codice_cliente, data_ordine')
+      .gte('data_ordine', '2025-01-01')
+      .lte('data_ordine', '2025-12-31')
+      .order('data_ordine', { ascending: false });
+    
+    const ultimoOrdinePerCliente = {};
+    if (ordini2025?.length) {
+      for (const ord of ordini2025) {
+        const cod = String(ord.codice_cliente || '').trim();
+        if (cod && !ultimoOrdinePerCliente[cod]) {
+          ultimoOrdinePerCliente[cod] = ord.data_ordine;
+        }
+      }
+    }
+
+    // Arricchisci _bcRows con info ordini 2025
+    for (const r of _bcRows) {
+      r._ultimoOrdine2025 = ultimoOrdinePerCliente[r.codice] || null;
+    }
+
     const { budgetMese, baseTotale, dataAgg } = _plCache;
     const meseLabel = _nomeMese(dataAgg || new Date().toISOString().split('T')[0]);
     
@@ -998,6 +1020,9 @@ async function renderDettaglioPipeline() {
               <th>Cliente</th>
               <th class="num-right">Budget mese</th>
               <th class="num-right">Già ordinato</th>
+              <th class="num-right">Ord. mese 2025</th>
+              <th class="num-right">Ultimo ordine</th>
+              <th class="num-right">Δ annuale</th>
               <th class="num-right">Da recuperare</th>
               <th class="num-right">Cumulativo</th>
             </tr></thead>
@@ -1009,6 +1034,8 @@ async function renderDettaglioPipeline() {
         const isModified = r._gapPersonalizzato !== null;
         const rowStyle = r._esclusoManuale ? 'opacity:0.5;background:var(--bg)' : '';
         const inputDisabled = r._esclusoManuale ? 'disabled' : '';
+        const ultOrdData = r._ultimoOrdine2025 ? new Date(r._ultimoOrdine2025).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
+        const deltaAnnColor = r.varProg !== null && r.varProg >= 0 ? '#2D7D4F' : '#C84B2F';
         
         html += `<tr class="pl-row" style="${rowStyle}">
           <td style="width:40px;text-align:center">
@@ -1023,13 +1050,16 @@ async function renderDettaglioPipeline() {
           </td>
           <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
           <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
+          <td class="num-right" style="color:${r._ultimoOrdine2025 ? 'var(--text)' : 'var(--text2)'};font-weight:600">${r._ultimoOrdine2025 ? _eur(r.ord) : '—'}</td>
+          <td class="num-right" style="font-size:11px;color:var(--text2)">${ultOrdData}</td>
+          <td class="num-right" style="font-weight:600;color:${deltaAnnColor}">${r.varProg !== null ? _pct(r.varProg) : '—'}</td>
           <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : '#C84B2F'}">
             <input type="number" value="${((r._esclusoManuale ? r.gap : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)) / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${inputDisabled} ${isModified && !r._esclusoManuale ? 'style="background:#FFF5F5"' : ''}>
           </td>
           <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : cumColor}">${_eur(cum)}</td>
         </tr>`;
         if (hitNow) {
-          html += `<tr class="pl-budget-line"><td colspan="6">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
+          html += `<tr class="pl-budget-line"><td colspan="9">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
         }
       }
 
@@ -1040,8 +1070,8 @@ async function renderDettaglioPipeline() {
     root.innerHTML = `
       <h2 style="margin-bottom:1rem">Dettaglio Pipeline — ${meseLabel}</h2>
       ${progressHtml}
-      ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0, 'Non ancora ordinato (vs anno scorso)', STATO_COLOR.da_visitare || '#D97706')}
-      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0, 'Indietro — ordine insufficiente', STATO_COLOR.indietro)}`;
+      ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0 && r._ultimoOrdine2025 !== null, 'Non ancora ordinato (vs anno scorso) · Attivi 2025', STATO_COLOR.da_visitare || '#D97706')}
+      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0 && r._ultimoOrdine2025 !== null, 'Indietro — ordine insufficiente · Attivi 2025', STATO_COLOR.indietro)}`;
 
   } catch (err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
