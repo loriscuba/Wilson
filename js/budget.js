@@ -483,7 +483,7 @@ async function loadBudgetClienti() {
       row._esclusoManuale = false;  // esclusione manuale nel dettaglio pipeline
       row._gapPersonalizzato = null; // gap modificato nel dettaglio pipeline
       return row;
-    };
+    });
 
     _bcFilter = null;
     _bcQuery  = '';
