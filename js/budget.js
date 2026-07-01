@@ -1103,7 +1103,8 @@ async function renderDettaglioPipeline() {
         ${_plSearchQuery ? `<button onclick="_plSearchQuery=''; document.getElementById('pl-search').value=''; renderDettaglioPipeline()" style="padding:6px 12px;background:var(--red);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px">Cancella</button>` : ''}
       </div>
       ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0, 'Non ancora ordinato (vs anno scorso)', STATO_COLOR.da_visitare || '#D97706')}
-      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0, 'Indietro — ordine insufficiente', STATO_COLOR.indietro)}`;
+      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0, 'Indietro — ordine insufficiente', STATO_COLOR.indietro)}
+      ${_tableGroup(r => !((r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0) && !((r.stato?.id || '') === 'indietro' && r.gap > 0), 'Clienti in linea / Altri', '#378ADD')}`;
 
   } catch (err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
