@@ -348,6 +348,17 @@
         .ckc.neg { color: var(--red); }
         .btn-ordini { margin-top: 8px; display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; background: none; border: none; padding: 0; }
         .btn-ordini:hover { text-decoration: underline; }
+        .btn-delete-order {
+            border: 1px solid #F5C2C7;
+            background: #FFF5F5;
+            color: #C84B2F;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-delete-order:hover { background: #FDECEC; }
         .gamma-section h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; }
         .gamma-settori { display: flex; flex-direction: column; gap: 8px; }
         .gamma-settore-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
@@ -1351,6 +1362,7 @@
                                 <th>Tipo</th>
                                 <th class="num-right">Importo €</th>
                                 <th>Stato</th>
+                                <th style="width:82px">Azioni</th>
                             </tr>
                         </thead>
                         <tbody>

@@ -89,9 +89,10 @@ async function loadOrdini() {
         <td>${o.tipo_ordine || '—'}</td>
         <td class="num-right"><strong>€${fmt(o.importo_totale)}</strong></td>
         <td>${statoBadgeOrdine(o.stato)}</td>
+        <td><button class="btn-delete-order" onclick="event.stopPropagation();cancellaOrdine('${o.id}','${String(o.numero_ordine || '').replace(/'/g, "\\'")}' )">🗑 Cancella</button></td>
       </tr>
       <tr class="righe-row" id="righe-${o.id}">
-        <td colspan="8"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>
+        <td colspan="9"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>
       </tr>`).join('');
 
     // Aggiorna gli stati in background senza bloccare il render
@@ -99,6 +100,40 @@ async function loadOrdini() {
 
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
+  }
+}
+
+async function cancellaOrdine(ordineId, numeroOrdine) {
+  const label = numeroOrdine || ordineId;
+  const conferma = confirm(`Vuoi cancellare davvero l'ordine ${label}?`);
+  if (!conferma) return;
+
+  try {
+    const { data: ddtCollegati, error: ddtErr } = await sb
+      .from('ddt')
+      .select('id')
+      .eq('numero_ordine', numeroOrdine || '')
+      .limit(1);
+    if (ddtErr) throw ddtErr;
+
+    if ((ddtCollegati || []).length) {
+      const proceed = confirm(`L'ordine ${label} ha DDT collegati. Vuoi comunque eliminarlo?`);
+      if (!proceed) return;
+    }
+
+    const [righeRes, ordineRes] = await Promise.all([
+      sb.from('righe_ordine').delete().eq('ordine_id', ordineId),
+      sb.from('ordini').delete().eq('id', ordineId),
+    ]);
+
+    if (righeRes.error) throw righeRes.error;
+    if (ordineRes.error) throw ordineRes.error;
+
+    await loadOrdini();
+    alert(`Ordine ${label} cancellato.`);
+  } catch (err) {
+    console.error('Errore cancellazione ordine:', err);
+    alert(`Errore durante la cancellazione: ${err.message}`);
   }
 }
 
