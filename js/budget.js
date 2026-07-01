@@ -8,6 +8,24 @@ let _bcQuery        = '';
 let _plCache        = null;   // { budgetMese, baseTotale, dataAgg }
 let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number } }
 
+// Helper per localStorage della pipeline
+function _loadPlModifiche() {
+  try {
+    const stored = localStorage.getItem('_plModifiche');
+    return stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function _savePlModifiche() {
+  try {
+    localStorage.setItem('_plModifiche', JSON.stringify(_plModifiche));
+  } catch (e) {
+    console.warn('Errore salvataggio modifiche pipeline:', e);
+  }
+}
+
 // ── Tab switch ────────────────────────────────────────────────────────────────
 function swBudget(tab, btn) {
   _budgetTab = tab;
@@ -457,7 +475,7 @@ async function loadBudgetClienti() {
     }
 
     _plCache = null;  // invalida cache pipeline quando i dati rolling vengono ricaricati
-    _plModifiche = {}; // reset modifiche pipeline
+    _plModifiche = _loadPlModifiche(); // carica modifiche salvate
     _bcRows = rows.filter(r => !r._escluso).map(r => {
       const row = {
         cliente:         r.ragione_sociale || '—',
@@ -480,8 +498,10 @@ async function loadBudgetClienti() {
         gap:        r._gap || 0,
       };
       row.priority = _bcPriority(row);
-      row._esclusoManuale = false;  // esclusione manuale nel dettaglio pipeline
-      row._gapPersonalizzato = null; // gap modificato nel dettaglio pipeline
+      // Applica modifiche salvate se esistono
+      const modifica = _plModifiche[row.codice] || {};
+      row._esclusoManuale = modifica.escluso === true ? true : false;
+      row._gapPersonalizzato = modifica.gapPersonalizzato ?? null;
       return row;
     });
 
@@ -1027,6 +1047,10 @@ function togglePlEstcluso(codice) {
   const r = _bcRows.find(x => x.codice === codice);
   if (r) {
     r._esclusoManuale = !r._esclusoManuale;
+    // Salva in localStorage
+    if (!_plModifiche[codice]) _plModifiche[codice] = {};
+    _plModifiche[codice].escluso = r._esclusoManuale;
+    _savePlModifiche();
     renderDettaglioPipeline();
   }
 }
@@ -1037,6 +1061,10 @@ function updatePlGap(codice, valore) {
   if (r) {
     const v = parseFloat(valore) || 0;
     r._gapPersonalizzato = v > 0 ? v : null;
+    // Salva in localStorage
+    if (!_plModifiche[codice]) _plModifiche[codice] = {};
+    _plModifiche[codice].gapPersonalizzato = r._gapPersonalizzato;
+    _savePlModifiche();
     renderDettaglioPipeline();
   }
 }
