@@ -7,8 +7,16 @@ let _bcRows         = [];
 let _bcQuery        = '';
 let _plCache        = null;   // { budgetMese, baseTotale, dataAgg }
 let _plOrdiniLoaded = false;  // true quando _bcRows è già arricchito con dati ordini
-let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number } }
+let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number, stati: {avvisato,mail,mex,ordine} } }
 let _plSearchQuery  = '';     // ricerca clienti nella pipeline detail
+
+// Stati di avanzamento contatto cliente, mostrati come icone nel Dettaglio Pipeline
+const PL_STATI = [
+  { key: 'avvisato', label: 'Avvisato',      icon: 'ti-bell-ringing',        color: '#D97706' },
+  { key: 'mail',     label: 'Mandata mail',  icon: 'ti-mail',                color: '#378ADD' },
+  { key: 'mex',      label: 'Scritto Mex',   icon: 'ti-message-circle-2',    color: '#2D9CDB' },
+  { key: 'ordine',   label: 'Preso Ordine',  icon: 'ti-shopping-cart-check', color: '#2D7D4F' },
+];
 
 // Helper per localStorage della pipeline
 function _loadPlModifiche() {
@@ -518,6 +526,7 @@ async function loadBudgetClienti() {
       const modifica = _plModifiche[row.codice] || {};
       row._esclusoManuale = modifica.escluso === true ? true : false;
       row._gapPersonalizzato = modifica.gapPersonalizzato ?? null;
+      row._statiPipeline = modifica.stati || {};
       return row;
     });
 
@@ -1057,6 +1066,7 @@ async function renderDettaglioPipeline() {
               <th class="num-right">Δ annuale</th>
               <th class="num-right">Da recuperare</th>
               <th class="num-right">Cumulativo</th>
+              <th style="text-align:center">Stati</th>
             </tr></thead>
             <tbody>`;
 
@@ -1089,9 +1099,18 @@ async function renderDettaglioPipeline() {
             <input type="number" value="${((r._esclusoManuale ? r.gap : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)) / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${inputDisabled} ${isModified && !r._esclusoManuale ? 'style="background:#FFF5F5"' : ''}>
           </td>
           <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : cumColor}">${_eur(cum)}</td>
+          <td style="text-align:center;white-space:nowrap">
+            ${PL_STATI.map(s => {
+              const attivo = r._statiPipeline?.[s.key] === true;
+              return `<button class="btn-action" onclick="togglePlStato('${cod}','${s.key}');return false" title="${s.label}${attivo ? ' ✓' : ''}"
+                        style="color:${attivo ? s.color : '#ccc'};opacity:${attivo ? '1' : '.6'}">
+                        <i class="ti ${s.icon}"></i>
+                      </button>`;
+            }).join('')}
+          </td>
         </tr>`;
         if (hitNow) {
-          html += `<tr class="pl-budget-line"><td colspan="9">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
+          html += `<tr class="pl-budget-line"><td colspan="10">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
         }
       }
 
@@ -1139,6 +1158,20 @@ function togglePlEstcluso(codice) {
     // Salva in localStorage
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].escluso = r._esclusoManuale;
+    _savePlModifiche();
+    renderDettaglioPipeline();
+  }
+}
+
+// Toggle stato di contatto cliente (avvisato / mail / mex / ordine) nel dettaglio pipeline
+function togglePlStato(codice, chiave) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (r) {
+    if (!r._statiPipeline) r._statiPipeline = {};
+    r._statiPipeline[chiave] = !r._statiPipeline[chiave];
+    // Salva in localStorage
+    if (!_plModifiche[codice]) _plModifiche[codice] = {};
+    _plModifiche[codice].stati = r._statiPipeline;
     _savePlModifiche();
     renderDettaglioPipeline();
   }
