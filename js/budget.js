@@ -6,8 +6,17 @@ let _bcSort         = { col: 'priority', dir: 1 };
 let _bcRows         = [];
 let _bcQuery        = '';
 let _plCache        = null;   // { budgetMese, baseTotale, dataAgg }
-let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number } }
+let _plOrdiniLoaded = false;  // true quando _bcRows è già arricchito con dati ordini
+let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number, stati: {avvisato,mail,mex,ordine} } }
 let _plSearchQuery  = '';     // ricerca clienti nella pipeline detail
+
+// Stati di avanzamento contatto cliente, mostrati come icone nel Dettaglio Pipeline
+const PL_STATI = [
+  { key: 'avvisato', label: 'Avvisato',      icon: 'ti-bell-ringing',        color: '#D97706' },
+  { key: 'mail',     label: 'Mandata mail',  icon: 'ti-mail',                color: '#378ADD' },
+  { key: 'mex',      label: 'Scritto Mex',   icon: 'ti-message-circle-2',    color: '#2D9CDB' },
+  { key: 'ordine',   label: 'Preso Ordine',  icon: 'ti-shopping-cart-check', color: '#2D7D4F' },
+];
 
 // Helper per localStorage della pipeline
 function _loadPlModifiche() {
@@ -476,6 +485,7 @@ async function loadBudgetClienti() {
     }
 
     _plCache = null;  // invalida cache pipeline quando i dati rolling vengono ricaricati
+    _plOrdiniLoaded = false;
     _plModifiche = _loadPlModifiche(); // carica modifiche salvate
     _bcRows = rows.filter(r => !r._escluso).map(r => {
       const row = {
@@ -516,6 +526,7 @@ async function loadBudgetClienti() {
       const modifica = _plModifiche[row.codice] || {};
       row._esclusoManuale = modifica.escluso === true ? true : false;
       row._gapPersonalizzato = modifica.gapPersonalizzato ?? null;
+      row._statiPipeline = modifica.stati || {};
       return row;
     });
 
@@ -929,38 +940,42 @@ async function renderDettaglioPipeline() {
       };
     }
 
-    // Carica ordini 2025 e 2026 per ogni cliente
-    const { data: ordiniRecenti } = await sb.from('ordini')
-      .select('codice_cliente, data_ordine')
-      .gte('data_ordine', '2025-01-01')
-      .lte('data_ordine', '2026-12-31')
-      .order('data_ordine', { ascending: false });
-    
-    const ordiniPerCliente = {}; // { cod: [date1, date2, ...] }
-    if (ordiniRecenti?.length) {
-      for (const ord of ordiniRecenti) {
-        const cod = String(ord.codice_cliente || '').trim();
-        if (cod) {
-          if (!ordiniPerCliente[cod]) ordiniPerCliente[cod] = [];
-          ordiniPerCliente[cod].push(ord.data_ordine);
+    // Carica ordini 2025 e 2026 per ogni cliente (solo la prima volta, non ad ogni ricerca)
+    if (!_plOrdiniLoaded) {
+      const { data: ordiniRecenti } = await sb.from('ordini')
+        .select('codice_cliente, data_ordine')
+        .gte('data_ordine', '2025-01-01')
+        .lte('data_ordine', '2026-12-31')
+        .order('data_ordine', { ascending: false });
+
+      const ordiniPerCliente = {}; // { cod: [date1, date2, ...] }
+      if (ordiniRecenti?.length) {
+        for (const ord of ordiniRecenti) {
+          const cod = String(ord.codice_cliente || '').trim();
+          if (cod) {
+            if (!ordiniPerCliente[cod]) ordiniPerCliente[cod] = [];
+            ordiniPerCliente[cod].push(ord.data_ordine);
+          }
         }
       }
-    }
 
-    // Arricchisci _bcRows con info ordini
-    for (const r of _bcRows) {
-      const ordini = ordiniPerCliente[r.codice] || [];
-      r._ultimoOrdine = ordini.length > 0 ? ordini[0] : null;
-      r._ultimoOrdine2025 = ordini.find(d => d.startsWith('2025')) || null;
-      r._ultimoOrdine2026 = ordini.find(d => d.startsWith('2026')) || null;
-      
-      // Somma fatturato 2025 dai mesi disponibili
-      const fatt2025 = [
-        r.fatt_gen_2025, r.fatt_feb_2025, r.fatt_mar_2025, r.fatt_apr_2025,
-        r.fatt_mag_2025, r.fatt_giu_2025, r.fatt_lug_2025, r.fatt_ago_2025,
-        r.fatt_set_2025, r.fatt_ott_2025, r.fatt_nov_2025, r.fatt_dic_2025,
-      ].reduce((s, v) => s + (v || 0), 0);
-      r._fatt2025 = fatt2025;
+      // Arricchisci _bcRows con info ordini
+      for (const r of _bcRows) {
+        const ordini = ordiniPerCliente[r.codice] || [];
+        r._ultimoOrdine = ordini.length > 0 ? ordini[0] : null;
+        r._ultimoOrdine2025 = ordini.find(d => d.startsWith('2025')) || null;
+        r._ultimoOrdine2026 = ordini.find(d => d.startsWith('2026')) || null;
+
+        // Somma fatturato 2025 dai mesi disponibili
+        const fatt2025 = [
+          r.fatt_gen_2025, r.fatt_feb_2025, r.fatt_mar_2025, r.fatt_apr_2025,
+          r.fatt_mag_2025, r.fatt_giu_2025, r.fatt_lug_2025, r.fatt_ago_2025,
+          r.fatt_set_2025, r.fatt_ott_2025, r.fatt_nov_2025, r.fatt_dic_2025,
+        ].reduce((s, v) => s + (v || 0), 0);
+        r._fatt2025 = fatt2025;
+      }
+
+      _plOrdiniLoaded = true;
     }
 
     const { budgetMese, baseTotale, dataAgg } = _plCache;
@@ -1051,6 +1066,7 @@ async function renderDettaglioPipeline() {
               <th class="num-right">Δ annuale</th>
               <th class="num-right">Da recuperare</th>
               <th class="num-right">Cumulativo</th>
+              <th style="text-align:center">Stati</th>
             </tr></thead>
             <tbody>`;
 
@@ -1083,9 +1099,18 @@ async function renderDettaglioPipeline() {
             <input type="number" value="${((r._esclusoManuale ? r.gap : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)) / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${inputDisabled} ${isModified && !r._esclusoManuale ? 'style="background:#FFF5F5"' : ''}>
           </td>
           <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : cumColor}">${_eur(cum)}</td>
+          <td style="text-align:center;white-space:nowrap">
+            ${PL_STATI.map(s => {
+              const attivo = r._statiPipeline?.[s.key] === true;
+              return `<button class="btn-action" onclick="togglePlStato('${cod}','${s.key}');return false" title="${s.label}${attivo ? ' ✓' : ''}"
+                        style="color:${attivo ? s.color : '#ccc'};opacity:${attivo ? '1' : '.6'}">
+                        <i class="ti ${s.icon}"></i>
+                      </button>`;
+            }).join('')}
+          </td>
         </tr>`;
         if (hitNow) {
-          html += `<tr class="pl-budget-line"><td colspan="9">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
+          html += `<tr class="pl-budget-line"><td colspan="10">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
         }
       }
 
@@ -1093,18 +1118,32 @@ async function renderDettaglioPipeline() {
       return html;
     };
 
+    // Preserva focus e posizione del cursore sull'input di ricerca durante il re-render
+    const _prevSearchInput = document.getElementById('pl-search');
+    const _searchHadFocus = document.activeElement === _prevSearchInput;
+    const _selStart = _searchHadFocus ? _prevSearchInput.selectionStart : null;
+    const _selEnd   = _searchHadFocus ? _prevSearchInput.selectionEnd   : null;
+
     root.innerHTML = `
       <h2 style="margin-bottom:1rem">Dettaglio Pipeline — ${meseLabel}</h2>
       ${progressHtml}
       <div style="margin-bottom:1rem;display:flex;gap:10px;align-items:center">
-        <input type="text" id="pl-search" placeholder="🔍 Cerca cliente..." value="${_plSearchQuery}" 
-               onkeyup="_plSearchQuery = this.value; renderDettaglioPipeline()" 
+        <input type="text" id="pl-search" placeholder="🔍 Cerca cliente..." value="${_plSearchQuery}"
+               oninput="_plSearchQuery = this.value; renderDettaglioPipeline()"
                style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit">
         ${_plSearchQuery ? `<button onclick="_plSearchQuery=''; document.getElementById('pl-search').value=''; renderDettaglioPipeline()" style="padding:6px 12px;background:var(--red);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px">Cancella</button>` : ''}
       </div>
       ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0, 'Non ancora ordinato (vs anno scorso)', STATO_COLOR.da_visitare || '#D97706')}
       ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0, 'Indietro — ordine insufficiente', STATO_COLOR.indietro)}
       ${_tableGroup(r => !((r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0) && !((r.stato?.id || '') === 'indietro' && r.gap > 0), 'Clienti in linea / Altri', '#378ADD')}`;
+
+    if (_searchHadFocus) {
+      const _newSearchInput = document.getElementById('pl-search');
+      if (_newSearchInput) {
+        _newSearchInput.focus();
+        _newSearchInput.setSelectionRange(_selStart, _selEnd);
+      }
+    }
 
   } catch (err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
@@ -1119,6 +1158,20 @@ function togglePlEstcluso(codice) {
     // Salva in localStorage
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].escluso = r._esclusoManuale;
+    _savePlModifiche();
+    renderDettaglioPipeline();
+  }
+}
+
+// Toggle stato di contatto cliente (avvisato / mail / mex / ordine) nel dettaglio pipeline
+function togglePlStato(codice, chiave) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (r) {
+    if (!r._statiPipeline) r._statiPipeline = {};
+    r._statiPipeline[chiave] = !r._statiPipeline[chiave];
+    // Salva in localStorage
+    if (!_plModifiche[codice]) _plModifiche[codice] = {};
+    _plModifiche[codice].stati = r._statiPipeline;
     _savePlModifiche();
     renderDettaglioPipeline();
   }
