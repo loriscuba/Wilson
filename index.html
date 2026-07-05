@@ -1269,6 +1269,58 @@
         .stat-field { display: flex; flex-direction: column; gap: 5px; }
         .stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
                       letter-spacing: .4px; color: var(--text2); }
+
+        /* ── Note Visite ── */
+        .nv-badge { font-size: 10px; padding: 2px 8px; border-radius: 20px; background: var(--bg); color: var(--text2); font-weight: 500; margin-left: 6px; }
+        .nv-mapping { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+        .nv-mapping .nv-field { display: flex; flex-direction: column; gap: 4px; }
+        .nv-mapping .nv-field-btn { justify-content: flex-end; }
+        .nv-mapping label { font-size: 11px; color: var(--text2); }
+        .nv-mapping select { font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: var(--surface); }
+        .nv-route-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .nv-route { position: relative; }
+        .nv-route-line { position: absolute; left: 27px; top: 8px; bottom: 8px; width: 1px; background: var(--border); }
+        .nv-stop { display: flex; gap: 16px; margin-bottom: 16px; position: relative; }
+        .nv-stop-marker { flex: 0 0 auto; width: 54px; padding-top: 18px; text-align: right;
+            font-size: 11px; color: var(--accent); font-weight: 600; position: relative; z-index: 1; }
+        .nv-stop-marker .nv-dot { position: absolute; right: -4px; top: 22px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+        .nv-stop-card { flex: 1; padding: 18px; }
+        .nv-client-name { font-size: 15px; font-weight: 600; color: var(--text); }
+        .nv-client-meta { font-size: 11.5px; color: var(--text2); margin-top: 1px; }
+        .nv-history-block { margin-top: 10px; padding: 10px 12px; background: var(--bg); border-radius: 7px; }
+        .nv-history-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+        .nv-history-status { font-size: 12px; color: var(--text); font-weight: 550; }
+        .nv-history-status.nv-muted { color: var(--text2); font-weight: 500; }
+        .nv-history-actions { display: flex; gap: 6px; }
+        .nv-history-list { margin-top: 8px; font-size: 12px; color: var(--text); display: none; }
+        .nv-history-list.nv-open { display: block; }
+        .nv-h-item { padding: 6px 0; border-top: 1px solid var(--border); }
+        .nv-h-date { font-size: 10.5px; color: var(--accent); font-weight: 600; }
+        .nv-history-summary { margin-top: 8px; font-size: 12.5px; line-height: 1.5; color: var(--text); display: none; }
+        .nv-history-summary.nv-open { display: block; }
+        .nv-history-match-select { margin-top: 8px; }
+        .nv-history-match-select select { font-size: 11.5px; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border); }
+        .nv-extra { margin-top: 10px; }
+        .nv-extra summary { font-size: 11.5px; color: var(--text2); cursor: pointer; }
+        .nv-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+        .nv-fields .nv-full { grid-column: 1 / -1; }
+        .nv-fields label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+        .nv-fields input[type="text"] { width: 100%; font-size: 13px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+        .nv-note-box { margin-top: 12px; }
+        .nv-dup-warn:empty { display: none; }
+        .nv-dup-warn { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: #FDECEA; border: 1px solid #F3B7AF; color: var(--red); font-size: 12px; font-weight: 550; line-height: 1.4; }
+        .nv-note-box textarea { width: 100%; min-height: 64px; font-size: 13px; line-height: 1.5;
+            border: 1px solid var(--border); border-radius: 7px; padding: 10px; font-family: 'DM Sans', sans-serif; color: var(--text); background: var(--surface); resize: vertical; }
+        .nv-note-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+        .nv-btn-small { font-size: 12px; padding: 6px 10px; }
+        .nv-status { font-size: 11px; color: var(--text2); }
+        .nv-status.nv-ok { color: var(--green); }
+        .nv-status.nv-warn { color: var(--red); }
+        @media (max-width: 600px) {
+            .nv-fields { grid-template-columns: 1fr; }
+            .nv-stop-marker { width: 38px; }
+            .nv-route-line { left: 19px; }
+        }
     </style>
 </head>
 <body>
@@ -1289,6 +1341,8 @@
           <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
         <a class="top-nav-link" data-page="statistiche" data-tip="Statistiche" href="#" onclick="showPage('statistiche',event)">
           <i class="ti ti-chart-line top-nav-icon"></i><span class="top-nav-label">Statistiche</span></a>
+        <a class="top-nav-link" data-page="note-visite" data-tip="Note Visite" href="#" onclick="showPage('note-visite',event)">
+          <i class="ti ti-notes top-nav-icon"></i><span class="top-nav-label">Note Visite</span></a>
         <a class="top-nav-link" data-page="listino" data-tip="Listino FL" href="#" onclick="showPage('listino',event)">
           <i class="ti ti-tag top-nav-icon"></i><span class="top-nav-label">Listino</span></a>
         <a class="top-nav-link" data-page="impostazioni" data-tip="Impostazioni" href="#" onclick="showPage('impostazioni',event)">
@@ -1508,6 +1562,55 @@
             <div id="stat-list-wrap"></div>
         </div>
 
+        <!-- ── NOTE VISITE ── -->
+        <div id="note-visite" class="page">
+            <h1 style="margin-bottom:4px">Note Visite</h1>
+            <p style="color:var(--text2);font-size:13px;margin:0 0 20px">Carica lo storico, carica il giro della settimana, lascia scrivere la bozza con il contesto del cliente.</p>
+
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+                <label for="nv-week-input" style="font-size:12px;color:var(--text2)">Settimana</label>
+                <input type="text" id="nv-week-input" class="filter-input" placeholder="es. 2026-W28" style="width:120px">
+                <button class="btn-secondary" onclick="nvCaricaSettimana()">Carica</button>
+                <span class="nv-status" id="nv-week-status"></span>
+            </div>
+
+            <div class="table-wrapper" style="margin-bottom:16px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:2px">Storico visite (4 anni) <span class="nv-badge" id="nv-hist-badge">non caricato</span></div>
+                <p style="font-size:12px;color:var(--text2);margin:4px 0 10px">Carica il file Excel/CSV con una riga per visita (data, cliente, nota). Resta solo in questa sessione: non viene salvato online.</p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <input type="file" id="nv-hist-file" accept=".xlsx,.xls,.csv,.txt" onchange="nvHandleHistFile(event)">
+                    <span style="font-size:12px;color:var(--text2)" id="nv-hist-hint"></span>
+                </div>
+                <div class="nv-mapping" id="nv-hist-mapping" style="display:none"></div>
+            </div>
+
+            <div class="table-wrapper" style="margin-bottom:20px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:2px">Giro visite della settimana</div>
+                <p style="font-size:12px;color:var(--text2);margin:4px 0 10px">Allega il file Excel/CSV del giro (prima riga = intestazioni, stesso formato dello storico).</p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <input type="file" id="nv-route-file" accept=".xlsx,.xls,.csv,.txt" onchange="nvHandleRouteFile(event)">
+                    <span style="font-size:12px;color:var(--text2)" id="nv-import-hint"></span>
+                </div>
+                <div class="nv-mapping" id="nv-mapping" style="display:none"></div>
+            </div>
+
+            <div class="nv-route-toolbar" id="nv-route-toolbar" style="display:none">
+                <button class="btn-nuova-stat" id="nv-gen-all" onclick="nvGeneraTutte()">Genera tutte le bozze</button>
+                <span class="nv-status" id="nv-gen-all-status"></span>
+            </div>
+            <div class="nv-route" id="nv-route"></div>
+            <div class="placeholder" id="nv-empty" style="display:none">
+                <div class="placeholder-icon">🗓️</div>
+                <h3>Nessuna tappa in questa settimana</h3>
+                <p>Carica il file del giro qui sopra per iniziare.</p>
+            </div>
+
+            <div id="nv-footer-bar" style="display:none;justify-content:flex-end;gap:10px;margin-top:24px">
+                <button class="btn-secondary" onclick="nvExportTxt()">Esporta note (testo)</button>
+                <button class="btn-secondary" onclick="nvExportCsv()">Esporta note (CSV)</button>
+            </div>
+        </div>
+
         <div id="preventivi" class="page">
             <h1>Preventivi</h1>
             <div class="placeholder">
@@ -1587,6 +1690,7 @@
             <div class="drawer-links">
                 <button type="button" onclick="mobileNavSelect('agenda', event); closeMobileDrawer()">Agenda</button>
                 <button type="button" onclick="navToPage('statistiche'); closeMobileDrawer()">Statistiche</button>
+                <button type="button" onclick="navToPage('note-visite'); closeMobileDrawer()">Note Visite</button>
                 <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Listino FL</button>
                 <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
@@ -1628,6 +1732,9 @@
     <script src="js/agenda.js?v=7"></script>
     <script src="js/statistiche.js?v=2"></script>
     <script src="js/listino.js?v=2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="js/note_visite.js?v=1"></script>
     <script src="js/app.js?v=19"></script>
     <script>
         document.addEventListener('keydown', e => {

@@ -36,6 +36,7 @@ const PAGE_LOADERS = {
   ddt:          loadDDT,
   budget:       loadBudget,
   statistiche:  loadStatistiche,
+  'note-visite': loadNoteVisite,
   agenda:       loadAgenda,
   listino:      loadListino,
   impostazioni: loadImpostazioni,
