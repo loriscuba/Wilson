@@ -451,6 +451,7 @@ async function _disegnaGrafico(tipo, params) {
         s2:      parseFloat(r.sconto2) || 0,
         s3:      parseFloat(r.sconto3) || 0,
         qty:     parseFloat(r.quantita) || 0,
+        cod:     r.codice_articolo || '',
         desc:    r.descrizione_articolo || r.codice_articolo || '',
       }))
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
@@ -468,7 +469,7 @@ async function _disegnaGrafico(tipo, params) {
         <td>${_fmtDataBreve(r.date)}</td>
         <td><button class="btn-ordini" onclick="apriOrdine('${_esc(r.ordine)}')">${_esc(r.ordine)}</button></td>
         <td style="font-size:.85em">${_esc(r.nome)}</td>
-        <td style="color:var(--text2);font-size:.85em">${_esc(r.desc)}</td>
+        <td style="color:var(--text2);font-size:.85em"><strong>${_esc(r.cod)}</strong>${r.desc && r.desc !== r.cod ? ' — ' + _esc(r.desc) : ''}</td>
         <td class="num-right" style="color:var(--text2)">${eur(r.listino)}</td>
         <td class="num-right">${sconti}</td>
         <td class="num-right"><strong>${eur(r.netto)}</strong></td>
