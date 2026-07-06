@@ -18,19 +18,44 @@ const PL_STATI = [
   { key: 'ordine',   label: 'Preso Ordine',  icon: 'ti-shopping-cart-check', color: '#2D7D4F' },
 ];
 
-// Helper per localStorage della pipeline
-function _loadPlModifiche() {
+// Modifiche pipeline persistite su Supabase (tabella pipeline_modifiche),
+// così sono visibili su qualsiasi dispositivo/browser e non solo su quello dove sono state impostate.
+async function _loadPlModifiche() {
   try {
-    const stored = localStorage.getItem('_plModifiche');
-    return stored ? JSON.parse(stored) : {};
+    const { data, error } = await sb.from('pipeline_modifiche').select('*');
+    if (error) throw error;
+    const map = {};
+    for (const row of (data || [])) {
+      map[row.codice_cliente] = {
+        escluso: row.escluso === true,
+        gapPersonalizzato: row.gap_personalizzato ?? null,
+        stati: {
+          avvisato: row.stato_avvisato === true,
+          mail:     row.stato_mail === true,
+          mex:      row.stato_mex === true,
+          ordine:   row.stato_ordine === true,
+        },
+      };
+    }
+    return map;
   } catch (e) {
+    console.warn('Errore caricamento modifiche pipeline:', e);
     return {};
   }
 }
 
-function _savePlModifiche() {
+async function _savePlModifica(codice) {
   try {
-    localStorage.setItem('_plModifiche', JSON.stringify(_plModifiche));
+    const m = _plModifiche[codice] || {};
+    await sb.from('pipeline_modifiche').upsert({
+      codice_cliente:     codice,
+      escluso:            m.escluso === true,
+      gap_personalizzato: m.gapPersonalizzato ?? null,
+      stato_avvisato:     m.stati?.avvisato === true,
+      stato_mail:         m.stati?.mail === true,
+      stato_mex:          m.stati?.mex === true,
+      stato_ordine:       m.stati?.ordine === true,
+    }, { onConflict: 'codice_cliente' });
   } catch (e) {
     console.warn('Errore salvataggio modifiche pipeline:', e);
   }
@@ -486,7 +511,7 @@ async function loadBudgetClienti() {
 
     _plCache = null;  // invalida cache pipeline quando i dati rolling vengono ricaricati
     _plOrdiniLoaded = false;
-    _plModifiche = _loadPlModifiche(); // carica modifiche salvate
+    _plModifiche = await _loadPlModifiche(); // carica modifiche salvate
     _bcRows = rows.filter(r => !r._escluso).map(r => {
       const row = {
         cliente:         r.ragione_sociale || '—',
@@ -1155,10 +1180,9 @@ function togglePlEstcluso(codice) {
   const r = _bcRows.find(x => x.codice === codice);
   if (r) {
     r._esclusoManuale = !r._esclusoManuale;
-    // Salva in localStorage
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].escluso = r._esclusoManuale;
-    _savePlModifiche();
+    _savePlModifica(codice);
     renderDettaglioPipeline();
   }
 }
@@ -1169,10 +1193,9 @@ function togglePlStato(codice, chiave) {
   if (r) {
     if (!r._statiPipeline) r._statiPipeline = {};
     r._statiPipeline[chiave] = !r._statiPipeline[chiave];
-    // Salva in localStorage
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].stati = r._statiPipeline;
-    _savePlModifiche();
+    _savePlModifica(codice);
     renderDettaglioPipeline();
   }
 }
@@ -1183,10 +1206,9 @@ function updatePlGap(codice, valore) {
   if (r) {
     const v = parseFloat(valore) || 0;
     r._gapPersonalizzato = v > 0 ? v : null;
-    // Salva in localStorage
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].gapPersonalizzato = r._gapPersonalizzato;
-    _savePlModifiche();
+    _savePlModifica(codice);
     renderDettaglioPipeline();
   }
 }
