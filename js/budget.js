@@ -967,11 +967,18 @@ async function renderDettaglioPipeline() {
 
     // Carica ordini 2025 e 2026 per ogni cliente (solo la prima volta, non ad ogni ricerca)
     if (!_plOrdiniLoaded) {
-      const { data: ordiniRecenti } = await sb.from('ordini')
-        .select('codice_cliente, data_ordine')
-        .gte('data_ordine', '2025-01-01')
-        .lte('data_ordine', '2026-12-31')
-        .order('data_ordine', { ascending: false });
+      const oggiStr = new Date().toISOString().split('T')[0];
+      const [{ data: ordiniRecenti }, { data: agendaVisite }] = await Promise.all([
+        sb.from('ordini')
+          .select('codice_cliente, data_ordine')
+          .gte('data_ordine', '2025-01-01')
+          .lte('data_ordine', '2026-12-31')
+          .order('data_ordine', { ascending: false }),
+        sb.from('agenda_visite')
+          .select('id, codice_cliente, data_visita')
+          .gte('data_visita', oggiStr)
+          .order('data_visita', { ascending: true }),
+      ]);
 
       const ordiniPerCliente = {}; // { cod: [date1, date2, ...] }
       if (ordiniRecenti?.length) {
@@ -981,6 +988,15 @@ async function renderDettaglioPipeline() {
             if (!ordiniPerCliente[cod]) ordiniPerCliente[cod] = [];
             ordiniPerCliente[cod].push(ord.data_ordine);
           }
+        }
+      }
+
+      // Prossima visita già in agenda per cliente (la più vicina fra le future)
+      const agendaPerCliente = {};
+      if (agendaVisite?.length) {
+        for (const v of agendaVisite) {
+          const cod = String(v.codice_cliente || '').trim();
+          if (cod && !agendaPerCliente[cod]) agendaPerCliente[cod] = v;
         }
       }
 
@@ -998,6 +1014,10 @@ async function renderDettaglioPipeline() {
           r.fatt_set_2025, r.fatt_ott_2025, r.fatt_nov_2025, r.fatt_dic_2025,
         ].reduce((s, v) => s + (v || 0), 0);
         r._fatt2025 = fatt2025;
+
+        const av = agendaPerCliente[r.codice];
+        r._agendaVisitaId = av?.id || null;
+        r._agendaData     = av?.data_visita || null;
       }
 
       _plOrdiniLoaded = true;
@@ -1132,6 +1152,9 @@ async function renderDettaglioPipeline() {
                         <i class="ti ${s.icon}"></i>
                       </button>`;
             }).join('')}
+            <input type="date" value="${r._agendaData || ''}" onchange="updatePlAgenda('${cod}', this.value)"
+                   title="Prossima visita in agenda"
+                   style="margin-left:6px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-size:11px;font-family:inherit;vertical-align:middle">
           </td>
         </tr>`;
         if (hitNow) {
@@ -1197,6 +1220,35 @@ function togglePlStato(codice, chiave) {
     _plModifiche[codice].stati = r._statiPipeline;
     _savePlModifica(codice);
     renderDettaglioPipeline();
+  }
+}
+
+// Associa/sposta/rimuove la prossima visita in agenda per il cliente, dal Dettaglio Pipeline
+async function updatePlAgenda(codice, valore) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (!r) return;
+  try {
+    if (!valore) {
+      if (r._agendaVisitaId) {
+        await sb.from('agenda_visite').delete().eq('id', r._agendaVisitaId);
+      }
+      r._agendaVisitaId = null;
+      r._agendaData = null;
+    } else if (r._agendaVisitaId) {
+      await sb.from('agenda_visite').update({ data_visita: valore }).eq('id', r._agendaVisitaId);
+      r._agendaData = valore;
+    } else {
+      const { data, error } = await sb.from('agenda_visite')
+        .insert({ codice_cliente: codice, data_visita: valore, completata: false, generata_auto: false })
+        .select('id')
+        .single();
+      if (error) throw error;
+      r._agendaVisitaId = data.id;
+      r._agendaData = valore;
+    }
+    renderDettaglioPipeline();
+  } catch (e) {
+    alert('Errore salvataggio data agenda: ' + e.message);
   }
 }
 
