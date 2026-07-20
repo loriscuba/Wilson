@@ -11,7 +11,7 @@
  * 3. Per disinstallare: esegui rimuoviTrigger().
  */
 
-const DRIVE_FOLDER_ID     = '1G96ZLk4OS2QR3a53lBtVbpPeBi0uTnMr';   // cartella sorgente (stessa del workflow)
+const DRIVE_FOLDER_ID     = '1gDyiMbh-HNlwk5gc8sx7KYCXz9QjsnRn';   // cartella sorgente vista dall'account Apps Script
 const PROCESSED_FOLDER_ID = '1hXZ7gs5FfbdaVe4SqETBX4rZWHiAVpOw';   // cartella "processed", da ignorare
 const REPO                = 'loriscuba/Wilson';
 const WORKFLOW_FILE       = 'wilson_sync.yml';
