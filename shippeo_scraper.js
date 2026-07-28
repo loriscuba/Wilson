@@ -798,8 +798,10 @@ async function main() {
         const corrU      = ddt.corriere?.toUpperCase() || '';
         const isFedex    = corrU.includes('FEDEX') || corrU.includes('TNT');
         const needFercamUrl  = isFercam && !ddt.fercam_url;
-        // needFercamData: anche quando fercam_url esiste ma fercam_dati è assente o senza eventi
-        const needFercamData = isFercam && ddt.fercam_url && (!ddt.fercam_dati || !ddt.fercam_dati.numero_spedizione);
+        // needFercamData: dati mancanti/incompleti, oppure spedizione non ancora consegnata
+        // (finché è in transito Fercam continua a pubblicare nuovi eventi, va ripresa ad ogni sync)
+        const needFercamData = isFercam && ddt.fercam_url &&
+            (!ddt.fercam_dati || !ddt.fercam_dati.numero_spedizione || ddt.stato !== 'consegnato');
         const needFedexData  = isFedex  && (!ddt.tnt_dati || !ddt.tnt_dati.destinatario);
 
         const { status, etaRaw, deliveredAt, fercamUrl, tntUrl,
