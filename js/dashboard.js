@@ -1,3 +1,72 @@
+// Fatturato "evaso" del giorno: per ogni riga dei DDT emessi oggi, trova la
+// riga corrispondente nell'ordine collegato (ddt.numero_ordine → ordini) sullo
+// stesso codice articolo e ne prende l'importo_eur così com'è (il DDT non ha
+// prezzi, l'ordine sì). NON si moltiplica per la quantità del DDT: il campo
+// quantità dell'ordine può essere corrotto per import PDF con quantità >999
+// (bug storico nel parser, corretto per i nuovi import ma non retroattivo sui
+// dati già a DB), quindi si evita di usarlo come base di calcolo. Il rovescio
+// della medaglia: se una riga d'ordine viene spedita su più DDT in giorni
+// diversi (spedizione parziale), ogni DDT che la referenzia conta l'intero
+// importo della riga — caso raro con questi documenti, ma da tenere a mente.
+async function computeFatturatoOggi(today) {
+  const vuoto = { totale: 0, numDdt: 0, numRigheAbbinate: 0, numRigheNonAbbinate: 0 };
+  try {
+    const { data: ddtOggi, error } = await sb.from('ddt').select('id, numero_ordine').eq('data_ddt', today);
+    if (error) throw error;
+    if (!ddtOggi?.length) return vuoto;
+
+    const ddtIds       = ddtOggi.map(d => d.id);
+    const numeriOrdine = [...new Set(ddtOggi.map(d => d.numero_ordine).filter(Boolean))];
+
+    const [{ data: righeDdt }, { data: ordini }] = await Promise.all([
+      sb.from('righe_ddt').select('ddt_id, codice_articolo').in('ddt_id', ddtIds),
+      numeriOrdine.length
+        ? sb.from('ordini').select('id, numero_ordine').in('numero_ordine', numeriOrdine)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const ordineIdByNumero = Object.fromEntries((ordini || []).map(o => [o.numero_ordine, o.id]));
+    const ordineIds        = (ordini || []).map(o => o.id);
+
+    const { data: righeOrdine } = ordineIds.length
+      ? await sb.from('righe_ordine').select('ordine_id, codice_articolo, importo_eur').in('ordine_id', ordineIds)
+      : { data: [] };
+
+    // Importo per riga d'ordine: chiave ordine_id + codice articolo normalizzato
+    // (il DDT toglie gli zeri iniziali dal codice, l'ordine lo tiene a 8 cifre).
+    const importoPerOrdine = {};
+    for (const r of righeOrdine || []) {
+      const key = `${r.ordine_id}|${Number(r.codice_articolo)}`;
+      importoPerOrdine[key] = (importoPerOrdine[key] || 0) + (Number(r.importo_eur) || 0);
+    }
+
+    const numOrdineByDdtId = Object.fromEntries(ddtOggi.map(d => [d.id, d.numero_ordine]));
+
+    let totale = 0, abbinate = 0, nonAbbinate = 0;
+    const contate = new Set(); // evita doppio conteggio se lo stesso codice compare 2 volte nello stesso DDT
+    for (const r of righeDdt || []) {
+      const numOrdine = numOrdineByDdtId[r.ddt_id];
+      const ordineId  = numOrdine ? ordineIdByNumero[numOrdine] : null;
+      const key       = ordineId ? `${ordineId}|${Number(r.codice_articolo)}` : null;
+
+      if (key && importoPerOrdine[key] != null) {
+        abbinate++;
+        if (!contate.has(key)) {
+          totale += importoPerOrdine[key];
+          contate.add(key);
+        }
+      } else {
+        nonAbbinate++;
+      }
+    }
+
+    return { totale, numDdt: ddtOggi.length, numRigheAbbinate: abbinate, numRigheNonAbbinate: nonAbbinate };
+  } catch (err) {
+    console.error('Errore calcolo fatturato oggi:', err);
+    return vuoto;
+  }
+}
+
 async function loadDashboard() {
   const kpiGrid = document.getElementById('kpi-grid');
   const topBody = document.querySelector('#top-clienti-table tbody');
@@ -21,7 +90,7 @@ async function loadDashboard() {
     const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     const today     = now.toISOString().split('T')[0];
 
-    const [rows, rollingDate, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }] = await Promise.all([
+    const [rows, rollingDate, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }, fatturatoOggi] = await Promise.all([
       loadRollingEnriched(),
       getLatestRollingDate(),
       sb.from('ordini').select('totale_ordine, data_ordine')
@@ -36,6 +105,7 @@ async function loadDashboard() {
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false })
         .limit(1),
+      computeFatturatoOggi(today),
     ]);
 
     // KPI aggregati
@@ -145,6 +215,13 @@ async function loadDashboard() {
         <h3>DDT in ritardo</h3>
         <div class="kpi-value" style="color:${ddtRitardoCount > 0 ? '#C84B2F' : 'var(--text2)'}">${ddtRitardoCount}</div>
         <div class="kpi-sub">ETA superata, non consegnato</div>
+      </div>
+      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" title="Calcolato dai DDT di oggi: quantità consegnata × prezzo medio della riga ordine collegata">
+        <h3>Fatturato evaso oggi</h3>
+        <div class="kpi-value">€${fmt(fatturatoOggi.totale)}</div>
+        <div class="kpi-sub">
+          ${fatturatoOggi.numDdt} DDT · ${fatturatoOggi.numRigheAbbinate} articoli abbinati${fatturatoOggi.numRigheNonAbbinate ? ` · <span style="color:#D97706">${fatturatoOggi.numRigheNonAbbinate} senza prezzo</span>` : ''}
+        </div>
       </div>`;
 
     // Aggiusta altezza flip card in base al contenuto reale delle due facce
