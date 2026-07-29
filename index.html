@@ -1321,9 +1321,64 @@
             .nv-stop-marker { width: 38px; }
             .nv-route-line { left: 19px; }
         }
+
+        /* ── Login gate (PIN) ── */
+        body.wilson-locked .top-nav,
+        body.wilson-locked .main-content,
+        body.wilson-locked .mobile-drawer-overlay,
+        body.wilson-locked .bottom-nav { display: none !important; }
+        #wilson-login-overlay { display: none; }
+        body.wilson-locked #wilson-login-overlay { display: flex; }
+        #wilson-login-overlay {
+            position: fixed; inset: 0; z-index: 99999;
+            background: var(--sidebar-bg);
+            align-items: center; justify-content: center;
+        }
+        .wl-card {
+            background: var(--surface); border-radius: 10px; padding: 36px 32px;
+            width: 280px; max-width: 90vw; text-align: center;
+            box-shadow: 0 8px 30px rgba(0,0,0,.35);
+        }
+        .wl-brand { font-family: 'Syne', sans-serif; font-size: 22px; color: var(--text); margin-bottom: 4px; }
+        .wl-sub { font-size: 12.5px; color: var(--text2); margin-bottom: 22px; }
+        .wl-digits { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; }
+        .wl-digits input {
+            width: 44px; height: 52px; text-align: center; font-size: 22px; font-weight: 600;
+            border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+        }
+        .wl-digits input:focus { outline: none; border-color: var(--accent); }
+        .wl-digits.wl-shake { animation: wl-shake .35s; }
+        @keyframes wl-shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-8px); }
+            75% { transform: translateX(8px); }
+        }
+        .wl-error { font-size: 12px; color: var(--red); min-height: 16px; margin-bottom: 10px; }
+        .wl-btn {
+            width: 100%; padding: 10px; border: none; border-radius: 8px;
+            background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        .wl-btn:hover { opacity: .92; }
     </style>
 </head>
-<body>
+<body class="wilson-locked">
+    <div id="wilson-login-overlay">
+        <div class="wl-card">
+            <div class="wl-brand">Wilson</div>
+            <div class="wl-sub">Inserisci il PIN per accedere</div>
+            <div class="wl-error" id="wl-error"></div>
+            <div class="wl-digits" id="wl-digits">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+            </div>
+            <button class="wl-btn" id="wl-submit">Entra</button>
+        </div>
+    </div>
+    <script src="js/auth.js?v=1"></script>
+
     <nav class="top-nav" id="top-nav">
       <span class="top-nav-brand">Wilson</span>
       <div class="top-nav-links">
