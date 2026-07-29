@@ -185,6 +185,13 @@ async function loadDashboard() {
           </div>
         </div>
       </div>
+      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" title="Somma degli importi delle righe ordine abbinate ai DDT emessi oggi">
+        <h3>Fatturato evaso oggi</h3>
+        <div class="kpi-value">€${fmt(fatturatoOggi.totale)}</div>
+        <div class="kpi-sub">
+          ${fatturatoOggi.numDdt} DDT · ${fatturatoOggi.numRigheAbbinate} articoli abbinati${fatturatoOggi.numRigheNonAbbinate ? ` · <span style="color:#D97706">${fatturatoOggi.numRigheNonAbbinate} senza prezzo</span>` : ''}
+        </div>
+      </div>
       <div class="kpi-card">
         <h3>Consuntivo ${progLabel}</h3>
         <div class="kpi-value">€${fmt(totProg26)}</div>
@@ -215,13 +222,6 @@ async function loadDashboard() {
         <h3>DDT in ritardo</h3>
         <div class="kpi-value" style="color:${ddtRitardoCount > 0 ? '#C84B2F' : 'var(--text2)'}">${ddtRitardoCount}</div>
         <div class="kpi-sub">ETA superata, non consegnato</div>
-      </div>
-      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" title="Calcolato dai DDT di oggi: quantità consegnata × prezzo medio della riga ordine collegata">
-        <h3>Fatturato evaso oggi</h3>
-        <div class="kpi-value">€${fmt(fatturatoOggi.totale)}</div>
-        <div class="kpi-sub">
-          ${fatturatoOggi.numDdt} DDT · ${fatturatoOggi.numRigheAbbinate} articoli abbinati${fatturatoOggi.numRigheNonAbbinate ? ` · <span style="color:#D97706">${fatturatoOggi.numRigheNonAbbinate} senza prezzo</span>` : ''}
-        </div>
       </div>`;
 
     // Aggiusta altezza flip card in base al contenuto reale delle due facce
