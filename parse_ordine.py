@@ -29,6 +29,13 @@ def data_it(val):
     except:
         return None
 
+def int_it(val):
+    """'4.000' -> 4000 (punto delle migliaia); None se non è un intero valido."""
+    try:
+        return int(str(val).replace('.', ''))
+    except (ValueError, TypeError):
+        return None
+
 
 RE_DATA      = re.compile(r'Data\s+(\d{2}\.\d{2}\.\d{4})')
 RE_NUM_CLI   = re.compile(r'Numero di cliente\s+(\d+)')
@@ -61,18 +68,15 @@ def parse_riga(tokens):
     um_idx = None
     for i in range(2, len(tokens)):
         if tokens[i] in UM_PRICED | {'IMB'}:
-            try:
-                int(tokens[i - 1])
+            if int_it(tokens[i - 1]) is not None:
                 um_idx = i
                 break
-            except ValueError:
-                continue
 
     if um_idx is None:
         return None
 
     um = tokens[um_idx]
-    qty = int(tokens[um_idx - 1])
+    qty = int_it(tokens[um_idx - 1])
     descrizione = ' '.join(tokens[1:um_idx - 1])
 
     # IMB rows: no pricing info, skip for DB insert

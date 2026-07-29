@@ -1,8 +1,13 @@
-// Fatturato "evaso" del giorno: somma, per ogni riga dei DDT emessi oggi,
-// quantità consegnata × prezzo medio (importo_eur/quantita) della stessa riga
-// nell'ordine collegato (ddt.numero_ordine → ordini.numero_ordine). I DDT
-// non hanno il prezzo: va recuperato dall'ordine, quindi righe senza ordine
-// abbinato o senza quel codice articolo nell'ordine restano "non abbinate".
+// Fatturato "evaso" del giorno: per ogni riga dei DDT emessi oggi, trova la
+// riga corrispondente nell'ordine collegato (ddt.numero_ordine → ordini) sullo
+// stesso codice articolo e ne prende l'importo_eur così com'è (il DDT non ha
+// prezzi, l'ordine sì). NON si moltiplica per la quantità del DDT: il campo
+// quantità dell'ordine può essere corrotto per import PDF con quantità >999
+// (bug storico nel parser, corretto per i nuovi import ma non retroattivo sui
+// dati già a DB), quindi si evita di usarlo come base di calcolo. Il rovescio
+// della medaglia: se una riga d'ordine viene spedita su più DDT in giorni
+// diversi (spedizione parziale), ogni DDT che la referenzia conta l'intero
+// importo della riga — caso raro con questi documenti, ma da tenere a mente.
 async function computeFatturatoOggi(today) {
   const vuoto = { totale: 0, numDdt: 0, numRigheAbbinate: 0, numRigheNonAbbinate: 0 };
   try {
@@ -14,7 +19,7 @@ async function computeFatturatoOggi(today) {
     const numeriOrdine = [...new Set(ddtOggi.map(d => d.numero_ordine).filter(Boolean))];
 
     const [{ data: righeDdt }, { data: ordini }] = await Promise.all([
-      sb.from('righe_ddt').select('ddt_id, codice_articolo, quantita').in('ddt_id', ddtIds),
+      sb.from('righe_ddt').select('ddt_id, codice_articolo').in('ddt_id', ddtIds),
       numeriOrdine.length
         ? sb.from('ordini').select('id, numero_ordine').in('numero_ordine', numeriOrdine)
         : Promise.resolve({ data: [] }),
@@ -24,30 +29,32 @@ async function computeFatturatoOggi(today) {
     const ordineIds        = (ordini || []).map(o => o.id);
 
     const { data: righeOrdine } = ordineIds.length
-      ? await sb.from('righe_ordine').select('ordine_id, codice_articolo, quantita, importo_eur').in('ordine_id', ordineIds)
+      ? await sb.from('righe_ordine').select('ordine_id, codice_articolo, importo_eur').in('ordine_id', ordineIds)
       : { data: [] };
 
-    // Prezzo medio per riga d'ordine: chiave ordine_id + codice articolo normalizzato
+    // Importo per riga d'ordine: chiave ordine_id + codice articolo normalizzato
     // (il DDT toglie gli zeri iniziali dal codice, l'ordine lo tiene a 8 cifre).
-    const prezziPerOrdine = {};
+    const importoPerOrdine = {};
     for (const r of righeOrdine || []) {
       const key = `${r.ordine_id}|${Number(r.codice_articolo)}`;
-      if (!prezziPerOrdine[key]) prezziPerOrdine[key] = { qty: 0, importo: 0 };
-      prezziPerOrdine[key].qty     += Number(r.quantita)    || 0;
-      prezziPerOrdine[key].importo += Number(r.importo_eur) || 0;
+      importoPerOrdine[key] = (importoPerOrdine[key] || 0) + (Number(r.importo_eur) || 0);
     }
 
     const numOrdineByDdtId = Object.fromEntries(ddtOggi.map(d => [d.id, d.numero_ordine]));
 
     let totale = 0, abbinate = 0, nonAbbinate = 0;
+    const contate = new Set(); // evita doppio conteggio se lo stesso codice compare 2 volte nello stesso DDT
     for (const r of righeDdt || []) {
       const numOrdine = numOrdineByDdtId[r.ddt_id];
       const ordineId  = numOrdine ? ordineIdByNumero[numOrdine] : null;
-      const prezzo    = ordineId ? prezziPerOrdine[`${ordineId}|${Number(r.codice_articolo)}`] : null;
+      const key       = ordineId ? `${ordineId}|${Number(r.codice_articolo)}` : null;
 
-      if (prezzo && prezzo.qty > 0) {
-        totale += (prezzo.importo / prezzo.qty) * (Number(r.quantita) || 0);
+      if (key && importoPerOrdine[key] != null) {
         abbinate++;
+        if (!contate.has(key)) {
+          totale += importoPerOrdine[key];
+          contate.add(key);
+        }
       } else {
         nonAbbinate++;
       }
