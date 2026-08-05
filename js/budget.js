@@ -189,7 +189,10 @@ async function loadBudgetPremio() {
   const root = document.getElementById('bpane-premio');
   if (!root) return;
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const now       = new Date();
+    const today     = now.toISOString().split('T')[0];
+    const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     const [{ data: bArr }, { data: focus }, rows, { data: cediRaw }] = await Promise.all([
       sb.from('budget').select('budget_mese,evaso,data_aggiornamento')
         .lte('data_aggiornamento', today)
@@ -201,6 +204,7 @@ async function loadBudgetPremio() {
       loadRollingEnriched(),
       sb.from('cedi_ridistribuito')
         .select('valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
         .order('data_aggiornamento', { ascending: false }),
     ]);
 
@@ -344,7 +348,10 @@ async function loadBudgetMensile() {
   const root = document.getElementById('bpane-mensile');
   if (!root) return;
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const now       = new Date();
+    const today     = now.toISOString().split('T')[0];
+    const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     const [{ data: latestArr, error: bErr }, { data: bMonthArr }, { data: cediRaw }] = await Promise.all([
       sb.from('budget').select('*').lte('data_aggiornamento', today)
         .order('data_aggiornamento', { ascending: false }).limit(1),
@@ -352,6 +359,7 @@ async function loadBudgetMensile() {
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false }).limit(1),
       sb.from('cedi_ridistribuito').select('valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
         .order('data_aggiornamento', { ascending: false }),
     ]);
     if (bErr) throw bErr;
