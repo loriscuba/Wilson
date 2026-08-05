@@ -98,6 +98,7 @@ async function loadDashboard() {
       sb.from('ddt').select('stato, stato_shippeo, eta_shippeo').neq('stato', 'consegnato'),
       sb.from('cedi_ridistribuito')
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
         .order('data_aggiornamento', { ascending: false })
         .order('valore_ridistribuito', { ascending: false }),
       sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento, budget_gen_apr, evaso_ordinato_resi')
