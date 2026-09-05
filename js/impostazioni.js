@@ -41,6 +41,7 @@ let _cfgQuery = '';
 
 async function loadImpostazioni() {
   _renderTokenSection();
+  loadGammaConfig();
   const root = document.getElementById('cfg-clienti-root');
   if (!root) return;
   root.innerHTML = '<div class="loading">Caricamento…</div>';
@@ -288,4 +289,101 @@ async function saveClienteNote(codice, note) {
 function onCfgSearch(q) {
   _cfgQuery = q;
   _renderCfgRows();
+}
+
+// ── Impostazioni → Gestione gamma config ──────────────────────────────────────
+
+let _gammaCfgRows = [];
+
+async function loadGammaConfig() {
+  const root = document.getElementById('cfg-gamma-root');
+  if (!root) return;
+  root.innerHTML = '<div class="loading">Caricamento gamma…</div>';
+  try {
+    const { data, error } = await sb.from('gamma_config')
+      .select('id, settore, codice_articolo, nome_prodotto, tipo, immagine_url, ordine, attivo')
+      .order('settore').order('ordine');
+    if (error) throw error;
+    _gammaCfgRows = data || [];
+    _renderGammaConfig(root);
+  } catch (err) {
+    root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
+
+function _renderGammaConfig(root) {
+  const settori = [...new Set(_gammaCfgRows.map(r => r.settore))].sort();
+  root.innerHTML = `
+    <p class="b-sec" style="margin-top:0">configurazione gamma per settore</p>
+    <div class="b-panel" style="padding:1rem 1.25rem;margin-bottom:1rem">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:.75rem">
+        Aggiungi prodotti target per settore. Compaiono nel dettaglio gamma di ogni cliente.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
+        <div><label class="cfg-lbl">Settore</label>
+          <input id="gcfg-settore" class="filter-input" placeholder="es. ALIMENTARI" style="width:100%"></div>
+        <div><label class="cfg-lbl">Nome prodotto</label>
+          <input id="gcfg-nome" class="filter-input" placeholder="es. Ketchup 1kg" style="width:100%"></div>
+        <div><label class="cfg-lbl">Codice articolo</label>
+          <input id="gcfg-cod" class="filter-input" placeholder="es. KET001" style="width:100%"></div>
+        <div><label class="cfg-lbl">Tipo</label>
+          <input id="gcfg-tipo" class="filter-input" placeholder="es. Immancabile" style="width:100%"></div>
+        <div><label class="cfg-lbl">URL immagine</label>
+          <input id="gcfg-img" class="filter-input" placeholder="https://…" style="width:100%"></div>
+      </div>
+      <button class="btn-nuova-stat" style="margin-top:10px" onclick="addGammaProdotto()">+ Aggiungi prodotto</button>
+    </div>
+    ${settori.length ? settori.map(s => {
+      const rows = _gammaCfgRows.filter(r => r.settore === s);
+      return `<div class="b-panel" style="padding:.75rem 1rem;margin-bottom:.75rem">
+        <p class="b-sec" style="margin-top:0;margin-bottom:.5rem">${s}</p>
+        <table class="b-tbl" style="width:100%">
+          <thead><tr><th>Nome prodotto</th><th>Codice</th><th>Tipo</th><th style="text-align:center">Attivo</th><th></th></tr></thead>
+          <tbody>${rows.map(r => `<tr>
+            <td>${r.nome_prodotto}</td>
+            <td style="font-size:12px;color:var(--text2)">${r.codice_articolo || '—'}</td>
+            <td style="font-size:12px;color:var(--text2)">${r.tipo || '—'}</td>
+            <td style="text-align:center">
+              <label class="cfg-toggle"><input type="checkbox" ${r.attivo ? 'checked' : ''} onchange="toggleGammaProdottoAttivo(${r.id}, this.checked)"><span class="cfg-slider"></span></label>
+            </td>
+            <td style="text-align:center"><button class="btn-del-cfg" onclick="deleteGammaProdotto(${r.id})">✕</button></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+    }).join('') : '<p style="color:var(--text2);font-size:13px;padding:.5rem 0">Nessun prodotto configurato.</p>'}`;
+}
+
+async function addGammaProdotto() {
+  const settore = document.getElementById('gcfg-settore')?.value.trim();
+  const nome    = document.getElementById('gcfg-nome')?.value.trim();
+  const codice  = document.getElementById('gcfg-cod')?.value.trim()  || null;
+  const tipo    = document.getElementById('gcfg-tipo')?.value.trim() || null;
+  const img     = document.getElementById('gcfg-img')?.value.trim()  || null;
+  if (!settore || !nome) { alert('Settore e nome prodotto sono obbligatori'); return; }
+  try {
+    const { error } = await sb.from('gamma_config').insert({
+      settore, nome_prodotto: nome, codice_articolo: codice, tipo, immagine_url: img,
+      ordine: (_gammaCfgRows.filter(r => r.settore === settore).length + 1), attivo: true,
+    });
+    if (error) throw error;
+    await loadGammaConfig();
+  } catch (err) { alert('Errore: ' + err.message); }
+}
+
+async function toggleGammaProdottoAttivo(id, attivo) {
+  try {
+    await sb.from('gamma_config').update({ attivo }).eq('id', id);
+    const row = _gammaCfgRows.find(r => r.id === id);
+    if (row) row.attivo = attivo;
+  } catch (err) { console.error('Errore:', err.message); }
+}
+
+async function deleteGammaProdotto(id) {
+  if (!confirm('Eliminare questo prodotto?')) return;
+  try {
+    await sb.from('gamma_config').delete().eq('id', id);
+    _gammaCfgRows = _gammaCfgRows.filter(r => r.id !== id);
+    const root = document.getElementById('cfg-gamma-root');
+    if (root) _renderGammaConfig(root);
+  } catch (err) { alert('Errore: ' + err.message); }
 }

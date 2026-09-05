@@ -128,7 +128,7 @@ async function loadClienteDetail(codice, nome, container) {
     const annoP   = now.getFullYear() - 1;
     const latestDate = await getLatestRollingDate();
 
-    const [{ data: rollingRec }, { data: ordiniAttivi }, { data: gammaData }, { data: ordiniStorico }, { data: gammaRefData }] =
+    const [{ data: rollingRec }, { data: ordiniAttivi }, { data: gammaData }, { data: ordiniStorico }, { data: gammaRefData }, { data: gammaCfgData }] =
       await Promise.all([
         sb.from('rolling_fatturato')
           .select([
@@ -156,6 +156,10 @@ async function loadClienteDetail(codice, nome, container) {
           .limit(24),
         sb.from('gamma_penetrazione')
           .select('settore, prodotti_acquistati'),
+        sb.from('gamma_config')
+          .select('settore, codice_articolo, nome_prodotto, tipo, immagine_url, ordine')
+          .eq('attivo', true)
+          .order('settore').order('ordine'),
       ]);
 
     const r       = enrichRecord(rollingRec || {});
@@ -180,31 +184,14 @@ async function loadClienteDetail(codice, nome, container) {
       }
     }
 
-    // Gamma HTML
+    // Gamma config map: settore → array of configured products
+    const gammaConfigMap = {};
+    for (const row of (gammaCfgData || [])) {
+      if (!gammaConfigMap[row.settore]) gammaConfigMap[row.settore] = [];
+      gammaConfigMap[row.settore].push(row);
+    }
+
     const gamma = gammaData || [];
-    const gammaHTML = gamma.length
-      ? `<div class="gamma-settori">${gamma.map(g => {
-          const prods       = g.prodotti_acquistati ? Object.entries(g.prodotti_acquistati) : [];
-          const acquistatiK = new Set(Object.keys(g.prodotti_acquistati || {}).map(p => p.toLowerCase()));
-          const refMap      = gammaRef[g.settore] || new Map();
-          const mancanti    = [...refMap.entries()].filter(([k]) => !acquistatiK.has(k)).map(([, v]) => v);
-          const pctImm = g.pct_immancabili != null ? (g.pct_immancabili * 100).toFixed(0) : null;
-          const pctStr = g.pct_strategiche  != null ? (g.pct_strategiche  * 100).toFixed(0) : null;
-          return `<div class="gamma-settore-card">
-            <div class="gamma-settore-header">
-              <span class="gamma-settore-nome">${g.settore}</span>
-              <div class="gamma-pct-badges">
-                ${pctImm != null ? `<span class="gamma-pct-badge imm">Immancabili ${pctImm}%</span>` : ''}
-                ${pctStr != null ? `<span class="gamma-pct-badge str">Strategiche ${pctStr}%</span>` : ''}
-              </div>
-            </div>
-            ${(prods.length || mancanti.length) ? `<div class="gamma-prodotti">
-              ${prods.map(([l, v]) => `<span class="gamma-prod-tag" title="€${fmt(v)}">✓ ${l}</span>`).join('')}
-              ${mancanti.map(l => `<span class="gamma-prod-tag gamma-prod-missing">✗ ${l}</span>`).join('')}
-            </div>` : ''}
-          </div>`;
-        }).join('')}</div>`
-      : `<div class="cks">Nessun dato gamma per questo cliente</div>`;
 
     // Ritmo ordini
     const ritmo       = calcolaRitmoOrdini(ordiniStorico || []);
@@ -256,8 +243,14 @@ async function loadClienteDetail(codice, nome, container) {
         ${ritmoHTML}
       </div>
       <div class="gamma-section">
-        <h4>Penetrazione gamma${gamma.length ? ' · agg. ' + fmtDate(gamma[0].data_aggiornamento) : ''}</h4>
-        ${gammaHTML}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <h4 style="margin-bottom:0">Penetrazione gamma${gamma.length ? ' · agg. ' + fmtDate(gamma[0].data_aggiornamento) : ''}</h4>
+          ${gamma.length ? `<button class="gamma-detail-btn" id="gamma-det-btn-${codice}" onclick="toggleGammaDettaglio('${codice}')">Dettaglio ↓</button>` : ''}
+        </div>
+        <div id="gamma-compact-${codice}">
+          ${gamma.length ? _buildGammaCompact(gamma, gammaRef) : '<div class="cks">Nessun dato gamma per questo cliente</div>'}
+        </div>
+        ${gamma.length ? `<div id="gamma-det-${codice}" style="display:none;margin-top:12px;">${_buildGammaDettaglio(gamma, gammaRef, gammaConfigMap)}</div>` : ''}
       </div>`;
 
     container.dataset.loaded = '1';
@@ -316,6 +309,103 @@ function goToOrdiniFiltered(codice) {
   _filtroStatoOrdine = null;
   document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
   loadOrdini();
+}
+
+function toggleGammaDettaglio(codice) {
+  const det     = document.getElementById('gamma-det-'     + codice);
+  const compact = document.getElementById('gamma-compact-' + codice);
+  const btn     = document.getElementById('gamma-det-btn-' + codice);
+  if (!det) return;
+  const open = det.style.display !== 'none';
+  det.style.display     = open ? 'none'  : 'block';
+  compact.style.display = open ? 'block' : 'none';
+  if (btn) btn.textContent = open ? 'Dettaglio ↓' : 'Compatto ↑';
+}
+
+function _buildGammaCompact(gamma, gammaRef) {
+  return `<div class="gamma-settori">${gamma.map(g => {
+    const acquistatiK = new Set(Object.keys(g.prodotti_acquistati || {}).map(p => p.toLowerCase()));
+    const prods = g.prodotti_acquistati ? Object.entries(g.prodotti_acquistati) : [];
+    const refMap = gammaRef[g.settore] || new Map();
+    const mancanti = [...refMap.entries()].filter(([k]) => !acquistatiK.has(k)).map(([, v]) => v);
+    const tot = acquistatiK.size + mancanti.length;
+    const pctImm = g.pct_immancabili != null ? (g.pct_immancabili * 100).toFixed(0) : null;
+    const pctStr = g.pct_strategiche  != null ? (g.pct_strategiche  * 100).toFixed(0) : null;
+    return `<div class="gamma-settore-card">
+      <div class="gamma-settore-header">
+        <span class="gamma-settore-nome">${g.settore}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${tot > 0 ? `<span style="font-size:12px;color:var(--text2)">${acquistatiK.size}/${tot}</span>` : ''}
+          <div class="gamma-pct-badges">
+            ${pctImm != null ? `<span class="gamma-pct-badge imm">Imm. ${pctImm}%</span>` : ''}
+            ${pctStr != null ? `<span class="gamma-pct-badge str">Str. ${pctStr}%</span>` : ''}
+          </div>
+        </div>
+      </div>
+      ${(prods.length || mancanti.length) ? `<div class="gamma-prodotti">
+        ${prods.map(([l, v]) => `<span class="gamma-prod-tag" title="€${fmt(v)}">✓ ${l}</span>`).join('')}
+        ${mancanti.map(l => `<span class="gamma-prod-tag gamma-prod-missing">✗ ${l}</span>`).join('')}
+      </div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function _buildGammaDettaglio(gamma, gammaRef, gammaConfigMap) {
+  return `<div class="gamma-det-root">${gamma.map(g => {
+    const acquistatiV = {};
+    for (const [k, v] of Object.entries(g.prodotti_acquistati || {})) acquistatiV[k.toLowerCase()] = v;
+    const acquistatiK = new Set(Object.keys(acquistatiV));
+    const pctImm = g.pct_immancabili != null ? (g.pct_immancabili * 100).toFixed(0) : null;
+    const pctStr = g.pct_strategiche  != null ? (g.pct_strategiche  * 100).toFixed(0) : null;
+    let products = [];
+    const cfgRows = gammaConfigMap[g.settore];
+    if (cfgRows && cfgRows.length) {
+      products = cfgRows.map(row => {
+        const key = (row.nome_prodotto || '').toLowerCase();
+        const acq = acquistatiK.has(key);
+        return { nome: row.nome_prodotto, codice: row.codice_articolo || '', tipo: row.tipo || '',
+          img: row.immagine_url || '', acquistato: acq, valore: acq ? acquistatiV[key] : null };
+      });
+    } else {
+      const refMap = gammaRef[g.settore] || new Map();
+      const allKeys = new Set([...acquistatiK, ...[...refMap.keys()]]);
+      allKeys.forEach(k => {
+        const nome = refMap.get(k) || k;
+        products.push({ nome, codice: '', tipo: '', img: '', acquistato: acquistatiK.has(k), valore: acquistatiV[k] || null });
+      });
+    }
+    const tot = products.length;
+    const acq = products.filter(p => p.acquistato).length;
+    const pct = tot > 0 ? Math.round((acq / tot) * 100) : 0;
+    return `<div class="gamma-det-settore">
+      <div class="gamma-det-settore-header">
+        <span class="gamma-settore-nome">${g.settore}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="gamma-pct-badges">
+            ${pctImm != null ? `<span class="gamma-pct-badge imm">Imm. ${pctImm}%</span>` : ''}
+            ${pctStr != null ? `<span class="gamma-pct-badge str">Str. ${pctStr}%</span>` : ''}
+          </div>
+          <span style="font-size:12px;color:var(--text2)">${acq}/${tot}</span>
+        </div>
+      </div>
+      ${tot > 0 ? `<div class="gamma-det-progress"><div class="gamma-det-progress-bar" style="width:${pct}%"></div></div>` : ''}
+      <div class="gamma-det-cards">
+        ${products.map(p => `<div class="gamma-det-card ${p.acquistato ? 'gamma-det-acquired' : 'gamma-det-missing'}">
+          <div class="gamma-det-img-wrap">
+            ${p.img ? `<img class="gamma-det-img" src="${p.img}" alt="${p.nome}" loading="lazy">` : `<div class="gamma-det-img-placeholder">${p.nome.charAt(0).toUpperCase()}</div>`}
+          </div>
+          <div class="gamma-det-info">
+            <div class="gamma-det-nome">${p.nome}</div>
+            ${p.codice ? `<div class="gamma-det-cod">${p.codice}</div>` : ''}
+            ${p.tipo   ? `<div class="gamma-det-tipo">${p.tipo}</div>`   : ''}
+            <div class="gamma-det-stato ${p.acquistato ? 'gamma-det-ok' : 'gamma-det-no'}">
+              ${p.acquistato ? `✓ Acquistato${p.valore ? ' · €' + fmt(p.valore) : ''}` : '✗ Non acquistato'}
+            </div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function goToOrdineFromDDT(numeroOrdine) {
