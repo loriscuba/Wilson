@@ -53,6 +53,7 @@ async function _loadLookups() {
 
 async function loadImpostazioni() {
   _renderTokenSection();
+  loadGammaConfig();
   const root = document.getElementById('cfg-clienti-root');
   if (!root) return;
   root.innerHTML = '<div class="loading">Caricamento…</div>';
@@ -317,213 +318,99 @@ function onCfgSearch(q) {
   _renderCfgRows();
 }
 
-// ── Modal modifica / nuovo cliente ────────────────────────────────────────────
+// ── Impostazioni → Gestione gamma config ──────────────────────────────────────
 
-function _getOverlay() {
-  let el = document.getElementById('cfg-cliente-modal-overlay');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'cfg-cliente-modal-overlay';
-    el.className = 'cfg-modal-overlay';
-    el.addEventListener('click', e => { if (e.target === el) closeCfgClienteModal(); });
-    document.body.appendChild(el);
-  }
-  return el;
-}
+let _gammaCfgRows = [];
 
-function closeCfgClienteModal() {
-  const el = document.getElementById('cfg-cliente-modal-overlay');
-  if (el) el.classList.remove('open');
-}
-
-function _buildClienteModalHTML(row, isNew) {
-  const settoreOpts = _cfgSettori.map(s =>
-    `<option value="${s.id}" ${row?.settoreId === s.id ? 'selected' : ''}>${s.nome}</option>`
-  ).join('');
-  const catOpts = _cfgCategorie.map(c =>
-    `<option value="${c.id}" ${row?.categoriaId === c.id ? 'selected' : ''}>${c.nome}</option>`
-  ).join('');
-
-  return `
-    <div class="cfg-modal" onclick="event.stopPropagation()">
-      <div class="stat-modal-header">
-        <span class="stat-modal-title">${isNew ? 'Nuovo cliente' : 'Modifica cliente'}</span>
-        <button class="stat-modal-close" onclick="closeCfgClienteModal()">✕</button>
-      </div>
-      <div class="stat-modal-body">
-        ${isNew ? `
-        <div class="stat-field">
-          <label class="stat-label">Codice cliente *</label>
-          <input type="text" id="cmod-codice" class="filter-input" style="width:100%"
-            placeholder="Es. 123456" value="">
-        </div>` : `
-        <div class="stat-field">
-          <label class="stat-label">Codice cliente</label>
-          <input type="text" class="filter-input" style="width:100%;opacity:.6" value="${row.codice}" disabled>
-        </div>`}
-        <div class="stat-field">
-          <label class="stat-label">Ragione sociale *</label>
-          <input type="text" id="cmod-nome" class="filter-input" style="width:100%"
-            value="${row?.nome && row.nome !== '—' ? _esc(row.nome) : ''}">
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 80px;gap:10px">
-          <div class="stat-field">
-            <label class="stat-label">Indirizzo</label>
-            <input type="text" id="cmod-indirizzo" class="filter-input" style="width:100%"
-              value="${_esc(row?.indirizzo || '')}">
-          </div>
-          <div class="stat-field">
-            <label class="stat-label">Civico</label>
-            <input type="text" id="cmod-civico" class="filter-input" style="width:100%"
-              value="${_esc(row?.civico || '')}">
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 80px 80px;gap:10px">
-          <div class="stat-field">
-            <label class="stat-label">Città</label>
-            <input type="text" id="cmod-citta" class="filter-input" style="width:100%"
-              value="${_esc(row?.citta && row.citta !== '—' ? row.citta : '')}">
-          </div>
-          <div class="stat-field">
-            <label class="stat-label">Prov.</label>
-            <input type="text" id="cmod-provincia" class="filter-input" style="width:100%;text-transform:uppercase"
-              maxlength="2" value="${_esc(row?.provincia || '')}">
-          </div>
-          <div class="stat-field">
-            <label class="stat-label">CAP</label>
-            <input type="text" id="cmod-cap" class="filter-input" style="width:100%"
-              maxlength="5" value="${_esc(row?.cap || '')}">
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="stat-field">
-            <label class="stat-label">Settore</label>
-            <select id="cmod-settore" class="filter-input" style="width:100%">
-              <option value="">— nessuno —</option>
-              ${settoreOpts}
-            </select>
-          </div>
-          <div class="stat-field">
-            <label class="stat-label">Categoria</label>
-            <select id="cmod-categoria" class="filter-input" style="width:100%">
-              <option value="">— nessuna —</option>
-              ${catOpts}
-            </select>
-          </div>
-        </div>
-        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:4px">
-          <button class="btn-secondary" onclick="closeCfgClienteModal()">Annulla</button>
-          <button class="btn-nuova-stat" onclick="${isNew ? 'saveNuovoCliente()' : `saveEditCliente('${row.codice}')`}">
-            ${isNew ? 'Crea cliente' : 'Salva modifiche'}
-          </button>
-        </div>
-      </div>
-    </div>`;
-}
-
-async function openEditClienteModal(codice) {
-  await _loadLookups();
-  const row = _cfgRows.find(r => r.codice === codice);
-  const overlay = _getOverlay();
-  overlay.innerHTML = _buildClienteModalHTML(row, false);
-  overlay.classList.add('open');
-}
-
-async function openNuovoClienteModal() {
-  await _loadLookups();
-  const overlay = _getOverlay();
-  overlay.innerHTML = _buildClienteModalHTML(null, true);
-  overlay.classList.add('open');
-}
-
-async function saveEditCliente(codice) {
-  const nome      = document.getElementById('cmod-nome')?.value.trim();
-  const indirizzo = document.getElementById('cmod-indirizzo')?.value.trim() || null;
-  const civico    = document.getElementById('cmod-civico')?.value.trim()    || null;
-  const citta     = document.getElementById('cmod-citta')?.value.trim()     || null;
-  const provincia = document.getElementById('cmod-provincia')?.value.trim().toUpperCase() || null;
-  const cap       = document.getElementById('cmod-cap')?.value.trim()       || null;
-  const settoreId   = document.getElementById('cmod-settore')?.value   || null;
-  const categoriaId = document.getElementById('cmod-categoria')?.value || null;
-
-  if (!nome) { alert('La ragione sociale è obbligatoria.'); return; }
-
+async function loadGammaConfig() {
+  const root = document.getElementById('cfg-gamma-root');
+  if (!root) return;
+  root.innerHTML = '<div class="loading">Caricamento gamma…</div>';
   try {
-    const payload = { ragione_sociale: nome, indirizzo, civico, citta, provincia, cap,
-      settore_id: settoreId || null, categoria_id: categoriaId || null };
-
-    const row = _cfgRows.find(r => r.codice === codice);
-    if (row?.inAnag) {
-      await sb.from('clienti').update(payload).eq('codice_cliente', codice);
-    } else {
-      await sb.from('clienti').insert({ ...payload, codice_cliente: codice, attivo: true });
-    }
-
-    // Aggiorna la riga locale
-    if (row) {
-      Object.assign(row, {
-        nome, indirizzo: indirizzo || '', civico: civico || '',
-        citta: citta || '—', provincia: provincia || '', cap: cap || '',
-        settoreId: settoreId || null,
-        settoreNome: _cfgSettori.find(s => s.id === settoreId)?.nome || '—',
-        categoriaId: categoriaId || null,
-        categoriaNome: _cfgCategorie.find(c => c.id === categoriaId)?.nome || '—',
-        inAnag: true,
-      });
-    }
-
-    closeCfgClienteModal();
-    _renderCfgRows();
-    _clientiData = [];
+    const { data, error } = await sb.from('gamma_config')
+      .select('id, settore, codice_articolo, nome_prodotto, tipo, immagine_url, ordine, attivo')
+      .order('settore').order('ordine');
+    if (error) throw error;
+    _gammaCfgRows = data || [];
+    _renderGammaConfig(root);
   } catch (err) {
-    alert('Errore nel salvataggio: ' + err.message);
+    root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
   }
 }
 
-async function saveNuovoCliente() {
-  const codice    = document.getElementById('cmod-codice')?.value.trim();
-  const nome      = document.getElementById('cmod-nome')?.value.trim();
-  const indirizzo = document.getElementById('cmod-indirizzo')?.value.trim() || null;
-  const civico    = document.getElementById('cmod-civico')?.value.trim()    || null;
-  const citta     = document.getElementById('cmod-citta')?.value.trim()     || null;
-  const provincia = document.getElementById('cmod-provincia')?.value.trim().toUpperCase() || null;
-  const cap       = document.getElementById('cmod-cap')?.value.trim()       || null;
-  const settoreId   = document.getElementById('cmod-settore')?.value   || null;
-  const categoriaId = document.getElementById('cmod-categoria')?.value || null;
+function _renderGammaConfig(root) {
+  const settori = [...new Set(_gammaCfgRows.map(r => r.settore))].sort();
+  root.innerHTML = `
+    <p class="b-sec" style="margin-top:0">configurazione gamma per settore</p>
+    <div class="b-panel" style="padding:1rem 1.25rem;margin-bottom:1rem">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:.75rem">
+        Aggiungi prodotti target per settore. Compaiono nel dettaglio gamma di ogni cliente.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
+        <div><label class="cfg-lbl">Settore</label>
+          <input id="gcfg-settore" class="filter-input" placeholder="es. ALIMENTARI" style="width:100%"></div>
+        <div><label class="cfg-lbl">Nome prodotto</label>
+          <input id="gcfg-nome" class="filter-input" placeholder="es. Ketchup 1kg" style="width:100%"></div>
+        <div><label class="cfg-lbl">Codice articolo</label>
+          <input id="gcfg-cod" class="filter-input" placeholder="es. KET001" style="width:100%"></div>
+        <div><label class="cfg-lbl">Tipo</label>
+          <input id="gcfg-tipo" class="filter-input" placeholder="es. Immancabile" style="width:100%"></div>
+        <div><label class="cfg-lbl">URL immagine</label>
+          <input id="gcfg-img" class="filter-input" placeholder="https://…" style="width:100%"></div>
+      </div>
+      <button class="btn-nuova-stat" style="margin-top:10px" onclick="addGammaProdotto()">+ Aggiungi prodotto</button>
+    </div>
+    ${settori.length ? settori.map(s => {
+      const rows = _gammaCfgRows.filter(r => r.settore === s);
+      return `<div class="b-panel" style="padding:.75rem 1rem;margin-bottom:.75rem">
+        <p class="b-sec" style="margin-top:0;margin-bottom:.5rem">${s}</p>
+        <table class="b-tbl" style="width:100%">
+          <thead><tr><th>Nome prodotto</th><th>Codice</th><th>Tipo</th><th style="text-align:center">Attivo</th><th></th></tr></thead>
+          <tbody>${rows.map(r => `<tr>
+            <td>${r.nome_prodotto}</td>
+            <td style="font-size:12px;color:var(--text2)">${r.codice_articolo || '—'}</td>
+            <td style="font-size:12px;color:var(--text2)">${r.tipo || '—'}</td>
+            <td style="text-align:center">
+              <label class="cfg-toggle"><input type="checkbox" ${r.attivo ? 'checked' : ''} onchange="toggleGammaProdottoAttivo(${r.id}, this.checked)"><span class="cfg-slider"></span></label>
+            </td>
+            <td style="text-align:center"><button class="btn-del-cfg" onclick="deleteGammaProdotto(${r.id})">✕</button></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+    }).join('') : '<p style="color:var(--text2);font-size:13px;padding:.5rem 0">Nessun prodotto configurato.</p>'}`;
+}
 
-  if (!codice) { alert('Il codice cliente è obbligatorio.'); return; }
-  if (!nome)   { alert('La ragione sociale è obbligatoria.'); return; }
-  if (_cfgRows.find(r => r.codice === codice)) {
-    alert(`Il codice cliente "${codice}" esiste già.`); return;
-  }
-
+async function addGammaProdotto() {
+  const settore = document.getElementById('gcfg-settore')?.value.trim();
+  const nome    = document.getElementById('gcfg-nome')?.value.trim();
+  const codice  = document.getElementById('gcfg-cod')?.value.trim()  || null;
+  const tipo    = document.getElementById('gcfg-tipo')?.value.trim() || null;
+  const img     = document.getElementById('gcfg-img')?.value.trim()  || null;
+  if (!settore || !nome) { alert('Settore e nome prodotto sono obbligatori'); return; }
   try {
-    await sb.from('clienti').insert({
-      codice_cliente: codice, ragione_sociale: nome,
-      indirizzo, civico, citta, provincia, cap,
-      settore_id: settoreId || null, categoria_id: categoriaId || null,
-      attivo: true, solo_destinazione: false,
+    const { error } = await sb.from('gamma_config').insert({
+      settore, nome_prodotto: nome, codice_articolo: codice, tipo, immagine_url: img,
+      ordine: (_gammaCfgRows.filter(r => r.settore === settore).length + 1), attivo: true,
     });
-
-    _cfgRows.unshift({
-      codice, nome, citta: citta || '—', provincia: provincia || '', cap: cap || '',
-      indirizzo: indirizzo || '', civico: civico || '',
-      settoreId: settoreId || null,
-      settoreNome: _cfgSettori.find(s => s.id === settoreId)?.nome || '—',
-      categoriaId: categoriaId || null,
-      categoriaNome: _cfgCategorie.find(c => c.id === categoriaId)?.nome || '—',
-      attivo: true, note: '', ordinaDiPersona: false, soloDestinazione: false,
-      inCfg: false, anagraficaAttiva: true, inAnag: true,
-    });
-
-    closeCfgClienteModal();
-    _renderCfgRows();
-    _clientiData = [];
-  } catch (err) {
-    alert('Errore nel salvataggio: ' + (err.message || JSON.stringify(err)));
-  }
+    if (error) throw error;
+    await loadGammaConfig();
+  } catch (err) { alert('Errore: ' + err.message); }
 }
 
-function _esc(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+async function toggleGammaProdottoAttivo(id, attivo) {
+  try {
+    await sb.from('gamma_config').update({ attivo }).eq('id', id);
+    const row = _gammaCfgRows.find(r => r.id === id);
+    if (row) row.attivo = attivo;
+  } catch (err) { console.error('Errore:', err.message); }
+}
+
+async function deleteGammaProdotto(id) {
+  if (!confirm('Eliminare questo prodotto?')) return;
+  try {
+    await sb.from('gamma_config').delete().eq('id', id);
+    _gammaCfgRows = _gammaCfgRows.filter(r => r.id !== id);
+    const root = document.getElementById('cfg-gamma-root');
+    if (root) _renderGammaConfig(root);
+  } catch (err) { alert('Errore: ' + err.message); }
 }

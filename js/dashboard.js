@@ -71,6 +71,9 @@ async function loadDashboard() {
   const kpiGrid = document.getElementById('kpi-grid');
   const topBody = document.querySelector('#top-clienti-table tbody');
 
+  _latestRollingDate = null;
+  _rollingEnriched   = null;
+
   kpiGrid.innerHTML = '<div class="loading">Caricamento KPI…</div>';
   topBody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
   document.getElementById('stato-mese').innerHTML = '';

@@ -376,7 +376,30 @@
         .gamma-prodotti { display: flex; flex-wrap: wrap; gap: 4px; }
         .gamma-prod-tag { font-size: 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; color: var(--text2); }
         .gamma-prod-missing { background: #FFF5F5; border-color: #FCCACA; color: var(--red); }
-        .gamma-prod-new { background: #e8f5e9; border-color: #a5d6a7; color: #2D7D4F; font-weight: 600; }
+        .gamma-detail-btn { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:4px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; cursor:pointer; color:var(--text2); }
+        .gamma-detail-btn:hover { border-color:var(--accent); color:var(--accent); }
+        .gamma-det-root { display:flex; flex-direction:column; gap:14px; }
+        .gamma-det-settore { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+        .gamma-det-settore-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+        .gamma-det-progress { height:6px; background:var(--border); border-radius:3px; margin-bottom:12px; overflow:hidden; }
+        .gamma-det-progress-bar { height:100%; background:var(--accent); border-radius:3px; transition:width .3s; }
+        .gamma-det-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
+        .gamma-det-card { border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--bg); display:flex; flex-direction:column; }
+        .gamma-det-acquired { border-color:#a8e6b0; }
+        .gamma-det-missing { opacity:.7; }
+        .gamma-det-img-wrap { height:80px; display:flex; align-items:center; justify-content:center; background:var(--surface); }
+        .gamma-det-img { max-height:72px; max-width:100%; object-fit:contain; }
+        .gamma-det-img-placeholder { width:48px; height:48px; border-radius:50%; background:var(--border); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; color:var(--text2); }
+        .gamma-det-info { padding:8px 10px; display:flex; flex-direction:column; gap:2px; }
+        .gamma-det-nome { font-size:12px; font-weight:600; color:var(--text); line-height:1.3; }
+        .gamma-det-cod { font-size:10px; color:var(--text2); font-family:monospace; }
+        .gamma-det-tipo { font-size:10px; color:var(--text2); text-transform:uppercase; letter-spacing:.04em; }
+        .gamma-det-stato { font-size:11px; font-weight:600; margin-top:4px; }
+        .gamma-det-ok { color:#2D7D4F; }
+        .gamma-det-no { color:var(--red); }
+        .cfg-lbl { font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text2); letter-spacing:.06em; display:block; margin-bottom:4px; }
+        .btn-del-cfg { background:none; border:none; color:var(--red); cursor:pointer; font-size:14px; padding:2px 6px; }
+        .btn-del-cfg:hover { opacity:.7; }
         .righe-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .righe-table th {
             font-size: 11px; font-weight: 700; text-transform: uppercase;
@@ -556,6 +579,17 @@
         .bc-det-sped  { background:#eff8ff; color:#378ADD; }
         .bc-det-oltre { background:#f0fdf4; color:#2D7D4F; }
         .bc-row:hover td { background:var(--bg); }
+        .bc-row-click { cursor:pointer; }
+        .bc-th-quando { min-width:160px; }
+        .bc-quando { display:flex; flex-direction:column; gap:2px; }
+        .bc-quando-pross { font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px; }
+        .bc-quando-sub { font-size:11px; color:var(--text2); }
+        .bc-urg-badge { font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; white-space:nowrap; }
+        .bc-urg-ok      { background:#f0fdf4; color:#2D7D4F; }
+        .bc-urg-urgente { background:#fff7ed; color:#D97706; }
+        .bc-urg-scaduto { background:#FFF5F5; color:#C84B2F; }
+        .bc-kpi-warn .bc-kpi-val { color:#D97706; }
+        .bc-kpi-warn { border-left:3px solid #D97706; }
 
         /* ── Pipeline Modal ── */
         .pl-overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.45);
@@ -1587,7 +1621,7 @@
             <h1>Budget</h1>
             <div class="budget-tabs">
                 <button class="budget-tab on" onclick="swBudget('mensile',this)">budget mensile</button>
-                <button class="budget-tab" onclick="swBudget('clienti',this)">budget clienti</button>
+                <button class="budget-tab" onclick="swBudget('clienti',this)">pipeline clienti</button>
                 <button class="budget-tab" onclick="swBudget('premio',this)">premio</button>
                 <button class="budget-tab" onclick="swBudget('dettaglio',this)">dettaglio pipeline</button>
             </div>
@@ -1692,18 +1726,7 @@
         <div id="impostazioni" class="page">
             <h1>Impostazioni</h1>
             <div id="cfg-token-root" style="margin-bottom:2rem"></div>
-            <div class="mobile-only-card" style="margin-bottom:2rem">
-              <p class="b-sec" style="margin-top:0">aggiornamento dati</p>
-              <div class="b-panel" style="padding:1rem 1.25rem;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-                <div style="flex:1;min-width:160px">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.06em;margin-bottom:4px">Ultimo aggiornamento</div>
-                  <span id="mobile-ultimo-sync" style="font-size:14px;color:var(--text)">—</span>
-                </div>
-                <button class="sync-btn" id="mobile-sync-btn" onclick="triggerSync()">
-                  <span id="mobile-sync-icon">↻</span> <span id="mobile-sync-label">Aggiorna dati</span>
-                </button>
-              </div>
-            </div>
+            <div id="cfg-gamma-root" style="margin-bottom:2rem"></div>
             <div id="cfg-clienti-root">
                 <div class="loading">Caricamento…</div>
             </div>
@@ -1774,20 +1797,16 @@
     <script src="env.js?v=12"></script>
     <script src="js/config.js?v=14"></script>
     <script src="js/analytics.js?v=13"></script>
-    <script src="js/dashboard.js?v=27"></script>
-    <script src="js/clienti.js?v=20"></script>
-    <script src="js/ordini.js?v=27"></script>
-    <script src="js/ddt.js?v=24"></script>
+    <script src="js/dashboard.js?v=18"></script>
+    <script src="js/clienti.js?v=19"></script>
+    <script src="js/ordini.js?v=19"></script>
+    <script src="js/ddt.js?v=14"></script>
     <script src="js/fatturato.js?v=12"></script>
-    <script src="js/budget.js?v=13"></script>
+    <script src="js/budget.js?v=5"></script>
     <script src="js/impostazioni.js?v=6"></script>
-    <script src="js/agenda.js?v=7"></script>
-    <script src="js/statistiche.js?v=2"></script>
-    <script src="js/listino.js?v=2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="js/note_visite.js?v=1"></script>
-    <script src="js/app.js?v=19"></script>
+    <script src="js/agenda.js?v=1"></script>
+    <script src="js/statistiche.js?v=1"></script>
+    <script src="js/app.js?v=14"></script>
     <script>
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
