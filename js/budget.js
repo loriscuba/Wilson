@@ -6,6 +6,7 @@ let _bcSort         = { col: 'priority', dir: 1 };
 let _bcRows         = [];
 let _bcQuery        = '';
 let _bcRitmi        = {};     // codice_cliente → ritmo (calcolaRitmoOrdini result)
+let _plModifiche    = {};     // codice_cliente → { escluso, gapPersonalizzato, stati }
 
 // ── Tab switch ────────────────────────────────────────────────────────────────
 function swBudget(tab, btn) {
@@ -761,4 +762,72 @@ function apriClienteDaBudget(codice, nome) {
   const sel = document.getElementById('filtro-stato');
   if (sel) sel.value = '';
   showPage('clienti', { preventDefault: () => {} });
+}
+
+// ── Dettaglio Pipeline ────────────────────────────────────────────────────────
+
+const PIPELINE_GRUPPI = [
+  { id: 'da_visitare',  label: 'Da visitare',   color: '#9B9B97' },
+  { id: 'indietro',     label: 'Indietro',       color: '#C84B2F' },
+  { id: 'da_stimolare', label: 'Da stimolare',   color: '#D97706' },
+  { id: 'in_linea',     label: 'In linea',       color: '#378ADD' },
+  { id: 'ottimo',       label: 'Ottimo',         color: '#2D7D4F' },
+  { id: 'nuovo',        label: 'Nuovo',          color: '#8B5CF6' },
+  { id: 'inattivo',     label: 'Inattivo',       color: '#9B9B97' },
+];
+
+function renderDettaglioPipeline() {
+  const root = document.getElementById('bpane-dettaglio');
+  if (!root) return;
+
+  if (!_bcRows.length) {
+    root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun dato disponibile. Carica prima la pipeline clienti.</p>';
+    return;
+  }
+
+  const urgLabel = { ok: 'ok', urgente: 'urgente', scaduto: 'scaduto', nessun_ordine: '—' };
+  const urgColor = { ok: '#2D7D4F', urgente: '#D97706', scaduto: '#C84B2F', nessun_ordine: '#9B9B97' };
+
+  const byGruppo = {};
+  for (const g of PIPELINE_GRUPPI) byGruppo[g.id] = [];
+  for (const r of _bcRows) {
+    const sid = r.stato?.id || 'inattivo';
+    if (byGruppo[sid]) byGruppo[sid].push(r);
+  }
+
+  const cols = PIPELINE_GRUPPI.filter(g => byGruppo[g.id].length > 0).map(g => {
+    const rows = byGruppo[g.id].slice().sort((a, b) => a.priority - b.priority);
+    const cards = rows.map(r => {
+      const ritmo = r.ritmo;
+      const urg = r.urgenza || 'nessun_ordine';
+      const urgC = urgColor[urg] || '#9B9B97';
+      const prossLabel = ritmo?.prossimoOrdineData
+        ? new Date(ritmo.prossimoOrdineData).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })
+        : '—';
+      const freqLabel = ritmo?.frequenzaMedia ? `ogni ~${Math.round(ritmo.frequenzaMedia)}gg` : '';
+      const gapLabel  = r.gap ? (r.gap > 0 ? `+${_eur(r.gap)}` : _eur(r.gap)) : '';
+      const gapCls    = r.gap > 0 ? 'pos' : r.gap < 0 ? 'neg' : '';
+      return `<div class="dp-card" onclick="apriClienteDaBudget('${r.codice}','${r.cliente.replace(/'/g,"\\'")}')">
+        <div class="dp-card-top">
+          <span class="dp-nome">${r.cliente}</span>
+          ${urg !== 'nessun_ordine' ? `<span class="bc-urg-badge bc-urg-${urg}">${urgLabel[urg]}</span>` : ''}
+        </div>
+        <div class="dp-card-meta">
+          ${gapLabel ? `<span class="${gapCls}" style="font-size:11px">${gapLabel}</span>` : ''}
+          ${prossLabel !== '—' ? `<span style="font-size:11px;color:var(--text2)">prossimo ${prossLabel}</span>` : ''}
+          ${freqLabel ? `<span style="font-size:10px;color:var(--text2)">${freqLabel}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="dp-col">
+      <div class="dp-col-header" style="border-top:3px solid ${g.color}">
+        <span style="color:${g.color};font-weight:600;font-size:12px">${g.label}</span>
+        <span class="dp-count">${rows.length}</span>
+      </div>
+      <div class="dp-cards">${cards}</div>
+    </div>`;
+  }).join('');
+
+  root.innerHTML = `<div class="dp-board">${cols}</div>`;
 }
