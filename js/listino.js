@@ -169,15 +169,7 @@ function onListinoSearch(q) {
 
 function setListinoCateg(cat) {
   _listinoCateg = cat;
-  document.querySelectorAll('#listino-chips .ddt-chip').forEach(c => {
-    const val = c.getAttribute('onclick').includes('null') ? null : c.textContent.split(' (')[0];
-    c.classList.toggle('on', cat === null ? c.getAttribute('onclick').includes('null') : c.textContent.startsWith(_shortCat(cat)));
-  });
-  // Re-render chips cleanly via full re-render
-  const root = document.getElementById('listino-root');
-  const edizioniUnique = null; // chips re-render only
   _renderListinoRows();
-  // Update chip active state
   document.querySelectorAll('#listino-chips .ddt-chip').forEach(c => {
     const onclick = c.getAttribute('onclick') || '';
     const chipCat = onclick.includes('null') ? null : onclick.match(/'(.+?)'\)/)?.[1] || null;

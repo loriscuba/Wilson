@@ -1426,6 +1426,8 @@
           <i class="ti ti-target top-nav-icon"></i><span class="top-nav-label">Budget</span></a>
         <a class="top-nav-link" data-page="clienti" data-tip="Clienti" href="#" onclick="showPage('clienti',event)">
           <i class="ti ti-users top-nav-icon"></i><span class="top-nav-label">Clienti</span></a>
+        <a class="top-nav-link" data-page="note-visite" data-tip="Note Visite" href="#" onclick="showPage('note-visite',event)">
+          <i class="ti ti-notes top-nav-icon"></i><span class="top-nav-label">Note Visite</span></a>
         <a class="top-nav-link" data-page="agenda" data-tip="Agenda" href="#" onclick="showPage('agenda',event)">
           <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
         <a class="top-nav-link" data-page="statistiche" data-tip="Statistiche" href="#" onclick="showPage('statistiche',event)">
@@ -1707,6 +1709,61 @@
             </div>
         </div>
 
+        <!-- ── NOTE VISITE ── -->
+        <div id="note-visite" class="page">
+            <h1 style="margin-bottom:4px">Note Visite</h1>
+            <p style="color:var(--text2);font-size:13px;margin:0 0 20px">Carica lo storico, carica il giro della settimana, lascia scrivere la bozza con il contesto del cliente.</p>
+
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+                <label for="nv-week-input" style="font-size:12px;color:var(--text2)">Settimana</label>
+                <input type="text" id="nv-week-input" class="filter-input" placeholder="es. 2026-W28" style="width:120px">
+                <button class="btn-secondary" onclick="nvCaricaSettimana()">Carica</button>
+                <span class="nv-status" id="nv-week-status"></span>
+            </div>
+
+            <div class="table-wrapper" style="margin-bottom:16px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:2px">Storico visite (4 anni) <span class="nv-badge" id="nv-hist-badge">non caricato</span></div>
+                <p style="font-size:12px;color:var(--text2);margin:4px 0 10px">Carica il file Excel/CSV con una riga per visita (data, cliente, nota). Resta solo in questa sessione: non viene salvato online.</p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <input type="file" id="nv-hist-file" accept=".xlsx,.xls,.csv,.txt" onchange="nvHandleHistFile(event)">
+                    <span style="font-size:12px;color:var(--text2)" id="nv-hist-hint"></span>
+                </div>
+                <div class="nv-mapping" id="nv-hist-mapping" style="display:none"></div>
+            </div>
+
+            <div class="table-wrapper" style="margin-bottom:20px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:2px">Giro visite della settimana</div>
+                <p style="font-size:12px;color:var(--text2);margin:4px 0 10px">Allega il file Excel/CSV del giro (prima riga = intestazioni).</p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <input type="file" id="nv-route-file" accept=".xlsx,.xls,.csv,.txt" onchange="nvHandleRouteFile(event)">
+                    <span style="font-size:12px;color:var(--text2)" id="nv-import-hint"></span>
+                </div>
+                <div class="nv-mapping" id="nv-mapping" style="display:none"></div>
+            </div>
+
+            <div class="nv-route-toolbar" id="nv-route-toolbar" style="display:none">
+                <button class="btn-nuova-stat" id="nv-gen-all" onclick="nvGeneraTutte()">Genera tutte le bozze</button>
+                <span class="nv-status" id="nv-gen-all-status"></span>
+            </div>
+            <div class="nv-route" id="nv-route"></div>
+            <div class="placeholder" id="nv-empty" style="display:none">
+                <div class="placeholder-icon">🗓️</div>
+                <h3>Nessuna tappa in questa settimana</h3>
+                <p>Carica il file del giro qui sopra per iniziare.</p>
+            </div>
+
+            <div id="nv-footer-bar" style="display:none;justify-content:flex-end;gap:10px;margin-top:24px">
+                <button class="btn-secondary" onclick="nvExportTxt()">Esporta note (testo)</button>
+                <button class="btn-secondary" onclick="nvExportCsv()">Esporta note (CSV)</button>
+            </div>
+        </div>
+
+        <!-- ── LISTINO ── -->
+        <div id="listino" class="page">
+            <h1>Listino FL <span id="listino-count" style="font-size:14px;font-weight:400;color:var(--text2);margin-left:6px"></span></h1>
+            <div id="listino-root"><div class="loading">Caricamento…</div></div>
+        </div>
+
         <!-- ── AGENDA ── -->
         <div id="agenda" class="page">
             <div class="agenda-header">
@@ -1766,7 +1823,8 @@
             <div class="drawer-links">
                 <button type="button" onclick="mobileNavSelect('agenda', event); closeMobileDrawer()">Agenda</button>
                 <button type="button" onclick="navToPage('statistiche'); closeMobileDrawer()">Statistiche</button>
-                <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Listino FL</button>
+                <button type="button" onclick="navToPage('note-visite'); closeMobileDrawer()">Note Visite</button>
+                <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Listino</button>
                 <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
         </div>
@@ -1806,7 +1864,9 @@
     <script src="js/impostazioni.js?v=6"></script>
     <script src="js/agenda.js?v=1"></script>
     <script src="js/statistiche.js?v=1"></script>
-    <script src="js/app.js?v=14"></script>
+    <script src="js/note_visite.js?v=1"></script>
+    <script src="js/listino.js?v=1"></script>
+    <script src="js/app.js?v=15"></script>
     <script>
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
