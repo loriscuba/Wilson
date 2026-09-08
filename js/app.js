@@ -178,7 +178,6 @@ async function triggerSync() {
     'Content-Type': 'application/json',
   };
 
-  // Dispatch entrambi i workflow
   const dispatchedAt = Date.now();
   const dispatchResults = await Promise.all(WORKFLOWS.map(wf =>
     fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${wf}/dispatches`, {
@@ -225,9 +224,8 @@ async function triggerSync() {
     }
 
     const runs = await Promise.all(WORKFLOWS.map(latestRun));
-    // Considera solo le run avviate dopo il dispatch (margine 5s per skew)
     const relevant = runs.filter(r => r && new Date(r.created_at).getTime() >= dispatchedAt - 5000);
-    if (relevant.length < WORKFLOWS.length) return; // non tutte partite
+    if (relevant.length < WORKFLOWS.length) return;
 
     const allDone = relevant.every(r => r.status === 'completed');
     if (!allDone) return;
