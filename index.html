@@ -505,6 +505,17 @@
         .bc-det-sped  { background:#eff8ff; color:#378ADD; }
         .bc-det-oltre { background:#f0fdf4; color:#2D7D4F; }
         .bc-row:hover td { background:var(--bg); }
+        .bc-row-click { cursor:pointer; }
+        .bc-th-quando { min-width:160px; }
+        .bc-quando { display:flex; flex-direction:column; gap:2px; }
+        .bc-quando-pross { font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px; }
+        .bc-quando-sub { font-size:11px; color:var(--text2); }
+        .bc-urg-badge { font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; white-space:nowrap; }
+        .bc-urg-ok      { background:#f0fdf4; color:#2D7D4F; }
+        .bc-urg-urgente { background:#fff7ed; color:#D97706; }
+        .bc-urg-scaduto { background:#FFF5F5; color:#C84B2F; }
+        .bc-kpi-warn .bc-kpi-val { color:#D97706; }
+        .bc-kpi-warn { border-left:3px solid #D97706; }
 
         /* ── Impostazioni clienti ── */
         .cfg-row-off td { opacity:.45; }
@@ -1239,7 +1250,7 @@
             <h1>Budget</h1>
             <div class="budget-tabs">
                 <button class="budget-tab on" onclick="swBudget('mensile',this)">budget mensile</button>
-                <button class="budget-tab" onclick="swBudget('clienti',this)">budget clienti</button>
+                <button class="budget-tab" onclick="swBudget('clienti',this)">pipeline clienti</button>
                 <button class="budget-tab" onclick="swBudget('premio',this)">premio</button>
             </div>
             <div id="bpane-mensile" class="budget-pane on">
@@ -1339,7 +1350,7 @@
     <script src="js/ordini.js?v=19"></script>
     <script src="js/ddt.js?v=14"></script>
     <script src="js/fatturato.js?v=12"></script>
-    <script src="js/budget.js?v=4"></script>
+    <script src="js/budget.js?v=5"></script>
     <script src="js/impostazioni.js?v=6"></script>
     <script src="js/agenda.js?v=1"></script>
     <script src="js/statistiche.js?v=1"></script>

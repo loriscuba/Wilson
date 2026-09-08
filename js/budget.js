@@ -5,6 +5,7 @@ let _bcFilter       = null;   // stato filter chip attivo
 let _bcSort         = { col: 'priority', dir: 1 };
 let _bcRows         = [];
 let _bcQuery        = '';
+let _bcRitmi        = {};     // codice_cliente → ritmo (calcolaRitmoOrdini result)
 
 // ── Tab switch ────────────────────────────────────────────────────────────────
 function swBudget(tab, btn) {
@@ -390,24 +391,45 @@ const STATO_COLOR = { ottimo: '#2D7D4F', in_linea: '#378ADD', da_stimolare: '#D9
 async function loadBudgetClienti() {
   const root = document.getElementById('bpane-clienti');
   if (!root) return;
-  root.innerHTML = '<div class="loading">Caricamento clienti…</div>';
+  root.innerHTML = '<div class="loading">Caricamento pipeline…</div>';
   try {
-    // Forza sempre dati freschi: la data più recente potrebbe essere cambiata
-    // se è stato importato un nuovo file rolling durante la sessione.
     _latestRollingDate = null;
     _rollingEnriched   = null;
-    const rows = await loadRollingEnriched();
+
+    const cutoff = new Date(Date.now() - 730 * 86400000).toISOString().split('T')[0];
+    const [rows, { data: ordiniAll }] = await Promise.all([
+      loadRollingEnriched(),
+      sb.from('ordini')
+        .select('codice_cliente, data_ordine, totale_ordine')
+        .neq('stato', 'annullato')
+        .gte('data_ordine', cutoff)
+        .order('data_ordine', { ascending: false })
+        .limit(5000),
+    ]);
+
     if (!rows.length) {
       root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun dato rolling disponibile.</p>';
       return;
     }
 
+    // Raggruppa ordini per cliente e calcola ritmo
+    const ordiniByCliente = {};
+    for (const o of (ordiniAll || [])) {
+      if (!ordiniByCliente[o.codice_cliente]) ordiniByCliente[o.codice_cliente] = [];
+      ordiniByCliente[o.codice_cliente].push(o);
+    }
+    _bcRitmi = {};
+    for (const [cod, ordini] of Object.entries(ordiniByCliente)) {
+      _bcRitmi[cod] = calcolaRitmoOrdini(ordini);
+    }
+
     _bcRows = rows.filter(r => !r._escluso).map(r => {
+      const ritmo = _bcRitmi[r.codice_cliente] || null;
       const row = {
-        cliente:         r.ragione_sociale || '—',
-        codice:          r.codice_cliente  || '',
-        divisione:       r.divisione || '',
-        stato:           r._stato,
+        cliente:          r.ragione_sociale || '—',
+        codice:           r.codice_cliente  || '',
+        divisione:        r.divisione || '',
+        stato:            r._stato,
         _ordinaDiPersona: r._ordinaDiPersona || false,
         bud:        r.fatt_mese_anno_prec    || 0,
         ord:        r.spedito_ordinato_mese  || 0,
@@ -421,6 +443,8 @@ async function loadBudgetClienti() {
                       ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100
                       : null,
         gap:        r._gap || 0,
+        ritmo,
+        urgenza:    ritmo?.urgenza || 'nessun_ordine',
       };
       row.priority = _bcPriority(row);
       return row;
@@ -478,12 +502,18 @@ function _renderClienti(root) {
   }).join('');
 
   // Filtro + sort + render righe
+  // Clienti con ordini scaduti o urgenti (per KPI strip)
+  const nUrgenti  = rows.filter(r => r.urgenza === 'urgente').length;
+  const nScaduti  = rows.filter(r => r.urgenza === 'scaduto').length;
+
   const html = `
     <div class="bc-kpi-strip">
       <div class="bc-kpi"><div class="bc-kpi-label">budget mese</div><div class="bc-kpi-val">${_eur(totBud)}</div></div>
       <div class="bc-kpi"><div class="bc-kpi-label">ordinato mese</div><div class="bc-kpi-val ${_cls(dMese)}">${_eur(totOrd)}</div><div class="bc-kpi-sub ${_cls(dMese)}">${_pct(dMese)} vs anno prec</div></div>
       <div class="bc-kpi bc-kpi-neg"><div class="bc-kpi-label">gap da recuperare</div><div class="bc-kpi-val neg">–${_eur(totGap)}</div></div>
       <div class="bc-kpi"><div class="bc-kpi-label">progressivo 2026</div><div class="bc-kpi-val">${_eur(totP26)}</div><div class="bc-kpi-sub ${_cls(dProg)}">${_pct(dProg)} vs 2025</div></div>
+      ${nScaduti > 0 ? `<div class="bc-kpi bc-kpi-neg"><div class="bc-kpi-label">ordine scaduto</div><div class="bc-kpi-val neg">${nScaduti} clienti</div></div>` : ''}
+      ${nUrgenti > 0 ? `<div class="bc-kpi bc-kpi-warn"><div class="bc-kpi-label">ordine urgente</div><div class="bc-kpi-val warn">${nUrgenti} clienti</div></div>` : ''}
     </div>
     <div class="bc-chips" id="bc-chips">${chipHtml}</div>
     <div class="bc-toolbar">
@@ -494,6 +524,7 @@ function _renderClienti(root) {
         <thead><tr>
           <th class="bc-th-stato bc-srt" onclick="onBcSort('priority')">STATO ${_sortArrow('priority')}</th>
           <th class="bc-th-cliente bc-srt" onclick="onBcSort('cliente')">CLIENTE ${_sortArrow('cliente')}</th>
+          <th class="bc-th-quando bc-srt" onclick="onBcSort('urgenza')">PROSSIMO ORDINE ${_sortArrow('urgenza')}</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('ord')">ORDINATO MESE ${_sortArrow('ord')}</th>
           <th class="bc-th-narrow bc-srt" onclick="onBcSort('varMese')">Δ% MESE ${_sortArrow('varMese')}</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('gap')">GAP ${_sortArrow('gap')}</th>
@@ -529,20 +560,27 @@ function _renderBcRows() {
     return true;
   });
 
+  const _urgScore = u => ({ scaduto: 0, urgente: 1, ok: 2, nessun_ordine: 3 }[u] ?? 3);
+
   // Sort
   const { col, dir } = _bcSort;
   visible.sort((a, b) => {
     let va, vb;
     if (col === 'priority') { va = a.priority; vb = b.priority; }
     else if (col === 'cliente') { return dir * a.cliente.localeCompare(b.cliente, 'it'); }
+    else if (col === 'urgenza') { va = _urgScore(a.urgenza); vb = _urgScore(b.urgenza); }
     else if (col === 'ord')     { va = a.ord;    vb = b.ord; }
     else if (col === 'gap')     { va = a.gap;    vb = b.gap; }
     else if (col === 'prog26')  { va = a.prog26; vb = b.prog26; }
     else if (col === 'varMese') { va = a.bud > 0 ? (a.ord - a.bud) / a.bud : -999; vb = b.bud > 0 ? (b.ord - b.bud) / b.bud : -999; }
     else if (col === 'varProg') { va = a.varProg ?? -999; vb = b.varProg ?? -999; }
     else { va = a.priority; vb = b.priority; }
-    // Dentro stesso gruppo di stato (solo per sort priority), gap desc
-    if (col === 'priority' && va === vb) return b.gap - a.gap;
+    // Tiebreaker: urgenza dentro stesso gruppo, poi gap desc
+    if (col === 'priority' && va === vb) {
+      const us = _urgScore(a.urgenza) - _urgScore(b.urgenza);
+      if (us !== 0) return us;
+      return b.gap - a.gap;
+    }
     return dir * (va - vb);
   });
 
@@ -577,12 +615,30 @@ function _renderBcRows() {
       r.oltre > 0 ? `<span class="bc-det-item bc-det-oltre">+${_eur(r.oltre)} oltre</span>` : '',
     ].filter(Boolean).join(' ');
 
-    return `<tr class="bc-row bc-row-${statoId}">
+    // Quando / prossimo ordine
+    let quandoCell = '<span style="color:var(--text2);font-size:11px">nessun ordine</span>';
+    if (r.ritmo) {
+      const { giorniDaUltimo, freqMedia, prossimo, urgenza } = r.ritmo;
+      const urgCls  = { ok: 'bc-urg-ok', urgente: 'bc-urg-urgente', scaduto: 'bc-urg-scaduto' }[urgenza] || '';
+      const urgLbl  = { ok: '✓ in tempo', urgente: '⚑ urgente', scaduto: '⚠ scaduto' }[urgenza] || '';
+      const proxStr = prossimo
+        ? prossimo.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
+        : '—';
+      const freqStr = freqMedia ? `ogni ${freqMedia} gg` : '—';
+      quandoCell = `<div class="bc-quando">
+        <div class="bc-quando-pross">${proxStr} <span class="bc-urg-badge ${urgCls}">${urgLbl}</span></div>
+        <div class="bc-quando-sub">${freqStr} · ${giorniDaUltimo} gg fa</div>
+      </div>`;
+    }
+
+    const nomeEsc = r.cliente.replace(/'/g, "\\'");
+    return `<tr class="bc-row bc-row-${statoId} bc-row-click" onclick="apriClienteDaBudget('${r.codice}','${nomeEsc}')">
       <td>${statoBadge}</td>
       <td>
         <div class="bc-cliente-nome">${r.cliente}${r._ordinaDiPersona ? ' <span class="bc-persona-tag">&#9734; di persona</span>' : ''}</div>
         ${r.divisione ? `<div class="bc-cliente-div">${r.divisione}</div>` : ''}
       </td>
+      <td>${quandoCell}</td>
       <td>
         <div class="bc-bar-wrap">
           <div class="b-bbg bc-barline"><div class="b-bfill" style="width:${barW.toFixed(1)}%;background:${barColor}"></div></div>
@@ -617,8 +673,7 @@ function onBcSearch(q) {
 
 function onBcSort(col) {
   if (_bcSort.col === col) _bcSort.dir *= -1;
-  else { _bcSort.col = col; _bcSort.dir = col === 'priority' ? 1 : -1; }
-  // Aggiorna frecce in tutti gli header
+  else { _bcSort.col = col; _bcSort.dir = col === 'priority' || col === 'urgenza' ? 1 : -1; }
   document.querySelectorAll('.bc-tbl thead th[onclick]').forEach(th => {
     const m = th.getAttribute('onclick')?.match(/onBcSort\('(.+)'\)/);
     if (!m) return;
@@ -626,4 +681,13 @@ function onBcSort(col) {
     if (arrow) arrow.outerHTML = _sortArrow(m[1]);
   });
   _renderBcRows();
+}
+
+function apriClienteDaBudget(codice, nome) {
+  _pendingOpenCodice = codice;
+  const el = document.getElementById('filtro-clienti');
+  if (el) el.value = codice;
+  const sel = document.getElementById('filtro-stato');
+  if (sel) sel.value = '';
+  showPage('clienti', { preventDefault: () => {} });
 }
