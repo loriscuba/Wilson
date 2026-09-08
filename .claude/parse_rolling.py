@@ -19,14 +19,39 @@ def parse_rolling(filepath):
     """Legge il file rolling e restituisce lista di record per cliente."""
     df = pd.read_excel(filepath, sheet_name='REPORT', header=None)
 
-    # Data aggiornamento dalla riga 1 (colonna 2)
-    data_raw = df.iloc[1][2]
-    if hasattr(data_raw, 'strftime'):
-        data_agg = data_raw.strftime("%Y-%m-%d")
-    else:
-        # Prova a estrarla dal nome file: consuntivo-10-05-2026_...
-        m = re.search(r'consuntivo-(\d{2}-\d{2}-\d{4})', os.path.basename(filepath))
-        data_agg = datetime.strptime(m.group(1), "%d-%m-%Y").strftime("%Y-%m-%d") if m else None
+    # ── Data aggiornamento: priorità al nome file ─────────────────────────────
+    # La cella Excel contiene la data dell'ultimo batch interno Fischer,
+    # che può essere settimane precedente rispetto alla data effettiva del file.
+    data_agg = None
+    m = re.search(r'consuntivo-(\d{2}-\d{2}-\d{4})', os.path.basename(filepath))
+    if m:
+        data_agg = datetime.strptime(m.group(1), "%d-%m-%Y").strftime("%Y-%m-%d")
+        print(f"  📅 Data da nome file: {data_agg}")
+
+    # Fallback alla cella Excel solo se il nome file non ha una data valida
+    if not data_agg:
+        data_raw = df.iloc[1][2]
+        today_str = datetime.today().strftime("%Y-%m-%d")
+        if hasattr(data_raw, 'strftime'):
+            candidate = data_raw.strftime("%Y-%m-%d")
+            if candidate <= today_str:
+                data_agg = candidate
+                print(f"  📅 Data da cella Excel: {data_agg}")
+            else:
+                print(f"  ⚠️  Data cella Excel futura ({candidate}), nessuna data disponibile")
+        elif isinstance(data_raw, str):
+            for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y"):
+                try:
+                    today_str = datetime.today().strftime("%Y-%m-%d")
+                    candidate = datetime.strptime(data_raw.strip(), fmt).strftime("%Y-%m-%d")
+                    if candidate <= today_str:
+                        data_agg = candidate
+                        print(f"  📅 Data da cella Excel (stringa): {data_agg}")
+                    else:
+                        print(f"  ⚠️  Data cella Excel futura ({candidate}), nessuna data disponibile")
+                    break
+                except ValueError:
+                    continue
 
     def n(val):
         """Converte in float, None se nan."""
@@ -35,6 +60,49 @@ def parse_rolling(filepath):
             return v if v == v else None  # NaN check
         except:
             return None
+
+    def safe(row, idx):
+        return row[idx] if 0 <= idx < len(row) else None
+
+    # ── Rilevamento posizioni colonne dal header (riga 2) ─────────────────────
+    # Le etichette cambiano ogni mese (hanno la data incorporata, es. "al 05/06/2026"),
+    # quindi non possiamo matchare per nome esatto ma usiamo keyword.
+    # Offset fisso: header_index + 5 = data_index (es. header[2]="Fatturato 2024" → data[7]).
+    COL_OFFSET = 5
+    raw_hdr = df.iloc[2].tolist()
+    header  = [str(c).strip().replace('\n', ' ') if pd.notna(c) else '' for c in raw_hdr]
+
+    # GTO: cerca tutte le colonne "GTO <mese>'26" nel header
+    MESI_ABBR = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic']
+    gto_idx = {i: 22 + i for i in range(12)}   # fallback: gen=22 … dic=33
+    gto_trovati = 0
+    for hi, lbl in enumerate(header):
+        if not lbl or 'gto' not in lbl.lower():
+            continue
+        for mi, abbr in enumerate(MESI_ABBR):
+            if abbr in lbl.lower():
+                gto_idx[mi] = hi + COL_OFFSET
+                gto_trovati += 1
+                break
+
+    # Blocco "mese corrente": ancorato alla colonna "MESE: Consegnato …"
+    # I 9 campi successivi sono SEMPRE nello stesso ordine relativo.
+    i_cons = next(
+        (hi + COL_OFFSET for hi, lbl in enumerate(header)
+         if lbl and 'mese' in lbl.lower() and 'consegnato' in lbl.lower()),
+        34  # fallback storico
+    )
+    i_prep  = i_cons + 1   # in preparazione
+    i_sped  = i_cons + 2   # da spedire
+    i_oltre = i_cons + 3   # ordinato oltre mese
+    i_prec  = i_cons + 4   # fatt_mese_anno_prec  (stesso mese anno scorso)
+    i_mord  = i_cons + 5   # spedito_ordinato_mese
+    i_varm  = i_cons + 6   # variazione_mese
+    i_pprec = i_cons + 7   # fatt_prog_anno_prec
+    i_pcorr = i_cons + 8   # fatt_prog_anno_corr
+    i_vprog = i_cons + 9   # variazione_progressivo
+
+    print(f"  📋 Header: {len(header)} col · GTO rilevati: {gto_trovati}/12 · blocco mese a col {i_cons}")
 
     records = []
     # Righe dati: dalla riga 4 in poi (indice 4), salta riga 3 che è totale agente
@@ -69,41 +137,38 @@ def parse_rolling(filepath):
             "fatt_nov_2025":          n(row[19]),
             "fatt_dic_2025":          n(row[20]),
 
-            # Progressivo 2026
+            # Progressivo 2026 (gen–mese corrente, etichetta cambia col mese)
             "fatt_prog_gen_apr_2026": n(row[21]),
 
-            # GTO 2026
-            "gto_gen_2026":           n(row[22]),
-            "gto_feb_2026":           n(row[23]),
-            "gto_mar_2026":           n(row[24]),
-            "gto_apr_2026":           n(row[25]),
-            "gto_mag_2026":           n(row[26]),
-            "gto_giu_2026":           None,  # Non disponibile ancora
-            "gto_lug_2026":           None,  # Non disponibile ancora
-            "gto_ago_2026":           None,  # Non disponibile ancora
-            "gto_set_2026":           None,  # Non disponibile ancora
-            "gto_ott_2026":           None,  # Non disponibile ancora
-            "gto_nov_2026":           None,  # Non disponibile ancora
-            "gto_dic_2026":           None,  # Non disponibile ancora
+            # GTO 2026 – tutti e 12 i mesi letti dinamicamente dal header
+            "gto_gen_2026":           n(safe(row, gto_idx[0])),
+            "gto_feb_2026":           n(safe(row, gto_idx[1])),
+            "gto_mar_2026":           n(safe(row, gto_idx[2])),
+            "gto_apr_2026":           n(safe(row, gto_idx[3])),
+            "gto_mag_2026":           n(safe(row, gto_idx[4])),
+            "gto_giu_2026":           n(safe(row, gto_idx[5])),
+            "gto_lug_2026":           n(safe(row, gto_idx[6])),
+            "gto_ago_2026":           n(safe(row, gto_idx[7])),
+            "gto_set_2026":           n(safe(row, gto_idx[8])),
+            "gto_ott_2026":           n(safe(row, gto_idx[9])),
+            "gto_nov_2026":           n(safe(row, gto_idx[10])),
+            "gto_dic_2026":           n(safe(row, gto_idx[11])),
 
-            # Mese corrente
-            "mese_consegnato":        n(row[34]),
-            "mese_in_preparazione":   n(row[35]),
-            "mese_da_spedire":        n(row[36]),
-            "ordinato_oltre_mese":    n(row[37]),
+            # Mese corrente – posizioni rilevate dinamicamente dal header
+            "mese_consegnato":        n(safe(row, i_cons)),
+            "mese_in_preparazione":   n(safe(row, i_prep)),
+            "mese_da_spedire":        n(safe(row, i_sped)),
+            "ordinato_oltre_mese":    n(safe(row, i_oltre)),
 
             # Confronto mese
-            "fatt_mese_anno_prec":    n(row[38]),
-            "spedito_ordinato_mese":  None,  # Da verificare colonna
-            "variazione_mese":        n(row[40]),
+            "fatt_mese_anno_prec":    n(safe(row, i_prec)),
+            "spedito_ordinato_mese":  n(safe(row, i_mord)),
+            "variazione_mese":        n(safe(row, i_varm)),
 
             # Confronto progressivo
-            "fatt_prog_anno_prec":    n(row[41]),
-            "fatt_prog_anno_corr":    n(row[42]),
-            "variazione_progressivo": n(row[43]),
-            
-            # GTO corrente (maggio 2026)
-            "gto_mag_2026":           n(row[39]),
+            "fatt_prog_anno_prec":    n(safe(row, i_pprec)),
+            "fatt_prog_anno_corr":    n(safe(row, i_pcorr)),
+            "variazione_progressivo": n(safe(row, i_vprog)),
         })
 
     return records

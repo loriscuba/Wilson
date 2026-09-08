@@ -14,6 +14,7 @@ function swBudget(tab, btn) {
   document.querySelectorAll('.budget-pane').forEach(p => p.classList.remove('on'));
   document.getElementById('bpane-' + tab)?.classList.add('on');
   btn.classList.add('on');
+  if (tab === 'dettaglio') renderDettaglioPipeline();
 }
 
 async function loadBudget() {
@@ -134,8 +135,11 @@ async function loadBudgetPremio() {
   const root = document.getElementById('bpane-premio');
   if (!root) return;
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const [{ data: bArr }, { data: focus }] = await Promise.all([
+    const now       = new Date();
+    const today     = now.toISOString().split('T')[0];
+    const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const [{ data: bArr }, { data: focus }, rows, { data: cediRaw }] = await Promise.all([
       sb.from('budget').select('budget_mese,evaso,data_aggiornamento')
         .lte('data_aggiornamento', today)
         .not('budget_mese', 'is', null)
@@ -143,15 +147,28 @@ async function loadBudgetPremio() {
       sb.from('budget_focus').select('*')
         .lte('data_aggiornamento', today)
         .order('data_aggiornamento', { ascending: false }),
+      loadRollingEnriched(),
+      sb.from('cedi_ridistribuito')
+        .select('valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
+        .order('data_aggiornamento', { ascending: false }),
     ]);
 
-    const b         = bArr?.[0];
-    const g1        = focus?.find(f => f.gruppo_prodotti.startsWith('Gruppo 1'));
-    const meseNome  = _nomeMese(b?.data_aggiornamento);
+    const b        = bArr?.[0];
+    const g1       = focus?.find(f => f.gruppo_prodotti.startsWith('Gruppo 1'));
+    const meseNome = _nomeMese(b?.data_aggiornamento);
+
+    // Consegnato del mese = stesso calcolo della dashboard (rolling + CEDI)
+    const totCons   = rows.reduce((s, r) => s + (r.mese_consegnato || 0), 0);
+    const cediArr   = cediRaw || [];
+    const cediDate  = cediArr.length ? cediArr[0].data_aggiornamento : '';
+    const totCEDI   = cediArr.filter(r => r.data_aggiornamento === cediDate)
+                             .reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
+    const consMese  = totCons + totCEDI;
 
     _prObjFat = b?.budget_mese    || 117192;
     _prObjStr = g1?.target_eur    || 4217.75;
-    const initFat = b?.evaso          || 0;
+    const initFat = consMese  || b?.evaso || 0;
     const initStr = g1?.consegnato_eur || 0;
 
     root.innerHTML = `
@@ -166,10 +183,10 @@ async function loadBudgetPremio() {
         <div class="pr-row">
           <div class="pr-row-name">
             <div class="pr-row-title">fatturato zona di competenza</div>
-            <div class="pr-row-sub">obiettivo ${_eur(_prObjFat)} · peso 65%</div>
+            <div class="pr-row-sub">obiettivo ${_eur(_prObjFat)} · peso 65% · <span style="color:var(--text)">consegnato mese: ${_eur(consMese)}</span></div>
           </div>
           <div class="pr-row-input">
-            <input type="number" id="pr-inp-fat" value="${initFat}" step="100" min="0" oninput="prCalc()">
+            <input type="number" id="pr-inp-fat" value="${Math.round(initFat)}" step="1" min="0" readonly oninput="prCalc()">
             <span class="pr-row-pct" id="pr-pct-fat">—</span>
           </div>
           <div class="pr-bbg"><div class="pr-bfill" id="pr-bar-fat" style="background:#378ADD;width:0%"></div></div>
@@ -267,58 +284,105 @@ async function loadBudgetPremio() {
 }
 
 // ── TAB MENSILE ───────────────────────────────────────────────────────────────
+
+let _bmData   = null;
+let _bmFocus  = null;
+let _bmCedi   = 0;
+let _bmCediOn = false;
+
 async function loadBudgetMensile() {
   const root = document.getElementById('bpane-mensile');
   if (!root) return;
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const [{ data: latestArr, error: bErr }, { data: bMonthArr }] = await Promise.all([
+    const now       = new Date();
+    const today     = now.toISOString().split('T')[0];
+    const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const [{ data: latestArr, error: bErr }, { data: bMonthArr }, { data: cediRaw }] = await Promise.all([
       sb.from('budget').select('*').lte('data_aggiornamento', today)
         .order('data_aggiornamento', { ascending: false }).limit(1),
       sb.from('budget').select('*').lte('data_aggiornamento', today)
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false }).limit(1),
+      sb.from('cedi_ridistribuito').select('valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
+        .order('data_aggiornamento', { ascending: false }),
     ]);
     if (bErr) throw bErr;
     const latest = latestArr?.[0];
     const bMonth = bMonthArr?.[0];
-    // Merge: bMonth fornisce i campi mensili (budget_mese, evaso, ecc.),
-    // latest sovrascrive con i campi giornalieri aggiornati (fatturato_giorno, giorno_lavorativo, ecc.)
-    const b = bMonth
+    _bmData = bMonth
       ? { ...bMonth, ...Object.fromEntries(Object.entries(latest || {}).filter(([, v]) => v != null)) }
       : latest;
-    const { data: focus } = b
-      ? await sb.from('budget_focus').select('*').eq('data_aggiornamento', b.data_aggiornamento).order('gruppo_prodotti')
+    const { data: focus } = _bmData
+      ? await sb.from('budget_focus').select('*').eq('data_aggiornamento', _bmData.data_aggiornamento).order('gruppo_prodotti')
       : { data: [] };
+    _bmFocus = focus;
+    const cediArr  = cediRaw || [];
+    const cediDate = cediArr.length ? cediArr[0].data_aggiornamento : '';
+    _bmCedi   = cediArr.filter(r => r.data_aggiornamento === cediDate)
+                       .reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
+    _bmCediOn = false;
 
-    if (!b) {
+    if (!_bmData) {
       root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun dato budget.<br>Importa il PDF Avanzamento tramite il flusso Wilson Sync.</p>';
       return;
     }
+    _renderBudgetMensile(root);
+  } catch(err) {
+    document.getElementById('bpane-mensile').innerHTML =
+      `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
 
-    const meseNome = _nomeMese(b.data_aggiornamento);
-    const pctGiorno = b.obiettivo_giornaliero > 0 ? (b.fatturato_giorno / b.obiettivo_giornaliero) * 100 : null;
+function toggleCediMensile() {
+  _bmCediOn = !_bmCediOn;
+  _renderBudgetMensile(document.getElementById('bpane-mensile'));
+}
 
-    const focusHTML = (focus && focus.length)
-      ? focus.map(f => {
-          const pF = f.target_eur > 0 ? (f.consegnato_eur / f.target_eur) * 100 : null;
-          const w  = Math.min(100, pF ?? 0);
-          const lbl = f.gruppo_prodotti.length > 60 ? f.gruppo_prodotti.slice(0, 60) + '…' : f.gruppo_prodotti;
-          return `<tr>
-            <td style="font-size:12px;color:var(--text2)">${lbl}</td>
-            <td class="num-right">${_eur(f.target_eur)}</td>
-            <td class="num-right">
-              <div class="b-inline-bar">
-                <div class="b-mini-bg"><div class="b-mini-fill" style="width:${w.toFixed(0)}%;background:#378ADD"></div></div>
-                ${_eur(f.consegnato_eur)}
-              </div>
-            </td>
-            <td class="num-right" style="color:#378ADD;font-weight:500">${pF != null ? pF.toFixed(0) + '%' : '—'}</td>
-          </tr>`;
-        }).join('')
-      : '<tr><td colspan="4" style="color:var(--text2);font-size:12px;padding:8px 0">Nessun dato focus per questa data</td></tr>';
+function _renderBudgetMensile(root) {
+  const b        = _bmData;
+  const focus    = _bmFocus;
+  const cediAdd  = _bmCediOn ? _bmCedi : 0;
+  const meseNome = _nomeMese(b.data_aggiornamento);
+  const pctGiorno = b.obiettivo_giornaliero > 0 ? (b.fatturato_giorno / b.obiettivo_giornaliero) * 100 : null;
 
-    root.innerHTML = `
+  const evaso         = (b.evaso            || 0) + cediAdd;
+  const evasoOrdinato = (b.evaso_ordinato_resi || 0) + cediAdd;
+
+  const deltaEur = b.budget_mese > 0 ? evasoOrdinato - b.budget_mese : b.delta_mese_eur;
+  const deltaPct = b.budget_mese > 0 ? (evasoOrdinato - b.budget_mese) / b.budget_mese * 100 : b.delta_mese_pct;
+
+  const cediBtn = _bmCedi > 0
+    ? `<button onclick="toggleCediMensile()" style="
+        margin-left:auto;padding:3px 10px;border-radius:20px;border:1px solid;cursor:pointer;font-size:12px;font-weight:500;
+        background:${_bmCediOn ? '#2D7D4F' : 'transparent'};
+        color:${_bmCediOn ? '#fff' : 'var(--text2)'};
+        border-color:${_bmCediOn ? '#2D7D4F' : 'var(--border)'}">
+        + CEDI ${_bmCediOn ? '✓ ' : ''}${_eur(_bmCedi)}
+      </button>`
+    : '';
+
+  const focusHTML = (focus && focus.length)
+    ? focus.map(f => {
+        const pF = f.target_eur > 0 ? (f.consegnato_eur / f.target_eur) * 100 : null;
+        const w  = Math.min(100, pF ?? 0);
+        const lbl = f.gruppo_prodotti.length > 60 ? f.gruppo_prodotti.slice(0, 60) + '…' : f.gruppo_prodotti;
+        return `<tr>
+          <td style="font-size:12px;color:var(--text2)">${lbl}</td>
+          <td class="num-right">${_eur(f.target_eur)}</td>
+          <td class="num-right">
+            <div class="b-inline-bar">
+              <div class="b-mini-bg"><div class="b-mini-fill" style="width:${w.toFixed(0)}%;background:#378ADD"></div></div>
+              ${_eur(f.consegnato_eur)}
+            </div>
+          </td>
+          <td class="num-right" style="color:#378ADD;font-weight:500">${pF != null ? pF.toFixed(0) + '%' : '—'}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="4" style="color:var(--text2);font-size:12px;padding:8px 0">Nessun dato focus per questa data</td></tr>';
+
+  root.innerHTML = `
       <p class="b-sec">progressivo gen–apr · ${fmtDate(b.data_aggiornamento)}</p>
       <div class="b-g4">
         <div class="b-kcard"><p class="b-klabel">budget gen–apr</p><p class="b-kval">${_eur(b.budget_gen_apr)}</p></div>
@@ -326,14 +390,14 @@ async function loadBudgetMensile() {
         <div class="b-kcard"><p class="b-klabel">delta su budget</p><p class="b-kval ${_cls(b.delta_budget_eur)}">${b.delta_budget_eur >= 0 ? '+' : ''}${_eur(b.delta_budget_eur)}</p><p class="b-ksub ${_cls(b.delta_budget_pct)}">${_pct(b.delta_budget_pct)}</p></div>
       </div>
 
-      <p class="b-sec">${meseNome} · giorno ${b.giorno_lavorativo ?? '?'} di ${b.giorni_totali ?? '?'}</p>
+      <p class="b-sec" style="display:flex;align-items:center">${meseNome} · giorno ${b.giorno_lavorativo ?? '?'} di ${b.giorni_totali ?? '?'}${cediBtn}</p>
       <div class="b-panel">
-        <div class="b-prow"><span class="b-prow-label">evaso al ${fmtDate(b.data_aggiornamento)}</span><span class="b-prow-val">${_eur(b.evaso)} <span>/ ${_eur(b.budget_mese)}</span></span></div>
-        ${_mini(b.evaso, b.budget_mese, '#378ADD')}
+        <div class="b-prow"><span class="b-prow-label">consegnato al ${fmtDate(b.data_aggiornamento)}${_bmCediOn ? ' <span style="color:#2D7D4F;font-size:11px">+CEDI</span>' : ''}</span><span class="b-prow-val">${_eur(evaso)} <span>/ ${_eur(b.budget_mese)}</span></span></div>
+        ${_mini(evaso, b.budget_mese, '#378ADD')}
         <div style="margin-bottom:10px"></div>
-        <div class="b-prow"><span class="b-prow-label">evaso + ordinato – resi</span><span class="b-prow-val">${_eur(b.evaso_ordinato_resi)} <span>/ ${_eur(b.budget_mese)}</span></span></div>
-        ${_mini(b.evaso_ordinato_resi, b.budget_mese, '#2D7D4F')}
-        <div class="b-hint"><span>fat. ${meseNome} anno prec: ${_eur(b.fatturato_mese_anno_prec)}</span><span class="${_cls(b.delta_mese_eur)}">delta budget: ${_pct(b.delta_mese_pct)} (${b.delta_mese_eur >= 0 ? '+' : ''}${_eur(b.delta_mese_eur)})</span></div>
+        <div class="b-prow"><span class="b-prow-label">consegnato + ordinato – resi${_bmCediOn ? ' <span style="color:#2D7D4F;font-size:11px">+CEDI</span>' : ''}</span><span class="b-prow-val">${_eur(evasoOrdinato)} <span>/ ${_eur(b.budget_mese)}</span></span></div>
+        ${_mini(evasoOrdinato, b.budget_mese, '#2D7D4F')}
+        <div class="b-hint"><span>Budget ${meseNome}: ${_eur(b.budget_mese)}</span><span class="${_cls(deltaEur)}">delta budget: ${_pct(deltaPct)} (${deltaEur >= 0 ? '+' : ''}${_eur(deltaEur)})</span></div>
       </div>
 
       <div class="b-g4">
@@ -362,10 +426,6 @@ async function loadBudgetMensile() {
           <tbody>${focusHTML}</tbody>
         </table>
       </div>`;
-  } catch(err) {
-    document.getElementById('bpane-mensile').innerHTML =
-      `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
-  }
 }
 
 // ── TAB CLIENTI ───────────────────────────────────────────────────────────────
@@ -431,6 +491,7 @@ async function loadBudgetClienti() {
         divisione:        r.divisione || '',
         stato:            r._stato,
         _ordinaDiPersona: r._ordinaDiPersona || false,
+        _media:     r._media                 || 0,
         bud:        r.fatt_mese_anno_prec    || 0,
         ord:        r.spedito_ordinato_mese  || 0,
         cons:       r.mese_consegnato        || 0,
@@ -447,6 +508,11 @@ async function loadBudgetClienti() {
         urgenza:    ritmo?.urgenza || 'nessun_ordine',
       };
       row.priority = _bcPriority(row);
+      // Applica modifiche salvate se esistono
+      const modifica = _plModifiche[row.codice] || {};
+      row._esclusoManuale = modifica.escluso === true ? true : false;
+      row._gapPersonalizzato = modifica.gapPersonalizzato ?? null;
+      row._statiPipeline = modifica.stati || {};
       return row;
     });
 
@@ -454,6 +520,7 @@ async function loadBudgetClienti() {
     _bcQuery  = '';
     _bcSort   = { col: 'priority', dir: 1 };
     _renderClienti(root);
+    renderDettaglioPipeline();
   } catch(err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
   }
@@ -531,6 +598,7 @@ function _renderClienti(root) {
           <th class="bc-th-detail">CONS · PREP · SPED</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('prog26')">PROG 2026 ${_sortArrow('prog26')}</th>
           <th class="bc-th-narrow bc-srt" onclick="onBcSort('varProg')">Δ% PROG ${_sortArrow('varProg')}</th>
+          <th style="width:36px"></th>
         </tr></thead>
         <tbody id="bc-tbody"></tbody>
       </table>
@@ -585,7 +653,7 @@ function _renderBcRows() {
   });
 
   if (!visible.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
     return;
   }
 
@@ -653,6 +721,9 @@ function _renderBcRows() {
         <div style="font-size:11px;color:var(--text2)">${_eur(r.prog25)} 2025</div>
       </td>
       <td>${varProgBadge}</td>
+      <td style="text-align:center">
+        <button class="pl-art-btn" title="Verifica articoli" onclick="apriVerificaArticoli('${cod}','${nom}')">📋</button>
+      </td>
     </tr>`;
   }).join('');
 }

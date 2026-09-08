@@ -8,8 +8,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <link rel="preload" href="css/fonts/tabler-icons.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="css/tabler-icons.min.css">
+    <script src="js/chart.min.js"></script>
     <script src="js/supabase.min.js"></script>
     <style>
         :root {
@@ -41,6 +42,18 @@
         /* ── Top Nav (visibile solo su desktop) ── */
         .top-nav { display: none; }
 
+        .mobile-only-card { display: block; }
+        .mobile-only-card .sync-btn {
+            background: #1A56DB !important;
+            color: #fff !important;
+            border-color: #1A56DB !important;
+            width: auto !important;
+            margin-top: 0 !important;
+        }
+        .mobile-only-card .sync-btn:hover:not(:disabled) { background: #1648c0 !important; }
+        .mobile-only-card .sync-btn.success { background: #15803d !important; border-color: #15803d !important; }
+        .mobile-only-card .sync-btn.error   { background: #b91c1c !important; border-color: #b91c1c !important; }
+
         /* ── Main content ── */
         .main-content {
             flex: 1;
@@ -48,7 +61,6 @@
             margin-left: 0;
             transition: margin-left 0.25s ease;
             overflow-y: auto;
-            padding-top: 60px;
         }
         .main-content.shifted { margin-left: var(--sidebar-w); }
 
@@ -84,6 +96,37 @@
         }
         .kpi-card-link { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
         .kpi-card-link:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); border-color: var(--accent); }
+        /* ── Flip card ordinato/consegnato ── */
+        .flip-card-wrap {
+          perspective: 900px;
+          cursor: pointer;
+          min-height: 130px;
+        }
+        .flip-card-inner {
+          position: relative;
+          width: 100%; height: 100%; min-height: inherit;
+          transform-style: preserve-3d;
+          transition: transform .55s cubic-bezier(.4,0,.2,1);
+        }
+        .flip-card-wrap.flipped .flip-card-inner { transform: rotateY(180deg); }
+        .flip-card-front, .flip-card-back {
+          position: absolute; inset: 0;
+          backface-visibility: hidden; -webkit-backface-visibility: hidden;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--r);
+          padding: 14px 16px;
+          box-shadow: var(--shadow);
+          box-sizing: border-box;
+          transition: box-shadow .15s, border-color .15s;
+          overflow: hidden;
+        }
+        .flip-card-back { transform: rotateY(180deg); }
+        .flip-card-wrap:hover .flip-card-front,
+        .flip-card-wrap:hover .flip-card-back {
+          box-shadow: 0 2px 8px rgba(0,0,0,.12);
+          border-color: var(--accent);
+        }
         .kpi-card h3 {
             font-family: 'DM Sans', sans-serif;
             font-size: 9px;
@@ -206,6 +249,14 @@
         }
         .table-header-bar span { font-size: 13px; color: var(--text2); }
         .table-count { font-weight: 700; color: var(--text); }
+        .bulk-giorno-bar { display: flex; align-items: center; gap: 8px; }
+        .bulk-giorno-label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+        .giorno-sel {
+            font-size: 11px; border: 1px solid var(--border); border-radius: 4px;
+            padding: 2px 4px; background: transparent; color: var(--text);
+            cursor: pointer; max-width: 95px;
+        }
+        .giorno-sel:focus { border-color: var(--accent); outline: none; }
 
         /* ── Filtri ── */
         .filter-bar {
@@ -297,6 +348,22 @@
         .ckc.neg { color: var(--red); }
         .btn-ordini { margin-top: 8px; display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; background: none; border: none; padding: 0; }
         .btn-ordini:hover { text-decoration: underline; }
+        .btn-action {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            transition: background 0.15s, color 0.15s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text2);
+            font-size: 16px;
+        }
+        .btn-action:hover { background: rgba(0,0,0,0.05); color: var(--text); }
+        .btn-delete-order { color: var(--red); }
+        .btn-delete-order:hover { background: #FDEAEA; color: var(--red); }
         .gamma-section h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; }
         .gamma-settori { display: flex; flex-direction: column; gap: 8px; }
         .gamma-settore-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
@@ -353,6 +420,13 @@
         .sped-corriere { color:var(--text2); font-size:11px; text-transform:uppercase; letter-spacing:.3px; }
         .sped-data { color:var(--text2); font-size:11px; }
         .sped-status { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+        .ddt-chip { font-size:12px; padding:3px 10px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--text2); cursor:pointer; transition:all .15s; }
+        .ddt-chip:hover { border-color:var(--text2); color:var(--text); }
+        .ddt-chip.active { background:var(--text); color:var(--surface); border-color:var(--text); }
+        .ddt-mese-sel { font-size:12px; padding:3px 8px; border-radius:20px; border:1px solid var(--border);
+            background:var(--surface); color:var(--text); cursor:pointer; outline:none;
+            font-family:inherit; transition:border-color .15s; }
+        .ddt-mese-sel:focus { border-color:var(--accent); }
         .eta-chip { font-size:11px; padding:2px 7px; border-radius:4px; font-weight:600; }
         .eta-chip.eta-future { background:#FEF3C7; color:#92400E; }
         .eta-chip.eta-past   { background:var(--bg); color:var(--text2); border:1px solid var(--border); }
@@ -517,9 +591,131 @@
         .bc-kpi-warn .bc-kpi-val { color:#D97706; }
         .bc-kpi-warn { border-left:3px solid #D97706; }
 
+        /* ── Pipeline Modal ── */
+        .pl-overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.45);
+                      display:flex; align-items:center; justify-content:center; padding:16px; }
+        .pl-modal   { background:var(--surface); border-radius:16px;
+                      box-shadow:0 20px 60px rgba(0,0,0,.25);
+                      width:100%; max-width:800px; max-height:88vh;
+                      display:flex; flex-direction:column; overflow:hidden; }
+        .pl-mhdr    { display:flex; justify-content:space-between; align-items:center;
+                      padding:.9rem 1.25rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+        .pl-mhdr h2 { font-size:16px; font-weight:600; margin:0; }
+        .pl-close   { background:none; border:none; font-size:22px; cursor:pointer;
+                      color:var(--text2); line-height:1; padding:0 4px; font-family:sans-serif; }
+        .pl-close:hover { color:var(--text); }
+        .pl-progress{ padding:.75rem 1.25rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+        .pl-stats   { display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+                      font-size:13px; margin-bottom:8px; }
+        .pl-stats-sep { color:var(--border); }
+        .pl-bar-bg  { height:8px; background:var(--border); border-radius:4px; overflow:visible;
+                      position:relative; }
+        .pl-bar-fill{ height:100%; background:#378ADD; border-radius:4px; transition:width .5s;
+                      position:relative; }
+        .pl-bar-pct { position:absolute; right:0; top:-18px; font-size:11px; font-weight:700;
+                      color:#378ADD; }
+        .pl-body    { overflow-y:auto; flex:1; min-width:0; }
+        .pl-art-btn { background:none; border:none; cursor:pointer; font-size:13px;
+                      padding:2px 5px; border-radius:4px; color:var(--text2); line-height:1; }
+        .pl-art-btn:hover { background:var(--bg); color:var(--text); }
+        .pl-tbl     { width:100%; border-collapse:collapse; font-size:13px; }
+        .pl-tbl th  { font-size:11px; font-weight:600; color:var(--text2); padding:8px 12px;
+                      border-bottom:1px solid var(--border); text-align:left;
+                      white-space:nowrap; position:sticky; top:0; background:var(--surface); z-index:1; }
+        .pl-tbl td  { padding:7px 12px; border-bottom:1px solid var(--border);
+                      vertical-align:middle; }
+        .pl-row:hover td { background:var(--bg); }
+        .pl-row-ok td { opacity:.55; }
+        .pl-row-ok:hover td { opacity:1; }
+        .pl-row input[type="number"] {
+          font-size:11px; font-family:monospace; text-align:right;
+          padding:3px 4px; border:1px solid var(--border); border-radius:3px;
+        }
+        .pl-row input[type="number"]:focus { border-color:var(--accent); outline:none; }
+        .pl-budget-line { background:#f0fdf4; }
+        .pl-budget-line td { padding:7px 12px; font-size:12px; font-weight:700;
+                             color:#2D7D4F; text-align:center;
+                             border-top:2px solid #2D7D4F; border-bottom:2px solid #2D7D4F; }
+        .pl-group-hdr td { padding:6px 12px; font-size:10px; font-weight:700;
+                           color:var(--text2); letter-spacing:.07em; text-transform:uppercase;
+                           background:var(--bg); border-bottom:1px solid var(--border); }
+        .pl-open-btn { font-size:13px; font-weight:600; padding:6px 16px; border-radius:20px;
+                       background:var(--accent); color:#fff; border:none; cursor:pointer;
+                       font-family:'DM Sans',sans-serif; flex-shrink:0; }
+        .pl-open-btn:hover { opacity:.88; }
+        @media(max-width:768px) {
+          .pl-overlay { padding:0; align-items:flex-end; }
+          .pl-modal   { border-radius:16px 16px 0 0; max-height:92vh; }
+          .pl-tbl th:nth-child(2), .pl-tbl td:nth-child(2),
+          .pl-tbl th:nth-child(5), .pl-tbl td:nth-child(5) { display:none; }
+        }
+
+        /* ── Tracking Modal ── */
+        .trk-overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.45);
+                       display:flex; align-items:center; justify-content:center; padding:16px; }
+        .trk-modal   { background:var(--surface); border-radius:16px;
+                       box-shadow:0 20px 60px rgba(0,0,0,.25);
+                       width:100%; max-width:540px; max-height:88vh;
+                       display:flex; flex-direction:column; overflow:hidden; }
+        .trk-hdr     { display:flex; justify-content:space-between; align-items:center;
+                       padding:.9rem 1.25rem; border-bottom:1px solid var(--border); flex-shrink:0; }
+        .trk-hdr h2  { font-size:16px; font-weight:600; margin:0; }
+        .trk-corriere-badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px;
+                              background:#eff8ff; color:#378ADD; }
+        .trk-body    { overflow-y:auto; flex:1; padding:0 1.25rem 1.25rem; }
+        .trk-section-title { font-size:10px; font-weight:700; color:var(--text2); letter-spacing:.08em;
+                             text-transform:uppercase; padding:1rem 0 .4rem;
+                             border-bottom:1px solid var(--border); margin-bottom:.6rem; }
+        .trk-meta-lbl { font-size:10px; color:var(--text2); }
+        .trk-info-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:.75rem; }
+        .trk-info-card { background:var(--bg); border-radius:8px; padding:8px 10px; text-align:center; }
+        .trk-info-val  { font-size:15px; font-weight:700; color:var(--text); }
+        .trk-info-lbl  { font-size:10px; color:var(--text2); margin-top:2px; }
+        .trk-nota      { background:#fffbeb; border:1px solid #FDE68A; border-radius:8px;
+                         padding:7px 10px; font-size:12px; color:#92400E; margin-bottom:.75rem; }
+        .trk-eventi    { display:flex; flex-direction:column; }
+        .trk-evento    { display:grid; grid-template-columns:60px 38px 1fr; gap:6px;
+                         padding:5px 0; border-bottom:1px solid var(--border); font-size:12px; }
+        .trk-evento:last-child { border-bottom:none; }
+        .trk-ev-data   { color:var(--text2); font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .trk-ev-ora    { color:var(--text2); font-variant-numeric:tabular-nums; }
+        .trk-ev-desc   { color:var(--text); }
+        .trk-footer    { display:flex; gap:8px; justify-content:flex-end; padding:.85rem 1.25rem;
+                         border-top:1px solid var(--border); flex-shrink:0; }
+        .trk-ext-link  { font-size:13px; font-weight:500; padding:6px 14px; border-radius:20px;
+                         background:var(--bg); color:var(--text); border:1px solid var(--border);
+                         text-decoration:none; }
+        .trk-ext-link:hover { background:var(--border); }
+        .trk-btn       { background:none; border:none; cursor:pointer; font-size:13px; font-weight:500;
+                         color:var(--accent); text-decoration:underline;
+                         font-family:'DM Sans',sans-serif; padding:0; }
+        .trk-btn:hover { opacity:.75; }
+        @media(max-width:600px) {
+          .trk-overlay { padding:0; align-items:flex-end; }
+          .trk-modal   { border-radius:16px 16px 0 0; max-height:90vh; }
+          .trk-info-grid { grid-template-columns:repeat(2,1fr); }
+        }
+
         /* ── Impostazioni clienti ── */
         .cfg-row-off td { opacity:.45; }
         .cfg-row-nodash td { opacity:.7; }
+        .cfg-row-dest td { opacity:.8; background: rgba(var(--accent-rgb, 99,102,241),.04); }
+        .cfg-edit-btn { background:none; border:none; cursor:pointer; color:var(--text2);
+            font-size:14px; padding:3px 5px; border-radius:5px; line-height:1;
+            transition:color .15s, background .15s; }
+        .cfg-edit-btn:hover { color:var(--accent); background:rgba(99,102,241,.08); }
+        .cfg-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4);
+            display:none; align-items:center; justify-content:center;
+            z-index:1500; padding:20px; }
+        .cfg-modal-overlay.open { display:flex; }
+        .cfg-modal { background:var(--surface); border-radius:14px;
+            width:100%; max-width:520px;
+            box-shadow:0 16px 48px rgba(0,0,0,.18);
+            max-height:92vh; overflow-y:auto; }
+        .btn-secondary { padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;
+            cursor:pointer; border:1px solid var(--border); background:var(--bg);
+            color:var(--text); transition:background .15s; }
+        .btn-secondary:hover { background:var(--border); }
         .cfg-toolbar { margin-bottom:12px; }
         .cfg-note-inp { width:100%; font-size:12px; padding:4px 6px; border:1px solid var(--border);
           border-radius:4px; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
@@ -568,11 +764,45 @@
 
         @media (max-width: 768px) {
             .main-content {
-                padding-bottom: 90px;
+                padding: 12px 12px 90px;
             }
 
+            h1 { font-size: 20px; margin-bottom: 14px; }
+            h2 { font-size: 15px; margin: 16px 0 10px; }
+
             /* KPI grid: 2 colonne su mobile */
-            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .kpi-card  { padding: 10px 12px; }
+            .kpi-value { font-size: 18px; }
+            .kpi-sub   { font-size: 10px; }
+            .kpi-card h3 { font-size: 8px; }
+            .flip-card-front, .flip-card-back { padding: 10px 12px; }
+
+            /* Stato mese: font più piccoli */
+            .stato-mese-total  { font-size: 20px; }
+            .stato-mese-pct    { font-size: 15px; }
+            .stato-chip        { padding: 5px 8px; font-size: 11px; }
+            .stato-chip-count  { font-size: 13px; }
+            .stato-chip-label  { font-size: 9px; }
+            .gap-row-text      { font-size: 11px; }
+            .stato-chips       { gap: 6px; margin: 10px 0; }
+
+            /* Top-10 table: nascondi bar ordinato, progressivo, var prog */
+            #top-clienti-table th:nth-child(3),
+            #top-clienti-table td:nth-child(3),
+            #top-clienti-table th:nth-child(6),
+            #top-clienti-table td:nth-child(6),
+            #top-clienti-table th:nth-child(7),
+            #top-clienti-table td:nth-child(7) { display: none; }
+            #top-clienti-table { font-size: 12px; }
+            .bc-cliente-nome   { font-size: 12px; }
+            .bc-cliente-div    { font-size: 10px; }
+
+            /* Table wrapper: scroll orizzontale dove serve */
+            .table-wrapper { overflow-x: auto; }
+
+            /* Cliente detail: 1 colonna */
+            .cliente-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 
             /* Ordini: nascondi Data, Codice Cliente, Tipo */
             #ordini-table th:nth-child(3),
@@ -748,6 +978,7 @@
         }
 
         @media (min-width: 769px) {
+            .mobile-only-card { display: none !important; }
             .bottom-nav,
             .mobile-drawer-overlay,
             .mobile-drawer {
@@ -935,13 +1166,28 @@
         .cal-day.cal-today { border-color: var(--accent); }
         .cal-day.cal-past { opacity: .6; }
         .cal-day.cal-dragover { background: #FEF3F2; border-color: var(--accent); }
+        .cal-day.cal-locked { background: #F0FDF4; border-color: #86EFAC; }
+        .cal-day.cal-speciale { background: #FFF7ED; border-color: #FBD38D; opacity: .75; }
+        .cal-num-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px; }
         .cal-num {
             font-size: 11px; color: var(--text2); font-weight: 600;
-            margin-bottom: 4px; line-height: 1;
+            line-height: 1; flex-shrink: 0;
         }
-        .cal-num.cal-num-today {
-            color: var(--accent); font-weight: 700;
+        .cal-num.cal-num-today { color: var(--accent); font-weight: 700; }
+        .cal-day-btns { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; }
+        .cal-btn-mini {
+            font-size: 9px; padding: 1px 4px; border-radius: 3px; cursor: pointer;
+            border: 1px solid var(--border); background: var(--surface);
+            color: var(--text2); line-height: 1.4; white-space: nowrap;
         }
+        .cal-btn-mini:hover { border-color: var(--text2); color: var(--text); }
+        .cal-btn-mini.cal-btn-locked { background: #F0FDF4; border-color: #86EFAC; color: #166534; }
+        .cal-badge-speciale {
+            font-size: 9px; padding: 1px 5px; border-radius: 3px; cursor: pointer;
+            background: #FEF3C7; border: 1px solid #FBD38D; color: #92400E;
+            line-height: 1.4; white-space: nowrap;
+        }
+        .cal-badge-speciale:hover { background: #FDE68A; }
         .cal-cards { display: flex; flex-direction: column; gap: 3px; }
 
         /* Agenda card */
@@ -970,6 +1216,10 @@
         .ac-sub {
             font-size: 10px; color: var(--text2);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ac-ult-ord {
+            font-size: 10px; color: var(--text2); opacity: .75;
+            white-space: nowrap; margin-top: 1px;
         }
         .ac-del {
             background: none; border: none; cursor: pointer;
@@ -1053,9 +1303,116 @@
         .stat-field { display: flex; flex-direction: column; gap: 5px; }
         .stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
                       letter-spacing: .4px; color: var(--text2); }
+
+        /* ── Note Visite ── */
+        .nv-badge { font-size: 10px; padding: 2px 8px; border-radius: 20px; background: var(--bg); color: var(--text2); font-weight: 500; margin-left: 6px; }
+        .nv-mapping { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+        .nv-mapping .nv-field { display: flex; flex-direction: column; gap: 4px; }
+        .nv-mapping .nv-field-btn { justify-content: flex-end; }
+        .nv-mapping label { font-size: 11px; color: var(--text2); }
+        .nv-mapping select { font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: var(--surface); }
+        .nv-route-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .nv-route { position: relative; }
+        .nv-route-line { position: absolute; left: 27px; top: 8px; bottom: 8px; width: 1px; background: var(--border); }
+        .nv-stop { display: flex; gap: 16px; margin-bottom: 16px; position: relative; }
+        .nv-stop-marker { flex: 0 0 auto; width: 54px; padding-top: 18px; text-align: right;
+            font-size: 11px; color: var(--accent); font-weight: 600; position: relative; z-index: 1; }
+        .nv-stop-marker .nv-dot { position: absolute; right: -4px; top: 22px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+        .nv-stop-card { flex: 1; padding: 18px; }
+        .nv-client-name { font-size: 15px; font-weight: 600; color: var(--text); }
+        .nv-client-meta { font-size: 11.5px; color: var(--text2); margin-top: 1px; }
+        .nv-history-block { margin-top: 10px; padding: 10px 12px; background: var(--bg); border-radius: 7px; }
+        .nv-history-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+        .nv-history-status { font-size: 12px; color: var(--text); font-weight: 550; }
+        .nv-history-status.nv-muted { color: var(--text2); font-weight: 500; }
+        .nv-history-actions { display: flex; gap: 6px; }
+        .nv-history-list { margin-top: 8px; font-size: 12px; color: var(--text); display: none; }
+        .nv-history-list.nv-open { display: block; }
+        .nv-h-item { padding: 6px 0; border-top: 1px solid var(--border); }
+        .nv-h-date { font-size: 10.5px; color: var(--accent); font-weight: 600; }
+        .nv-history-summary { margin-top: 8px; font-size: 12.5px; line-height: 1.5; color: var(--text); display: none; }
+        .nv-history-summary.nv-open { display: block; }
+        .nv-history-match-select { margin-top: 8px; }
+        .nv-history-match-select select { font-size: 11.5px; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border); }
+        .nv-extra { margin-top: 10px; }
+        .nv-extra summary { font-size: 11.5px; color: var(--text2); cursor: pointer; }
+        .nv-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+        .nv-fields .nv-full { grid-column: 1 / -1; }
+        .nv-fields label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+        .nv-fields input[type="text"] { width: 100%; font-size: 13px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+        .nv-note-box { margin-top: 12px; }
+        .nv-dup-warn:empty { display: none; }
+        .nv-dup-warn { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: #FDECEA; border: 1px solid #F3B7AF; color: var(--red); font-size: 12px; font-weight: 550; line-height: 1.4; }
+        .nv-note-box textarea { width: 100%; min-height: 64px; font-size: 13px; line-height: 1.5;
+            border: 1px solid var(--border); border-radius: 7px; padding: 10px; font-family: 'DM Sans', sans-serif; color: var(--text); background: var(--surface); resize: vertical; }
+        .nv-note-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+        .nv-btn-small { font-size: 12px; padding: 6px 10px; }
+        .nv-status { font-size: 11px; color: var(--text2); }
+        .nv-status.nv-ok { color: var(--green); }
+        .nv-status.nv-warn { color: var(--red); }
+        @media (max-width: 600px) {
+            .nv-fields { grid-template-columns: 1fr; }
+            .nv-stop-marker { width: 38px; }
+            .nv-route-line { left: 19px; }
+        }
+
+        /* ── Login gate (PIN) ── */
+        body.wilson-locked .top-nav,
+        body.wilson-locked .main-content,
+        body.wilson-locked .mobile-drawer-overlay,
+        body.wilson-locked .bottom-nav { display: none !important; }
+        #wilson-login-overlay { display: none; }
+        body.wilson-locked #wilson-login-overlay { display: flex; }
+        #wilson-login-overlay {
+            position: fixed; inset: 0; z-index: 99999;
+            background: var(--sidebar-bg);
+            align-items: center; justify-content: center;
+        }
+        .wl-card {
+            background: var(--surface); border-radius: 10px; padding: 36px 32px;
+            width: 280px; max-width: 90vw; text-align: center;
+            box-shadow: 0 8px 30px rgba(0,0,0,.35);
+        }
+        .wl-brand { font-family: 'Syne', sans-serif; font-size: 22px; color: var(--text); margin-bottom: 4px; }
+        .wl-sub { font-size: 12.5px; color: var(--text2); margin-bottom: 22px; }
+        .wl-digits { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; }
+        .wl-digits input {
+            width: 44px; height: 52px; text-align: center; font-size: 22px; font-weight: 600;
+            border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+        }
+        .wl-digits input:focus { outline: none; border-color: var(--accent); }
+        .wl-digits.wl-shake { animation: wl-shake .35s; }
+        @keyframes wl-shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-8px); }
+            75% { transform: translateX(8px); }
+        }
+        .wl-error { font-size: 12px; color: var(--red); min-height: 16px; margin-bottom: 10px; }
+        .wl-btn {
+            width: 100%; padding: 10px; border: none; border-radius: 8px;
+            background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        .wl-btn:hover { opacity: .92; }
     </style>
 </head>
-<body>
+<body class="wilson-locked">
+    <div id="wilson-login-overlay">
+        <div class="wl-card">
+            <div class="wl-brand">Wilson</div>
+            <div class="wl-sub">Inserisci il PIN per accedere</div>
+            <div class="wl-error" id="wl-error"></div>
+            <div class="wl-digits" id="wl-digits">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+                <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off">
+            </div>
+            <button class="wl-btn" id="wl-submit">Entra</button>
+        </div>
+    </div>
+    <script src="js/auth.js?v=1"></script>
+
     <nav class="top-nav" id="top-nav">
       <span class="top-nav-brand">Wilson</span>
       <div class="top-nav-links">
@@ -1063,16 +1420,18 @@
           <i class="ti ti-layout-dashboard top-nav-icon"></i><span class="top-nav-label">Dashboard</span></a>
         <a class="top-nav-link" data-page="ordini" data-tip="Ordini" href="#" onclick="showPage('ordini',event)">
           <i class="ti ti-clipboard-list top-nav-icon"></i><span class="top-nav-label">Ordini</span></a>
-        <a class="top-nav-link" data-page="clienti" data-tip="Clienti" href="#" onclick="showPage('clienti',event)">
-          <i class="ti ti-users top-nav-icon"></i><span class="top-nav-label">Clienti</span></a>
         <a class="top-nav-link" data-page="ddt" data-tip="DDT & Tracking" href="#" onclick="showPage('ddt',event)">
           <i class="ti ti-truck-delivery top-nav-icon"></i><span class="top-nav-label">DDT</span></a>
         <a class="top-nav-link" data-page="budget" data-tip="Budget" href="#" onclick="showPage('budget',event)">
           <i class="ti ti-target top-nav-icon"></i><span class="top-nav-label">Budget</span></a>
-        <a class="top-nav-link" data-page="statistiche" data-tip="Statistiche" href="#" onclick="showPage('statistiche',event)">
-          <i class="ti ti-chart-line top-nav-icon"></i><span class="top-nav-label">Statistiche</span></a>
+        <a class="top-nav-link" data-page="clienti" data-tip="Clienti" href="#" onclick="showPage('clienti',event)">
+          <i class="ti ti-users top-nav-icon"></i><span class="top-nav-label">Clienti</span></a>
         <a class="top-nav-link" data-page="agenda" data-tip="Agenda" href="#" onclick="showPage('agenda',event)">
           <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
+        <a class="top-nav-link" data-page="statistiche" data-tip="Statistiche" href="#" onclick="showPage('statistiche',event)">
+          <i class="ti ti-chart-line top-nav-icon"></i><span class="top-nav-label">Statistiche</span></a>
+        <a class="top-nav-link" data-page="listino" data-tip="Listino FL" href="#" onclick="showPage('listino',event)">
+          <i class="ti ti-tag top-nav-icon"></i><span class="top-nav-label">Listino</span></a>
         <a class="top-nav-link" data-page="impostazioni" data-tip="Impostazioni" href="#" onclick="showPage('impostazioni',event)">
           <i class="ti ti-adjustments top-nav-icon"></i><span class="top-nav-label">Impostazioni</span></a>
       </div>
@@ -1127,13 +1486,9 @@
                     <input class="filter-input" type="date" id="filtro-a" oninput="loadOrdini()">
                     <div class="filter-sep"></div>
                     <label>Cliente</label>
-                    <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="debounceOrdini()">
-                    <div class="filter-sep"></div>
-                    <label>Prodotto</label>
-                    <input class="filter-input" type="text" id="filtro-prodotto" placeholder="Codice o descrizione…" oninput="debounceOrdini()">
+                    <input class="filter-input" type="text" id="filtro-cliente" placeholder="Codice o ragione sociale…" oninput="document.getElementById('filtro-da').value='';document.getElementById('filtro-a').value='';debounceOrdini()">
                     <div class="filter-sep"></div>
                     <button class="filter-reset" onclick="resetFiltriOrdini()">↺ Mese</button>
-                    <button class="filter-reset" onclick="azzeraFiltriOrdini()">✕ Azzera</button>
                 </div>
                 <div class="filter-bar" style="padding-top:0;gap:6px;flex-wrap:wrap;">
                     <button class="ord-stato-chip on"  data-stato=""                    onclick="setFiltroStatoOrdine('')">Tutti</button>
@@ -1158,6 +1513,7 @@
                                 <th>Tipo</th>
                                 <th class="num-right">Importo €</th>
                                 <th>Stato</th>
+                                <th style="width:82px">Azioni</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1192,6 +1548,20 @@
                 </div>
                 <div class="table-header-bar">
                     <span>Clienti attivi · <span class="table-count" id="clienti-count">—</span></span>
+                    <div class="bulk-giorno-bar">
+                        <span class="bulk-giorno-label" id="bulk-giorno-label"></span>
+                        <select id="bulk-giorno-select" class="giorno-sel" style="max-width:120px">
+                            <option value="">Cambia giorno…</option>
+                            <option>Lunedì</option>
+                            <option>Martedì</option>
+                            <option>Mercoledì</option>
+                            <option>Giovedì</option>
+                            <option>Venerdì</option>
+                            <option>Sabato</option>
+                            <option value="__rimuovi__">— Rimuovi —</option>
+                        </select>
+                        <button class="ag-btn-sec" onclick="applicaGiornoMassivo()">Applica a tutti</button>
+                    </div>
                 </div>
                 <div class="table-scroll">
                     <table class="table" id="clienti-table">
@@ -1221,6 +1591,7 @@
             <div class="table-wrapper">
                 <div class="table-header-bar">
                     <span>Consegne · <span class="table-count" id="ddt-count">—</span></span>
+                    <div id="ddt-filter-bar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"></div>
                 </div>
                 <div class="table-scroll">
                     <table class="table" id="ddt-table">
@@ -1252,6 +1623,7 @@
                 <button class="budget-tab on" onclick="swBudget('mensile',this)">budget mensile</button>
                 <button class="budget-tab" onclick="swBudget('clienti',this)">pipeline clienti</button>
                 <button class="budget-tab" onclick="swBudget('premio',this)">premio</button>
+                <button class="budget-tab" onclick="swBudget('dettaglio',this)">dettaglio pipeline</button>
             </div>
             <div id="bpane-mensile" class="budget-pane on">
                 <div class="loading">Caricamento…</div>
@@ -1260,6 +1632,9 @@
                 <div class="loading">Caricamento…</div>
             </div>
             <div id="bpane-premio" class="budget-pane">
+                <div class="loading">Caricamento…</div>
+            </div>
+            <div id="bpane-dettaglio" class="budget-pane">
                 <div class="loading">Caricamento…</div>
             </div>
         </div>
@@ -1272,6 +1647,55 @@
             </div>
             <div id="stat-chart-wrap" style="display:none;margin-bottom:28px"></div>
             <div id="stat-list-wrap"></div>
+        </div>
+
+        <!-- ── NOTE VISITE ── -->
+        <div id="note-visite" class="page">
+            <h1 style="margin-bottom:4px">Note Visite</h1>
+            <p style="color:var(--text2);font-size:13px;margin:0 0 20px">Carica lo storico, carica il giro della settimana, lascia scrivere la bozza con il contesto del cliente.</p>
+
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+                <label for="nv-week-input" style="font-size:12px;color:var(--text2)">Settimana</label>
+                <input type="text" id="nv-week-input" class="filter-input" placeholder="es. 2026-W28" style="width:120px">
+                <button class="btn-secondary" onclick="nvCaricaSettimana()">Carica</button>
+                <span class="nv-status" id="nv-week-status"></span>
+            </div>
+
+            <div class="table-wrapper" style="margin-bottom:16px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:2px">Storico visite (4 anni) <span class="nv-badge" id="nv-hist-badge">non caricato</span></div>
+                <p style="font-size:12px;color:var(--text2);margin:4px 0 10px">Carica il file Excel/CSV con una riga per visita (data, cliente, nota). Resta solo in questa sessione: non viene salvato online.</p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <input type="file" id="nv-hist-file" accept=".xlsx,.xls,.csv,.txt" onchange="nvHandleHistFile(event)">
+                    <span style="font-size:12px;color:var(--text2)" id="nv-hist-hint"></span>
+                </div>
+                <div class="nv-mapping" id="nv-hist-mapping" style="display:none"></div>
+            </div>
+
+            <div class="table-wrapper" style="margin-bottom:20px">
+                <div style="font-weight:600;font-size:13px;margin-bottom:2px">Giro visite della settimana</div>
+                <p style="font-size:12px;color:var(--text2);margin:4px 0 10px">Allega il file Excel/CSV del giro (prima riga = intestazioni, stesso formato dello storico).</p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <input type="file" id="nv-route-file" accept=".xlsx,.xls,.csv,.txt" onchange="nvHandleRouteFile(event)">
+                    <span style="font-size:12px;color:var(--text2)" id="nv-import-hint"></span>
+                </div>
+                <div class="nv-mapping" id="nv-mapping" style="display:none"></div>
+            </div>
+
+            <div class="nv-route-toolbar" id="nv-route-toolbar" style="display:none">
+                <button class="btn-nuova-stat" id="nv-gen-all" onclick="nvGeneraTutte()">Genera tutte le bozze</button>
+                <span class="nv-status" id="nv-gen-all-status"></span>
+            </div>
+            <div class="nv-route" id="nv-route"></div>
+            <div class="placeholder" id="nv-empty" style="display:none">
+                <div class="placeholder-icon">🗓️</div>
+                <h3>Nessuna tappa in questa settimana</h3>
+                <p>Carica il file del giro qui sopra per iniziare.</p>
+            </div>
+
+            <div id="nv-footer-bar" style="display:none;justify-content:flex-end;gap:10px;margin-top:24px">
+                <button class="btn-secondary" onclick="nvExportTxt()">Esporta note (testo)</button>
+                <button class="btn-secondary" onclick="nvExportCsv()">Esporta note (CSV)</button>
+            </div>
         </div>
 
         <div id="preventivi" class="page">
@@ -1294,6 +1718,11 @@
             <div id="agenda-cal"><div class="loading">Caricamento…</div></div>
         </div>
 
+        <div id="listino" class="page">
+            <h1>Listino FL <span id="listino-count" style="font-size:14px;font-weight:400;color:var(--text2);margin-left:6px"></span></h1>
+            <div id="listino-root"><div class="loading">Caricamento…</div></div>
+        </div>
+
         <div id="impostazioni" class="page">
             <h1>Impostazioni</h1>
             <div id="cfg-token-root" style="margin-bottom:2rem"></div>
@@ -1314,13 +1743,17 @@
             <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="bottom-nav-label">Ordini</span>
         </button>
+        <button class="bottom-nav-item" data-page="ddt" type="button" onclick="mobileNavSelect('ddt', event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M1 3h15v13H1z" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 8h4l3 3v5h-7V8z" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/></svg>
+            <span class="bottom-nav-label">DDT</span>
+        </button>
+        <button class="bottom-nav-item" data-page="budget" type="button" onclick="mobileNavSelect('budget', event)">
+            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke-linecap="round"/><circle cx="12" cy="12" r="6" stroke-linecap="round"/><circle cx="12" cy="12" r="2" stroke-linecap="round"/></svg>
+            <span class="bottom-nav-label">Budget</span>
+        </button>
         <button class="bottom-nav-item" data-page="clienti" type="button" onclick="mobileNavSelect('clienti', event)">
             <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 19v-2a4 4 0 0 0-3-3.87" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="bottom-nav-label">Clienti</span>
-        </button>
-        <button class="bottom-nav-item" data-page="agenda" type="button" onclick="mobileNavSelect('agenda', event)">
-            <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="18" rx="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 2v4M8 2v4M3 10h18" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span class="bottom-nav-label">Agenda</span>
         </button>
         <button class="bottom-nav-item" type="button" id="mobile-drawer-toggle" onclick="toggleMobileDrawer(event)">
             <svg class="bottom-nav-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 6h.01" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 12h.01" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 18h.01" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1331,9 +1764,9 @@
         <div class="mobile-drawer" role="dialog" aria-modal="true" aria-label="Altro">
             <div class="drawer-handle"></div>
             <div class="drawer-links">
-                <button type="button" onclick="navToPage('ddt'); closeMobileDrawer()">DDT &amp; Tracking</button>
-                <button type="button" onclick="navToPage('budget'); closeMobileDrawer()">Budget</button>
+                <button type="button" onclick="mobileNavSelect('agenda', event); closeMobileDrawer()">Agenda</button>
                 <button type="button" onclick="navToPage('statistiche'); closeMobileDrawer()">Statistiche</button>
+                <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Listino FL</button>
                 <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
         </div>
@@ -1342,8 +1775,27 @@
     <!-- Modal Statistiche -->
     <div class="stat-modal-overlay" id="stat-modal-overlay" onclick="handleStatModalOverlay(event)"></div>
 
+    <!-- Tracking Modal -->
+    <div id="trk-overlay" class="trk-overlay" style="display:none"
+         onclick="if(event.target===this)closeTrackingModal()">
+      <div class="trk-modal" id="trk-modal-box"></div>
+    </div>
+
+    <!-- Pipeline modal -->
+    <div id="pl-modal" class="pl-overlay" style="display:none"
+         onclick="if(event.target===this)closePipeline()">
+      <div class="pl-modal" id="pl-modal-box">
+        <div class="pl-mhdr">
+          <h2 id="pl-header-title">Pipeline</h2>
+          <button class="pl-close" onclick="closePipeline()">×</button>
+        </div>
+        <div id="pl-progress" class="pl-progress"></div>
+        <div id="pl-body" class="pl-body"></div>
+      </div>
+    </div>
+
     <script src="env.js?v=12"></script>
-    <script src="js/config.js?v=13"></script>
+    <script src="js/config.js?v=14"></script>
     <script src="js/analytics.js?v=13"></script>
     <script src="js/dashboard.js?v=18"></script>
     <script src="js/clienti.js?v=19"></script>
@@ -1356,7 +1808,12 @@
     <script src="js/statistiche.js?v=1"></script>
     <script src="js/app.js?v=14"></script>
     <script>
-        // placeholder — tutto il codice è nei moduli js/
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                const trk = document.getElementById('trk-overlay');
+                if (trk && trk.style.display !== 'none') closeTrackingModal();
+            }
+        });
     </script>
 </body>
 </html>

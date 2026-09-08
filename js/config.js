@@ -10,9 +10,14 @@ function _getSafeStorage() {
   } catch { return { getItem: () => null, setItem: () => {}, removeItem: () => {} }; }
 }
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: false, storage: _getSafeStorage() },
-});
+if (!window.supabase) {
+  console.error('supabase.min.js non caricato — controllare la connessione');
+}
+const sb = window.supabase
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, storage: _getSafeStorage() },
+    })
+  : null;
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -58,6 +63,7 @@ function statoBadgeCls(id) {
 
 let _latestRollingDate  = null;
 let _rollingEnriched    = null;
+let _gammaDates         = null;   // [latestDate, prevDate, ...]
 let _clientiEsclusi     = null;  // Set codici esclusi
 let _ordinaDiPersonaSet = null;  // Set codici che ordinano di persona
 
@@ -92,10 +98,30 @@ async function getLatestRollingDate() {
   return _latestRollingDate;
 }
 
+async function getGammaDates() {
+  if (_gammaDates) return _gammaDates;
+  const { data } = await sb.from('gamma_penetrazione')
+    .select('data_aggiornamento')
+    .order('data_aggiornamento', { ascending: false })
+    .limit(500);
+  const seen = new Set();
+  _gammaDates = (data || []).reduce((acc, r) => {
+    if (!seen.has(r.data_aggiornamento)) { seen.add(r.data_aggiornamento); acc.push(r.data_aggiornamento); }
+    return acc;
+  }, []);
+  return _gammaDates;
+}
+
+async function getLatestGammaDate() {
+  return (await getGammaDates())[0] || null;
+}
+
 async function loadRollingEnriched(force) {
   if (_rollingEnriched && !force) return _rollingEnriched;
-  await _loadClientiConfigCache();
-  const date = await getLatestRollingDate();
+  const [, date] = await Promise.all([
+    _loadClientiConfigCache(),
+    getLatestRollingDate(),
+  ]);
   if (!date) return [];
   const { data, error } = await sb.from('rolling_fatturato')
     .select([
@@ -103,6 +129,7 @@ async function loadRollingEnriched(force) {
       'mese_consegnato, mese_in_preparazione, mese_da_spedire, ordinato_oltre_mese',
       'spedito_ordinato_mese, fatt_mese_anno_prec, variazione_mese',
       'fatt_prog_anno_prec, fatt_prog_anno_corr, variazione_progressivo',
+      'fatt_prog_gen_apr_2026',
       'fatt_gen_2025, fatt_feb_2025, fatt_mar_2025, fatt_apr_2025',
       'fatt_mag_2025, fatt_giu_2025, fatt_lug_2025, fatt_ago_2025',
       'fatt_set_2025, fatt_ott_2025, fatt_nov_2025, fatt_dic_2025',

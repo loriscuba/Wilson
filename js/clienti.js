@@ -1,6 +1,9 @@
 let _clientiData        = [];   // raw clienti records
+let _clientiFiltrati    = [];   // subset attualmente visibile (usato per bulk edit)
 let _rollingByCode      = {};   // codice_cliente → enriched rolling record
 let _pendingOpenCodice  = null; // auto-espandi questo cliente dopo il caricamento
+
+const _GIORNI_VISITA = ['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 
 function apriClienteDaDashboard(codice) {
   _pendingOpenCodice = codice;
@@ -23,7 +26,7 @@ function filterClienti(q) {
   const statoFilt = document.getElementById('filtro-stato')?.value || '';
   const needle    = q.trim().toLowerCase();
 
-  const filtered = _clientiData.filter(c => {
+  _clientiFiltrati = _clientiData.filter(c => {
     const matchQ = !needle ||
       (c.ragione_sociale || '').toLowerCase().includes(needle) ||
       (c.citta           || '').toLowerCase().includes(needle) ||
@@ -35,8 +38,16 @@ function filterClienti(q) {
     return matchQ && matchSt;
   });
 
-  countEl.textContent = filtered.length;
-  renderClientiRows(filtered);
+  countEl.textContent = _clientiFiltrati.length;
+  renderClientiRows(_clientiFiltrati);
+  _aggiornaBulkBar();
+}
+
+function _aggiornaBulkBar() {
+  const lbl = document.getElementById('bulk-giorno-label');
+  if (!lbl) return;
+  const n = _clientiFiltrati.length;
+  lbl.textContent = n > 0 ? `${n} visibili` : '';
 }
 
 function renderClientiRows(data) {
@@ -52,6 +63,8 @@ function renderClientiRows(data) {
     const stBadge = rolling
       ? `<span class="badge ${statoBadgeCls(rolling._stato.id)}">${rolling._stato.label}</span>`
       : '<span class="badge badge-gray">—</span>';
+    const giornoOpts = '<option value="">—</option>' +
+      _GIORNI_VISITA.map(g => `<option${c.giorno_visita === g ? ' selected' : ''}>${g}</option>`).join('');
     return `
     <tr class="cliente-row" onclick="toggleClienteDetail('${cod}', '${nome}', this)">
       <td><button class="expand-btn" id="cexp-${cod}">▶</button></td>
@@ -60,7 +73,11 @@ function renderClientiRows(data) {
       <td>${c.provincia || '—'}</td>
       <td>${c.settori?.nome || '—'}</td>
       <td>${c.categorie?.nome || '—'}</td>
-      <td>${c.giorno_visita || '—'}</td>
+      <td class="td-giorno" onclick="event.stopPropagation()">
+        <select class="giorno-sel" id="gsel-${cod}" onchange="salvaGiornoVisita('${cod}',this.value)">
+          ${giornoOpts}
+        </select>
+      </td>
       <td>${stBadge}</td>
     </tr>
     <tr class="cliente-detail-row" id="cdetail-row-${cod}">
@@ -79,12 +96,14 @@ async function loadClienti() {
       sb.from('clienti')
         .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
         .eq('attivo', true)
+        .or('solo_destinazione.eq.false,solo_destinazione.is.null')
         .order('ragione_sociale', { ascending: true }),
       loadRollingEnriched(),
     ]);
     if (error) throw error;
 
     _clientiData   = clienti || [];
+    _clientiFiltrati = _clientiData;
     _rollingByCode = Object.fromEntries(rolling.map(r => [r.codice_cliente, r]));
 
     countEl.textContent = _clientiData.length;
@@ -93,6 +112,7 @@ async function loadClienti() {
       filterClienti(q);
     } else {
       renderClientiRows(_clientiData);
+      _aggiornaBulkBar();
     }
 
     if (_pendingOpenCodice) {
@@ -126,7 +146,12 @@ async function loadClienteDetail(codice, nome, container) {
   try {
     const now     = new Date();
     const annoP   = now.getFullYear() - 1;
-    const latestDate = await getLatestRollingDate();
+    const [latestDate, gammaDates] = await Promise.all([
+      getLatestRollingDate(),
+      getGammaDates(),
+    ]);
+    const latestGammaDate = gammaDates[0] || null;
+    const prevGammaDate   = gammaDates[1] || null;
 
     const [{ data: rollingRec }, { data: ordiniAttivi }, { data: gammaData }, { data: ordiniStorico }, { data: gammaRefData }, { data: gammaCfgData }] =
       await Promise.all([
@@ -147,6 +172,7 @@ async function loadClienteDetail(codice, nome, container) {
         sb.from('gamma_penetrazione')
           .select('settore, pct_immancabili, pct_strategiche, fatturato_anno, prodotti_acquistati, data_aggiornamento')
           .eq('codice_cliente', codice)
+          .eq('data_aggiornamento', latestGammaDate)
           .order('settore'),
         sb.from('ordini')
           .select('data_ordine, totale_ordine')
@@ -285,6 +311,106 @@ function buildRitmoHTML(ritmo) {
       <div class="cks"><span class="badge ${urgCls}">${urgLabel}</span></div>
     </div>
   </div>`;
+}
+
+// ── Previsione articoli ───────────────────────────────────────────────────────
+
+async function loadPrevisioneArticoli(codice) {
+  const now       = new Date();
+  const cutoffStr = new Date(now.getFullYear(), now.getMonth() - 18, 1).toISOString().split('T')[0];
+
+  const [{ data: ordiniConRighe }, { data: gammaClient }] = await Promise.all([
+    sb.from('ordini')
+      .select('data_ordine, righe_ordine(codice_articolo, descrizione_articolo, quantita, unita_misura)')
+      .eq('codice_cliente', codice)
+      .neq('stato', 'annullato')
+      .gte('data_ordine', cutoffStr)
+      .order('data_ordine'),
+    sb.from('gamma_penetrazione')
+      .select('settore, prodotti_acquistati, data_aggiornamento')
+      .eq('codice_cliente', codice)
+      .order('data_aggiornamento', { ascending: false })
+      .limit(10),
+  ]);
+
+  let mancanti = [];
+  if (gammaClient?.length) {
+    const latestDate = gammaClient[0].data_aggiornamento;
+    const settori    = [...new Set(gammaClient.map(g => g.settore))];
+    const { data: gammaRef } = await sb.from('gamma_penetrazione')
+      .select('settore, prodotti_acquistati')
+      .eq('data_aggiornamento', latestDate)
+      .in('settore', settori);
+
+    const refMap = {};
+    for (const row of (gammaRef || [])) {
+      if (!refMap[row.settore]) refMap[row.settore] = new Map();
+      for (const p of Object.keys(row.prodotti_acquistati || {}))
+        refMap[row.settore].set(p.toLowerCase(), p);
+    }
+    for (const g of gammaClient) {
+      const acquired = new Set(Object.keys(g.prodotti_acquistati || {}).map(p => p.toLowerCase()));
+      const ref      = refMap[g.settore] || new Map();
+      const missing  = [...ref.entries()].filter(([k]) => !acquired.has(k)).map(([, v]) => v);
+      if (missing.length) mancanti.push({ settore: g.settore, prodotti: missing });
+    }
+  }
+
+  return { ..._calcolaPrevioneArticoli(ordiniConRighe || [], now), mancanti };
+}
+
+function _calcolaPrevioneArticoli(ordiniConRighe, now) {
+  const pad = n => String(n).padStart(2, '0');
+  const ym  = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+
+  const currentYM = ym(now);
+  const prevYM    = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+
+  // Ultimi 12 mesi completi (escluso il mese corrente)
+  const window12 = [];
+  for (let i = 1; i <= 12; i++)
+    window12.push(ym(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+
+  // Aggrega per prodotto/mese
+  const prodMap = {};
+  for (const ord of ordiniConRighe) {
+    if (!ord.data_ordine) continue;
+    const month = ord.data_ordine.substring(0, 7);
+    for (const riga of ord.righe_ordine || []) {
+      const cod = riga.codice_articolo;
+      if (!cod) continue;
+      if (!prodMap[cod]) prodMap[cod] = { descrizione: riga.descrizione_articolo || cod, um: riga.unita_misura || '', byMonth: {} };
+      prodMap[cod].byMonth[month] = (prodMap[cod].byMonth[month] || 0) + Number(riga.quantita || 0);
+    }
+  }
+
+  const results = [];
+  for (const [cod, prod] of Object.entries(prodMap)) {
+    const activeIn12  = window12.filter(m => (prod.byMonth[m] || 0) > 0);
+    if (!activeIn12.length) continue;
+
+    const totalQty    = activeIn12.reduce((s, m) => s + prod.byMonth[m], 0);
+    const avgQty      = totalQty / activeIn12.length;
+    const rotCycle    = 12 / activeIn12.length;           // mesi tra un ordine e l'altro
+    const lastYM      = [...activeIn12].sort().pop();     // mese più recente in window12
+    const lastDate    = new Date(lastYM + '-01');
+    const mesiDa      = (now.getFullYear() - lastDate.getFullYear()) * 12
+                      + (now.getMonth() - lastDate.getMonth());
+    const ordNow      = prod.byMonth[currentYM] || 0;
+    const isDue       = mesiDa >= rotCycle && ordNow === 0;
+
+    // Carryover solo per articoli mensili (rotCycle ≤ 1.5) con ordine mese precedente < media
+    let carryover = 0;
+    if (rotCycle <= 1.5 && mesiDa === 1)
+      carryover = Math.max(0, avgQty - (prod.byMonth[prevYM] || 0));
+
+    results.push({ cod, descrizione: prod.descrizione, um: prod.um,
+      activeIn12: activeIn12.length, avgQty, rotCycle, lastYM,
+      mesiDa, isDue, carryover, suggestedQty: Math.round(avgQty + carryover), ordNow });
+  }
+
+  results.sort((a, b) => (a.isDue === b.isDue ? b.suggestedQty - a.suggestedQty : a.isDue ? -1 : 1));
+  return { products: results, currentYM };
 }
 
 async function refreshClienteDetail(codice, nome) {

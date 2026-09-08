@@ -96,6 +96,7 @@ async function openStatModal() {
   if (!_statClienti.length) {
     const { data } = await sb.from('clienti')
       .select('codice_cliente, ragione_sociale')
+      .or('solo_destinazione.eq.false,solo_destinazione.is.null')
       .order('ragione_sociale').limit(500);
     _statClienti = data || [];
   }
@@ -246,7 +247,9 @@ async function _openStat(stat) {
   // Carica clienti se non ancora disponibili
   if (!_statClienti.length) {
     const { data } = await sb.from('clienti')
-      .select('codice_cliente, ragione_sociale').order('ragione_sociale').limit(500);
+      .select('codice_cliente, ragione_sociale')
+      .or('solo_destinazione.eq.false,solo_destinazione.is.null')
+      .order('ragione_sociale').limit(500);
     _statClienti = data || [];
   }
 
@@ -448,6 +451,7 @@ async function _disegnaGrafico(tipo, params) {
         s2:      parseFloat(r.sconto2) || 0,
         s3:      parseFloat(r.sconto3) || 0,
         qty:     parseFloat(r.quantita) || 0,
+        cod:     r.codice_articolo || '',
         desc:    r.descrizione_articolo || r.codice_articolo || '',
       }))
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
@@ -465,7 +469,7 @@ async function _disegnaGrafico(tipo, params) {
         <td>${_fmtDataBreve(r.date)}</td>
         <td><button class="btn-ordini" onclick="apriOrdine('${_esc(r.ordine)}')">${_esc(r.ordine)}</button></td>
         <td style="font-size:.85em">${_esc(r.nome)}</td>
-        <td style="color:var(--text2);font-size:.85em">${_esc(r.desc)}</td>
+        <td style="color:var(--text2);font-size:.85em"><strong>${_esc(r.cod)}</strong>${r.desc && r.desc !== r.cod ? ' — ' + _esc(r.desc) : ''}</td>
         <td class="num-right" style="color:var(--text2)">${eur(r.listino)}</td>
         <td class="num-right">${sconti}</td>
         <td class="num-right"><strong>${eur(r.netto)}</strong></td>
@@ -489,6 +493,9 @@ async function _disegnaGrafico(tipo, params) {
           <tbody>${tbody}</tbody>
         </table>
       </div>`;
+
+    // Confronto con griglia FL
+    await _appendListinoGriglia(content, termArt);
     return;
   }
 
@@ -573,6 +580,9 @@ async function _disegnaGrafico(tipo, params) {
         </table>
       </div>`;
     content.appendChild(tableEl);
+
+    // Confronto con griglia FL
+    await _appendListinoGriglia(content, termArt);
     return;
   }
 
@@ -696,4 +706,67 @@ function _fmtMese(m) {
   const [y, mo] = m.split('-');
   const nomi = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
   return (nomi[parseInt(mo) - 1] || mo) + ' ' + y.slice(2);
+}
+
+// ── Griglia prezzi FL inline ──────────────────────────────────────────────────
+
+async function _appendListinoGriglia(container, termArt) {
+  if (!termArt) return;
+
+  // Query listino_fl per codice o descrizione
+  const { data, error } = await sb.from('listino_fl')
+    .select('codice_articolo, descrizione, categoria, unita_misura, prezzo_lordo, prezzi_netti, fuori_listino, edizione, data_listino')
+    .or(`codice_articolo.ilike.%${termArt}%,descrizione.ilike.%${termArt}%`)
+    .order('data_listino', { ascending: false })
+    .order('descrizione');
+
+  if (error || !data?.length) return;
+
+  // Raggruppa per edizione e mostra solo la più recente per ogni codice
+  const latestEdiz = data[0].edizione;
+  const edizLabel  = latestEdiz ? `Ed. ${latestEdiz}` : '';
+  const rows       = data.filter(r => r.edizione === latestEdiz);
+
+  const eur = n => n != null ? '€ ' + Number(n).toFixed(2).replace('.', ',') : '—';
+
+  const tbody = rows.map(r => {
+    const prezzi = (r.prezzi_netti || []);
+    const prezziHtml = prezzi.length
+      ? prezzi.map((p, i) => {
+          const color = i === 0 ? '#378ADD' : i === prezzi.length - 1 ? '#2D7D4F' : '#6B5552';
+          return `<span style="display:inline-block;margin:1px 3px 1px 0;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:500;background:${color}18;color:${color};border:1px solid ${color}30">€ ${Number(p).toFixed(2).replace('.', ',')}</span>`;
+        }).join('')
+      : '<span style="color:var(--text2);font-size:11px">—</span>';
+
+    const flBadge = r.fuori_listino ? '<span style="font-size:10px;color:#C84B2F;margin-left:3px">FL</span>' : '';
+    return `<tr>
+      <td><strong>${_esc(r.codice_articolo || '—')}</strong></td>
+      <td style="font-size:12px">${_esc(r.descrizione || '—')}${flBadge}</td>
+      <td style="text-align:center;color:var(--text2);font-size:11px">${_esc(r.unita_misura || '—')}</td>
+      <td style="text-align:right;color:var(--text2);font-size:12px">${eur(r.prezzo_lordo)}</td>
+      <td>${prezziHtml}</td>
+    </tr>`;
+  }).join('');
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:20px;padding-top:16px;border-top:1px solid var(--border)';
+  wrap.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2)">Griglia Prezzi FL</span>
+      <span style="font-size:11px;color:var(--text2);background:var(--bg);padding:2px 8px;border-radius:10px;border:1px solid var(--border)">${_esc(edizLabel)}</span>
+      <span style="font-size:11px;color:var(--text2)">${rows.length} prodott${rows.length === 1 ? 'o' : 'i'}</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="righe-table" style="width:100%;font-size:12px">
+        <thead><tr>
+          <th style="width:90px">Codice</th>
+          <th>Descrizione</th>
+          <th style="text-align:center;width:40px">UM</th>
+          <th style="text-align:right;width:80px">Listino</th>
+          <th>Prezzi netti</th>
+        </tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>`;
+  container.appendChild(wrap);
 }

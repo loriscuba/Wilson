@@ -1,3 +1,72 @@
+// Fatturato "evaso" del giorno: per ogni riga dei DDT emessi oggi, trova la
+// riga corrispondente nell'ordine collegato (ddt.numero_ordine → ordini) sullo
+// stesso codice articolo e ne prende l'importo_eur così com'è (il DDT non ha
+// prezzi, l'ordine sì). NON si moltiplica per la quantità del DDT: il campo
+// quantità dell'ordine può essere corrotto per import PDF con quantità >999
+// (bug storico nel parser, corretto per i nuovi import ma non retroattivo sui
+// dati già a DB), quindi si evita di usarlo come base di calcolo. Il rovescio
+// della medaglia: se una riga d'ordine viene spedita su più DDT in giorni
+// diversi (spedizione parziale), ogni DDT che la referenzia conta l'intero
+// importo della riga — caso raro con questi documenti, ma da tenere a mente.
+async function computeFatturatoOggi(today) {
+  const vuoto = { totale: 0, numDdt: 0, numRigheAbbinate: 0, numRigheNonAbbinate: 0 };
+  try {
+    const { data: ddtOggi, error } = await sb.from('ddt').select('id, numero_ordine').eq('data_ddt', today);
+    if (error) throw error;
+    if (!ddtOggi?.length) return vuoto;
+
+    const ddtIds       = ddtOggi.map(d => d.id);
+    const numeriOrdine = [...new Set(ddtOggi.map(d => d.numero_ordine).filter(Boolean))];
+
+    const [{ data: righeDdt }, { data: ordini }] = await Promise.all([
+      sb.from('righe_ddt').select('ddt_id, codice_articolo').in('ddt_id', ddtIds),
+      numeriOrdine.length
+        ? sb.from('ordini').select('id, numero_ordine').in('numero_ordine', numeriOrdine)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const ordineIdByNumero = Object.fromEntries((ordini || []).map(o => [o.numero_ordine, o.id]));
+    const ordineIds        = (ordini || []).map(o => o.id);
+
+    const { data: righeOrdine } = ordineIds.length
+      ? await sb.from('righe_ordine').select('ordine_id, codice_articolo, importo_eur').in('ordine_id', ordineIds)
+      : { data: [] };
+
+    // Importo per riga d'ordine: chiave ordine_id + codice articolo normalizzato
+    // (il DDT toglie gli zeri iniziali dal codice, l'ordine lo tiene a 8 cifre).
+    const importoPerOrdine = {};
+    for (const r of righeOrdine || []) {
+      const key = `${r.ordine_id}|${Number(r.codice_articolo)}`;
+      importoPerOrdine[key] = (importoPerOrdine[key] || 0) + (Number(r.importo_eur) || 0);
+    }
+
+    const numOrdineByDdtId = Object.fromEntries(ddtOggi.map(d => [d.id, d.numero_ordine]));
+
+    let totale = 0, abbinate = 0, nonAbbinate = 0;
+    const contate = new Set(); // evita doppio conteggio se lo stesso codice compare 2 volte nello stesso DDT
+    for (const r of righeDdt || []) {
+      const numOrdine = numOrdineByDdtId[r.ddt_id];
+      const ordineId  = numOrdine ? ordineIdByNumero[numOrdine] : null;
+      const key       = ordineId ? `${ordineId}|${Number(r.codice_articolo)}` : null;
+
+      if (key && importoPerOrdine[key] != null) {
+        abbinate++;
+        if (!contate.has(key)) {
+          totale += importoPerOrdine[key];
+          contate.add(key);
+        }
+      } else {
+        nonAbbinate++;
+      }
+    }
+
+    return { totale, numDdt: ddtOggi.length, numRigheAbbinate: abbinate, numRigheNonAbbinate: nonAbbinate };
+  } catch (err) {
+    console.error('Errore calcolo fatturato oggi:', err);
+    return vuoto;
+  }
+}
+
 async function loadDashboard() {
   const kpiGrid = document.getElementById('kpi-grid');
   const topBody = document.querySelector('#top-clienti-table tbody');
@@ -9,8 +78,8 @@ async function loadDashboard() {
   topBody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento…</td></tr>';
   document.getElementById('stato-mese').innerHTML = '';
 
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    kpiGrid.innerHTML = '<div class="loading">Configurazione Supabase mancante</div>';
+  if (typeof SUPABASE_URL === 'undefined' || !SUPABASE_URL || !sb) {
+    kpiGrid.innerHTML = '<div class="loading">Errore di configurazione — ricaricare la pagina</div>';
     return;
   }
 
@@ -24,43 +93,63 @@ async function loadDashboard() {
     const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     const today     = now.toISOString().split('T')[0];
 
-    const [rows, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }] = await Promise.all([
+    const [rows, rollingDate, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }, fatturatoOggi] = await Promise.all([
       loadRollingEnriched(),
+      getLatestRollingDate(),
       sb.from('ordini').select('totale_ordine, data_ordine')
         .gte('data_ordine', startMese).lte('data_ordine', endMese),
-      sb.from('ddt').select('stato, eta_shippeo').neq('stato', 'consegnato'),
+      sb.from('ddt').select('stato, stato_shippeo, eta_shippeo').neq('stato', 'consegnato'),
       sb.from('cedi_ridistribuito')
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
         .order('data_aggiornamento', { ascending: false })
         .order('valore_ridistribuito', { ascending: false }),
-      sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento')
+      sb.from('budget').select('budget_mese, evaso, giorno_lavorativo, giorni_totali, data_aggiornamento, budget_gen_apr, evaso_ordinato_resi')
         .lte('data_aggiornamento', today)
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false })
         .limit(1),
+      computeFatturatoOggi(today),
     ]);
 
     // KPI aggregati
-    const totProg26  = rows.reduce((s, r) => s + (r.fatt_prog_anno_corr || 0), 0);
-    const totProg25  = rows.reduce((s, r) => s + (r.fatt_prog_anno_prec || 0), 0);
+    // Progressivo consuntivo: usa fatt_prog_gen_apr_2026 (col fissa = gen→mese precedente completo)
+    // così non include dati parziali del mese in corso
+    const totProg26  = rows.reduce((s, r) => s + (r.fatt_prog_gen_apr_2026 || 0), 0);
+    // gen-mag 2025: sottrae il mese corrente anno prec da prog_anno_prec (che nel file di giugno = gen-giu 2025)
+    const totProg25  = rows.reduce((s, r) => s + ((r.fatt_prog_anno_prec || 0) - (r.fatt_mese_anno_prec || 0)), 0);
+    // Etichetta periodo: data_aggiornamento rolling → mese precedente completo
+    const _MESI_BREVI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+    const _rDate = rollingDate ? new Date(rollingDate + 'T00:00:00') : new Date();
+    const _prevMonth = new Date(_rDate.getFullYear(), _rDate.getMonth() - 1, 1);
+    const progLabel = `gen–${_MESI_BREVI[_prevMonth.getMonth()]} ${_prevMonth.getFullYear()}`;
+    const budget       = budgetArr?.[0] || null;
     const totCons    = rows.reduce((s, r) => s + (r.mese_consegnato     || 0), 0);
     const totPrep    = rows.reduce((s, r) => s + (r.mese_in_preparazione || 0), 0);
-    const totMese26  = rows.reduce((s, r) => s + (r.spedito_ordinato_mese || 0), 0);
+    const totMese26  = budget?.evaso_ordinato_resi != null
+      ? Number(budget.evaso_ordinato_resi)
+      : rows.reduce((s, r) => s + (r.spedito_ordinato_mese || 0), 0);
     const totMese25  = rows.reduce((s, r) => s + (r.fatt_mese_anno_prec   || 0), 0);
     const varProgPct = totProg25 > 0 ? ((totProg26 - totProg25) / totProg25) * 100 : null;
 
     const ordiniCount      = ordiniData?.length || 0;
     const ordiniValue      = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
     const todayMs          = new Date().setHours(0, 0, 0, 0);
-    const ddtCount         = (ddtData || []).filter(d => d.stato === 'spedito').length;
-    const ddtRitardoCount  = (ddtData || []).filter(d => d.eta_shippeo && new Date(d.eta_shippeo).setHours(0,0,0,0) < todayMs).length;
+    const _ddtNonConsegnati = (ddtData || []).filter(d => !(d.stato_shippeo && d.stato_shippeo.toLowerCase() === 'deliverycompliant'));
+    const ddtCount         = _ddtNonConsegnati.filter(d => d.stato === 'spedito').length;
+    const ddtRitardoCount  = _ddtNonConsegnati.filter(d => {
+      if (!d.eta_shippeo) return false;
+      const etaMs = new Date(d.eta_shippeo).setHours(0,0,0,0);
+      // ORDER_CONFIRMED: non in ritardo solo se ETA è ancora futura
+      if (d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED') && etaMs >= todayMs) return false;
+      return etaMs < todayMs;
+    }).length;
     // Solo l'ultimo import CEDI (filtra per la data_aggiornamento più recente)
     const allCedi     = cediData || [];
     const cediDate    = allCedi.length ? allCedi[0].data_aggiornamento : '';
     const latestCedi  = allCedi.filter(r => r.data_aggiornamento === cediDate);
     const totCEDI     = latestCedi.reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
     const totOrdinato  = totMese26 + totCEDI;
-    const budget       = budgetArr?.[0] || null;
     const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
     const budgetColor  = budgetPct == null ? 'var(--text2)' : budgetPct >= 100 ? 'var(--green)' : budgetPct >= 80 ? '#378ADD' : budgetPct >= 40 ? '#D97706' : 'var(--red)';
 
@@ -69,31 +158,59 @@ async function loadDashboard() {
     const varConsPct        = totMese25 > 0 ? ((totConsConCedi - totMese25) / totMese25) * 100 : null;
     const budgetOrdinatoPct = budget?.budget_mese > 0 ? (totOrdinato    / budget.budget_mese) * 100 : null;
     const budgetConsPct     = budget?.budget_mese > 0 ? (totConsConCedi / budget.budget_mese) * 100 : null;
+    const gapOrdinato       = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totOrdinato)    : null;
+    const gapCons           = budget?.budget_mese > 0 ? Math.max(0, budget.budget_mese - totConsConCedi) : null;
+    const budgetProg        = budget?.budget_gen_apr || null;
+    const budgetProgPct     = budgetProg > 0 ? (totProg26 / budgetProg) * 100 : null;
+    const gapBudgetProg     = budgetProg > 0 ? totProg26 - budgetProg : null;
 
     kpiGrid.innerHTML = `
-      <div class="kpi-card">
-        <h3>Ordinato del mese</h3>
-        <div class="kpi-value">€${fmt(totOrdinato)}</div>
-        ${totCEDI > 0 ? `<div class="kpi-sub" style="font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          ${varOrdinatoPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varOrdinatoPct >= 0 ? '+' : ''}${varOrdinatoPct.toFixed(1)}% vs ${annoP}</span>` : ''}
-          ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
+      <div class="flip-card-wrap" onclick="this.classList.toggle('flipped')">
+        <div class="flip-card-inner">
+          <div class="flip-card-front">
+            <h3>Ordinato del mese</h3>
+            <div class="kpi-value">€${fmt(totOrdinato)}</div>
+            ${totCEDI > 0 ? `<div class="kpi-sub">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+              ${varOrdinatoPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varOrdinatoPct >= 0 ? '+' : ''}${varOrdinatoPct.toFixed(1)}% vs ${annoP}</span>` : ''}
+              ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
+              ${gapOrdinato > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapOrdinato)} al budget</span>` : ''}
+            </div>
+          </div>
+          <div class="flip-card-back">
+            <h3>Consegnato del mese</h3>
+            <div class="kpi-value">€${fmt(totConsConCedi)}</div>
+            ${totCEDI > 0 ? `<div class="kpi-sub">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+              ${varConsPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varConsPct >= 0 ? '+' : ''}${varConsPct.toFixed(1)}% vs ${annoP}</span>` : ''}
+              ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
+              ${gapCons > 0 ? `<span class="badge" style="background:#FEF2F2;color:#C84B2F;">–€${fmt(gapCons)} al budget</span>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" title="Somma degli importi delle righe ordine abbinate ai DDT emessi oggi">
+        <h3>Fatturato evaso oggi</h3>
+        <div class="kpi-value">€${fmt(fatturatoOggi.totale)}</div>
+        <div class="kpi-sub">
+          ${fatturatoOggi.numDdt} DDT · ${fatturatoOggi.numRigheAbbinate} articoli abbinati${fatturatoOggi.numRigheNonAbbinate ? ` · <span style="color:#D97706">${fatturatoOggi.numRigheNonAbbinate} senza prezzo</span>` : ''}
         </div>
       </div>
       <div class="kpi-card">
-        <h3>Consegnato del mese</h3>
-        <div class="kpi-value">€${fmt(totConsConCedi)}</div>
-        ${totCEDI > 0 ? `<div class="kpi-sub" style="font-size:11px;color:var(--text2)">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          ${varConsPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varConsPct >= 0 ? '+' : ''}${varConsPct.toFixed(1)}% vs ${annoP}</span>` : ''}
-          ${budgetConsPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetConsPct.toFixed(1)}% budget</span>` : ''}
-        </div>
-      </div>
-      <div class="kpi-card">
-        <h3>Progressivo ${annoC}</h3>
+        <h3>Consuntivo ${progLabel}</h3>
         <div class="kpi-value">€${fmt(totProg26)}</div>
         <div class="kpi-sub">Stesso periodo ${annoP}: €${fmt(totProg25)}</div>
-        ${varProgPct != null ? `<div class="kpi-change ${varProgPct >= 0 ? 'positive' : 'negative'}">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</div>` : ''}
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
+          <span style="font-size:10px;color:${varProgPct != null ? (varProgPct >= 0 ? 'var(--green)' : '#C84B2F') : 'var(--text2)'};">${annoP}</span>
+          ${varProgPct != null ? `<span class="badge" style="background:${varProgPct >= 0 ? '#F0FDF4' : '#FEF2F2'};color:${varProgPct >= 0 ? 'var(--green)' : '#C84B2F'};">${varProgPct >= 0 ? '+' : ''}${varProgPct.toFixed(1)}%</span>` : ''}
+          ${totProg25 > 0 ? `<span class="badge" style="background:${totProg26 >= totProg25 ? '#F0FDF4' : '#FEF2F2'};color:${totProg26 >= totProg25 ? 'var(--green)' : '#C84B2F'};">${totProg26 >= totProg25 ? '+' : ''}€${fmt(totProg26 - totProg25)}</span>` : ''}
+        </div>
+        ${budgetProg != null ? `
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
+          <span style="font-size:10px;color:${budgetProgPct != null ? (budgetProgPct >= 100 ? '#D97706' : '#C84B2F') : 'var(--text2)'};">budget</span>
+          ${budgetProgPct != null ? `<span class="badge" style="background:${budgetProgPct >= 100 ? '#FFF7ED' : '#FEF2F2'};color:${budgetProgPct >= 100 ? '#D97706' : '#C84B2F'};">${budgetProgPct >= 100 ? '+' : ''}${(budgetProgPct - 100).toFixed(1)}%</span>` : ''}
+          ${gapBudgetProg != null ? `<span class="badge" style="background:${gapBudgetProg >= 0 ? '#FFF7ED' : '#FEF2F2'};color:${gapBudgetProg >= 0 ? '#D97706' : '#C84B2F'};">${gapBudgetProg >= 0 ? '+' : ''}€${fmt(gapBudgetProg)}</span>` : ''}
+        </div>` : ''}
       </div>
       <div class="kpi-card kpi-card-link" onclick="navToPage('ordini')">
         <h3>Ordini del mese</h3>
@@ -105,11 +222,24 @@ async function loadDashboard() {
         <div class="kpi-value">${ddtCount}</div>
         <div class="kpi-sub">Stato: spedito</div>
       </div>
-      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" style="${ddtRitardoCount > 0 ? 'border-left:3px solid #C84B2F' : ''}">
+      <div class="kpi-card kpi-card-link" onclick="navToDDTFiltro('in_ritardo')" style="${ddtRitardoCount > 0 ? 'border-left:3px solid #C84B2F' : ''}">
         <h3>DDT in ritardo</h3>
         <div class="kpi-value" style="color:${ddtRitardoCount > 0 ? '#C84B2F' : 'var(--text2)'}">${ddtRitardoCount}</div>
         <div class="kpi-sub">ETA superata, non consegnato</div>
       </div>`;
+
+    // Aggiusta altezza flip card in base al contenuto reale delle due facce
+    requestAnimationFrame(() => {
+      const wrap = kpiGrid.querySelector('.flip-card-wrap');
+      if (!wrap) return;
+      const front = wrap.querySelector('.flip-card-front');
+      const back  = wrap.querySelector('.flip-card-back');
+      if (front && back) {
+        const h = Math.max(front.scrollHeight, back.scrollHeight);
+        wrap.style.minHeight = h + 'px';
+        wrap.querySelector('.flip-card-inner').style.minHeight = h + 'px';
+      }
+    });
 
     renderStatoMese(rows);
 

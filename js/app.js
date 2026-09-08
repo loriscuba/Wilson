@@ -31,12 +31,14 @@ function handleMobileDrawerOverlay(event) {
 
 const PAGE_LOADERS = {
   dashboard:    loadDashboard,
-  ordini:       loadOrdini,
+  ordini:       () => { _initOrdiniDates(); loadOrdini(); },
   clienti:      loadClienti,
   ddt:          loadDDT,
   budget:       loadBudget,
   statistiche:  loadStatistiche,
+  'note-visite': loadNoteVisite,
   agenda:       loadAgenda,
+  listino:      loadListino,
   impostazioni: loadImpostazioni,
 };
 
@@ -82,18 +84,28 @@ function initMobileSectionObserver() {
 // ── Sync ─────────────────────────────────────────────────────────────────────
 
 async function loadUltimoSync() {
-  const el = document.getElementById('ultimo-sync');
+  const el  = document.getElementById('ultimo-sync');
+  const mel = document.getElementById('mobile-ultimo-sync');
   try {
     const { data, error } = await sb.from('importazioni')
       .select('created_at').eq('esito', 'ok')
       .order('created_at', { ascending: false }).limit(1).single();
-    if (error || !data) { el.textContent = 'Nessun sync'; return; }
+    if (error || !data) {
+      if (el)  el.textContent  = 'Nessun sync';
+      if (mel) mel.textContent = 'Nessun sync';
+      return;
+    }
     const d = new Date(data.created_at);
-    el.textContent = 'Agg. ' + d.toLocaleString('it-IT', {
+    const txt = 'Agg. ' + d.toLocaleString('it-IT', {
       day: '2-digit', month: '2-digit', year: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });
-  } catch { el.textContent = '—'; }
+    if (el)  el.textContent  = txt;
+    if (mel) mel.textContent = txt;
+  } catch {
+    if (el)  el.textContent  = '—';
+    if (mel) mel.textContent = '—';
+  }
 }
 
 function _reloadActivePage() {
@@ -106,35 +118,55 @@ function _reloadActivePage() {
   loadUltimoSync();
 }
 
-function _syncDone(btn, icon, label, ok) {
+function _syncDone(btn, icon, label, ok, errMsg) {
+  const mBtn   = document.getElementById('mobile-sync-btn');
+  const mIcon  = document.getElementById('mobile-sync-icon');
+  const mLabel = document.getElementById('mobile-sync-label');
+  const text   = ok ? 'Aggiornato' : (errMsg || 'Timeout');
+
   icon.className   = '';
   icon.textContent = ok ? '✓' : '⚠';
-  label.textContent = ok ? 'Aggiornato' : 'Timeout';
+  if (label)  label.textContent  = text;
+  if (!ok && errMsg) btn.title = errMsg;
   btn.classList.add(ok ? 'success' : 'error');
+  if (mIcon)  { mIcon.className = ''; mIcon.textContent = ok ? '✓' : '⚠'; }
+  if (mLabel) mLabel.textContent = text;
+  if (!ok && errMsg && mBtn) mBtn.title = errMsg;
+  if (mBtn)   mBtn.classList.add(ok ? 'success' : 'error');
+
   setTimeout(() => {
     btn.classList.remove('success', 'error');
+    btn.title = '';
     icon.textContent  = '↻';
-    label.textContent = 'Aggiorna dati';
+    if (label)  label.textContent  = 'Aggiorna dati';
     btn.disabled = false;
-  }, 3000);
+    if (mBtn)   { mBtn.classList.remove('success', 'error'); mBtn.disabled = false; mBtn.title = ''; }
+    if (mIcon)  mIcon.textContent  = '↻';
+    if (mLabel) mLabel.textContent = 'Aggiorna dati';
+  }, ok ? 3000 : 6000);
 }
 
 async function triggerSync() {
   const btn   = document.getElementById('sync-btn');
   const icon  = document.getElementById('sync-icon');
   const label = document.getElementById('sync-label');
-  const token = window.__env?.GITHUB_TOKEN;
+  const mBtn   = document.getElementById('mobile-sync-btn');
+  const mIcon  = document.getElementById('mobile-sync-icon');
+  const mLabel = document.getElementById('mobile-sync-label');
+  const token  = window.__env?.GITHUB_TOKEN;
 
   btn.disabled = true;
   btn.classList.remove('success', 'error');
   icon.className    = 'spin';
   icon.textContent  = '↻';
-  label.textContent = 'Aggiorna dati';
+  if (label)  label.textContent  = 'Aggiorna dati';
+  if (mBtn)   { mBtn.disabled = true; mBtn.classList.remove('success', 'error'); }
+  if (mIcon)  { mIcon.className = 'spin'; mIcon.textContent = '↻'; }
+  if (mLabel) mLabel.textContent = 'Aggiorna…';
 
-  // Senza token: ricarica solo la UI
+  // Senza token: non possiamo avviare l'Action, non fingere un successo
   if (!token) {
-    _reloadActivePage();
-    _syncDone(btn, icon, label, true);
+    _syncDone(btn, icon, label, false, 'Token GitHub mancante (vedi Impostazioni)');
     return;
   }
 
@@ -148,11 +180,20 @@ async function triggerSync() {
 
   // Dispatch entrambi i workflow
   const dispatchedAt = Date.now();
-  await Promise.all(WORKFLOWS.map(wf =>
+  const dispatchResults = await Promise.all(WORKFLOWS.map(wf =>
     fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${wf}/dispatches`, {
       method: 'POST', headers: HEADERS, body: JSON.stringify({ ref: 'main' }),
-    }).catch(() => {})
+    }).then(r => ({ wf, ok: r.ok, status: r.status })).catch(() => ({ wf, ok: false, status: 0 }))
   ));
+
+  const failed = dispatchResults.find(r => !r.ok);
+  if (failed) {
+    const reason = failed.status === 401 || failed.status === 403
+      ? 'Token GitHub non valido o scaduto'
+      : `Errore avvio Action (${failed.wf}: HTTP ${failed.status || 'rete'})`;
+    _syncDone(btn, icon, label, false, reason);
+    return;
+  }
 
   // Polling ogni 10s, timeout 3 minuti
   const MAX_MS  = 3 * 60 * 1000;
@@ -172,12 +213,14 @@ async function triggerSync() {
 
   const pollTimer = setInterval(async () => {
     elapsed += POLL_MS;
-    label.textContent = `in corso… ${Math.round(elapsed / 1000)}s`;
+    const prog = `in corso… ${Math.round(elapsed / 1000)}s`;
+    label.textContent = prog;
+    if (mLabel) mLabel.textContent = prog;
 
     if (elapsed >= MAX_MS) {
       clearInterval(pollTimer);
       _reloadActivePage();
-      _syncDone(btn, icon, label, false);
+      _syncDone(btn, icon, label, false, 'Timeout: Action avviata ma non conclusa in 3 min');
       return;
     }
 

@@ -36,14 +36,10 @@ function resetFiltriOrdini() {
   loadOrdini();
 }
 
-function azzeraFiltriOrdini() {
-  document.getElementById('filtro-da').value       = '';
-  document.getElementById('filtro-a').value        = '';
-  document.getElementById('filtro-cliente').value  = '';
-  const fp = document.getElementById('filtro-prodotto'); if (fp) fp.value = '';
-  _filtroStatoOrdine = null;
-  document.querySelectorAll('.ord-stato-chip').forEach(c => c.classList.toggle('on', c.dataset.stato === ''));
-  loadOrdini();
+function onFiltroClienteOrdini() {
+  document.getElementById('filtro-da').value = '';
+  document.getElementById('filtro-a').value  = '';
+  debounceOrdini();
 }
 
 async function loadOrdini() {
@@ -51,35 +47,18 @@ async function loadOrdini() {
   const countEl = document.getElementById('ordini-count');
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
-  _initOrdiniDates();
-  const da       = document.getElementById('filtro-da')?.value;
-  const a        = document.getElementById('filtro-a')?.value;
-  const cliente  = document.getElementById('filtro-cliente')?.value?.trim();
-  const prodotto = document.getElementById('filtro-prodotto')?.value?.trim();
+  const da      = document.getElementById('filtro-da')?.value;
+  const a       = document.getElementById('filtro-a')?.value;
+  const cliente = document.getElementById('filtro-cliente')?.value?.trim();
 
   try {
-    // Pre-query prodotto: trova i numero_ordine che contengono l'articolo cercato
-    let ordiniNums = null;
-    if (prodotto) {
-      const { data: righe } = await sb.from('righe_ordine')
-        .select('numero_ordine')
-        .or(`codice_articolo.ilike.%${prodotto}%,descrizione_articolo.ilike.%${prodotto}%`);
-      ordiniNums = [...new Set((righe || []).map(r => r.numero_ordine).filter(Boolean))];
-      if (!ordiniNums.length) {
-        countEl.textContent = 0;
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Nessun ordine trovato</td></tr>';
-        return;
-      }
-    }
-
     let q = sb.from('ordini')
-      .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, totale_ordine, stato')
+      .select('id, numero_ordine, data_ordine, codice_cliente, destinazione_ragione_sociale, tipo_ordine, importo_totale, stato')
       .order('data_ordine', { ascending: false });
 
     if (da)                 q = q.gte('data_ordine', da);
     if (a)                  q = q.lte('data_ordine', a);
     if (cliente)            q = q.or(`codice_cliente.ilike.%${cliente}%,destinazione_ragione_sociale.ilike.%${cliente}%,numero_ordine.ilike.%${cliente}%`);
-    if (ordiniNums)         q = q.in('numero_ordine', ordiniNums);
     if (_filtroStatoOrdine) q = q.eq('stato', _filtroStatoOrdine);
 
     const { data, error } = await q;
@@ -108,15 +87,137 @@ async function loadOrdini() {
         <td>${o.codice_cliente || '—'}</td>
         <td><span class="ord-cliente-link" onclick="event.stopPropagation();apriClienteDaDashboard('${o.codice_cliente||''}')">${o.destinazione_ragione_sociale || nomeFallback[o.codice_cliente] || '—'}</span></td>
         <td>${o.tipo_ordine || '—'}</td>
-        <td class="num-right"><strong>€${fmt(o.totale_ordine)}</strong></td>
+        <td class="num-right"><strong>€${fmt(o.importo_totale)}</strong></td>
         <td>${statoBadgeOrdine(o.stato)}</td>
+        <td><button class="btn-action btn-delete-order" onclick="event.stopPropagation();cancellaOrdine('${o.id}','${String(o.numero_ordine || '').replace(/'/g, "\\'")}'  )" title="Cancella ordine"><i class="ti ti-trash"></i></button></td>
       </tr>
       <tr class="righe-row" id="righe-${o.id}">
-        <td colspan="8"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>
+        <td colspan="9"><div class="righe-inner" id="righe-inner-${o.id}"></div></td>
       </tr>`).join('');
+
+    // Aggiorna gli stati in background senza bloccare il render
+    _refreshOrdiniStati(data).catch(() => {});
 
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
+  }
+}
+
+async function cancellaOrdine(ordineId, numeroOrdine) {
+  const label = numeroOrdine || ordineId;
+  const conferma = confirm(`Vuoi cancellare davvero l'ordine ${label}?`);
+  if (!conferma) return;
+
+  try {
+    const { data: ddtCollegati, error: ddtErr } = await sb
+      .from('ddt')
+      .select('id')
+      .eq('numero_ordine', numeroOrdine || '')
+      .limit(1);
+    if (ddtErr) throw ddtErr;
+
+    if ((ddtCollegati || []).length) {
+      const proceed = confirm(`L'ordine ${label} ha DDT collegati. Vuoi comunque eliminarlo?`);
+      if (!proceed) return;
+    }
+
+    const [righeRes, ordineRes] = await Promise.all([
+      sb.from('righe_ordine').delete().eq('ordine_id', ordineId),
+      sb.from('ordini').delete().eq('id', ordineId),
+    ]);
+
+    if (righeRes.error) throw righeRes.error;
+    if (ordineRes.error) throw ordineRes.error;
+
+    await loadOrdini();
+    alert(`Ordine ${label} cancellato.`);
+  } catch (err) {
+    console.error('Errore cancellazione ordine:', err);
+    alert(`Errore durante la cancellazione: ${err.message}`);
+  }
+}
+
+async function _refreshOrdiniStati(orders) {
+  if (!orders.length) return;
+
+  const numeroOrdini = orders.map(o => o.numero_ordine).filter(Boolean);
+  const ordineIds    = orders.map(o => o.id).filter(Boolean);
+
+  const [{ data: ddtRaw }, { data: righeOrd }] = await Promise.all([
+    sb.from('ddt')
+      .select('id, numero_ordine, stato')
+      .in('numero_ordine', numeroOrdini),
+    sb.from('righe_ordine')
+      .select('ordine_id, codice_articolo')
+      .in('ordine_id', ordineIds),
+  ]);
+
+  if (!ddtRaw?.length && !righeOrd?.length) return;
+
+  const ddtIds = (ddtRaw || []).map(d => d.id);
+  let righeDdt = [];
+  if (ddtIds.length) {
+    const { data: rd } = await sb.from('righe_ddt')
+      .select('ddt_id, codice_articolo')
+      .in('ddt_id', ddtIds);
+    righeDdt = rd || [];
+  }
+
+  // Mappa numero_ordine → DDT[] con righe attaccate
+  const ddtByOrdine = {};
+  for (const ddt of (ddtRaw || [])) {
+    if (!ddtByOrdine[ddt.numero_ordine]) ddtByOrdine[ddt.numero_ordine] = [];
+    ddtByOrdine[ddt.numero_ordine].push({
+      ...ddt,
+      righe_ddt: righeDdt.filter(r => r.ddt_id === ddt.id),
+    });
+  }
+
+  // Mappa ordine_id → righe_ordine
+  const righeByOrdine = {};
+  for (const r of (righeOrd || [])) {
+    if (!righeByOrdine[r.ordine_id]) righeByOrdine[r.ordine_id] = [];
+    righeByOrdine[r.ordine_id].push(r);
+  }
+
+  const _key = cod => String(cod || '').replace(/^0+/, '') || String(cod);
+
+  for (const order of orders) {
+    const ddts  = ddtByOrdine[order.numero_ordine] || [];
+    const righe = righeByOrdine[order.id]          || [];
+    if (!righe.length) continue;
+
+    const ordineSet     = new Set(righe.map(r => _key(r.codice_articolo)).filter(Boolean));
+    const speditiSet    = new Set();
+    const consegnatiSet = new Set();
+    for (const d of ddts) {
+      for (const riga of (d.righe_ddt || [])) {
+        const k = _key(riga.codice_articolo);
+        if (!k) continue;
+        speditiSet.add(k);
+        if (d.stato === 'consegnato') consegnatiSet.add(k);
+      }
+    }
+
+    const tot        = ordineSet.size;
+    const spediti    = [...ordineSet].filter(k => speditiSet.has(k)).length;
+    const consegnati = [...ordineSet].filter(k => consegnatiSet.has(k)).length;
+
+    let nuovoStato;
+    if (tot > 0 && consegnati === tot)   nuovoStato = 'consegnato';
+    else if (tot > 0 && spediti === tot) nuovoStato = 'spedito';
+    else if (spediti > 0)                nuovoStato = 'parzialmente spedito';
+    else                                 nuovoStato = 'confermato';
+
+    if (nuovoStato === order.stato) continue;
+
+    // Aggiorna badge nella riga della tabella
+    const righeRow = document.getElementById('righe-' + order.id);
+    if (righeRow) {
+      const badgeEl = righeRow.previousElementSibling?.querySelector('.badge');
+      if (badgeEl) badgeEl.outerHTML = statoBadgeOrdine(nuovoStato);
+    }
+    sb.from('ordini').update({ stato: nuovoStato }).eq('id', order.id).then(() => {});
   }
 }
 
@@ -141,7 +242,7 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
         .eq('ordine_id', ordineId)
         .order('codice_articolo'),
       sb.from('ddt')
-        .select('id, numero_ddt, numero_consegna, data_ddt, shippeo_url, corriere, eta_shippeo, stato, stato_shippeo, data_consegna_effettiva')
+        .select('id, numero_ddt, numero_consegna, data_ddt, shippeo_url, corriere, eta_shippeo, stato, stato_shippeo, data_consegna_effettiva, fercam_url, fercam_dati')
         .eq('numero_ordine', numeroOrdine)
         .order('numero_ddt'),
     ]);
@@ -166,6 +267,9 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
       ...d,
       righe_ddt: righeDdt.filter(r => r.ddt_id === d.id),
     }));
+
+    // Registra DDT nel registry del modal tracking
+    ddts.forEach(d => { if (window._trkRegistry) window._trkRegistry.set(d.numero_consegna, d); });
 
     // Calcola stato ordine a livello di singolo articolo
     const ordineSet = new Set(
@@ -244,7 +348,10 @@ async function toggleRighe(ordineId, numeroOrdine, triggerEl) {
             const statoChip = statoLabel
               ? `<span class="badge badge-blue" style="font-size:11px;">${statoLabel}</span>`
               : '';
-            statusHTML = `${statoChip}<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaChip}`;
+            const _isFercam = d.corriere?.trim() === 'DACHSER & FERCAM ITALIA S.R.L.';
+            statusHTML = _isFercam
+              ? `${statoChip}<button class="trk-btn" onclick="openTrackingModal('${d.numero_consegna}')">Traccia →</button>${etaChip}`
+              : `${statoChip}<a class="shippeo-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Traccia →</a>${etaChip}`;
           } else {
             statusHTML = `<span class="badge badge-gray">${statoLabel || d.stato || 'in attesa'}</span>`;
           }
