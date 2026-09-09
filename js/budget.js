@@ -5,8 +5,61 @@ let _bcFilter       = null;   // stato filter chip attivo
 let _bcSort         = { col: 'priority', dir: 1 };
 let _bcRows         = [];
 let _bcQuery        = '';
-let _bcRitmi        = {};     // codice_cliente → ritmo (calcolaRitmoOrdini result)
-let _plModifiche    = {};     // codice_cliente → { escluso, gapPersonalizzato, stati }
+let _plCache        = null;   // { budgetMese, baseTotale, dataAgg }
+let _plOrdiniLoaded = false;  // true quando _bcRows è già arricchito con dati ordini
+let _plModifiche    = {};     // { "codice_cliente": { escluso: bool, gapPersonalizzato: number, stati: {avvisato,mail,mex,ordine} } }
+let _plSearchQuery  = '';     // ricerca clienti nella pipeline detail
+
+// Stati di avanzamento contatto cliente, mostrati come icone nel Dettaglio Pipeline
+const PL_STATI = [
+  { key: 'avvisato', label: 'Avvisato',      icon: 'ti-bell-ringing',        color: '#D97706' },
+  { key: 'mail',     label: 'Mandata mail',  icon: 'ti-mail',                color: '#378ADD' },
+  { key: 'mex',      label: 'Scritto Mex',   icon: 'ti-message-circle-2',    color: '#2D9CDB' },
+  { key: 'ordine',   label: 'Preso Ordine',  icon: 'ti-shopping-cart-check', color: '#2D7D4F' },
+];
+
+// Modifiche pipeline persistite su Supabase (tabella pipeline_modifiche),
+// così sono visibili su qualsiasi dispositivo/browser e non solo su quello dove sono state impostate.
+async function _loadPlModifiche() {
+  try {
+    const { data, error } = await sb.from('pipeline_modifiche').select('*');
+    if (error) throw error;
+    const map = {};
+    for (const row of (data || [])) {
+      map[row.codice_cliente] = {
+        escluso: row.escluso === true,
+        gapPersonalizzato: row.gap_personalizzato ?? null,
+        stati: {
+          avvisato: row.stato_avvisato === true,
+          mail:     row.stato_mail === true,
+          mex:      row.stato_mex === true,
+          ordine:   row.stato_ordine === true,
+        },
+      };
+    }
+    return map;
+  } catch (e) {
+    console.warn('Errore caricamento modifiche pipeline:', e);
+    return {};
+  }
+}
+
+async function _savePlModifica(codice) {
+  try {
+    const m = _plModifiche[codice] || {};
+    await sb.from('pipeline_modifiche').upsert({
+      codice_cliente:     codice,
+      escluso:            m.escluso === true,
+      gap_personalizzato: m.gapPersonalizzato ?? null,
+      stato_avvisato:     m.stati?.avvisato === true,
+      stato_mail:         m.stati?.mail === true,
+      stato_mex:          m.stati?.mex === true,
+      stato_ordine:       m.stati?.ordine === true,
+    }, { onConflict: 'codice_cliente' });
+  } catch (e) {
+    console.warn('Errore salvataggio modifiche pipeline:', e);
+  }
+}
 
 // ── Tab switch ────────────────────────────────────────────────────────────────
 function swBudget(tab, btn) {
@@ -23,7 +76,7 @@ async function loadBudget() {
 }
 
 // ── Helpers formatters ────────────────────────────────────────────────────────
-const _eur  = n => n != null ? '€ ' + Math.round(n).toLocaleString('it-IT') : '—';
+const _eur  = n => n != null ? '€ ' + Math.round(n).toLocaleString('it-IT') : '—';
 const _pct  = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1).replace('.', ',') + '%' : '—';
 const _cls  = n => n == null ? '' : n >= 0 ? 'pos' : 'neg';
 const _mini = (val, tot, color) => {
@@ -452,45 +505,27 @@ const STATO_COLOR = { ottimo: '#2D7D4F', in_linea: '#378ADD', da_stimolare: '#D9
 async function loadBudgetClienti() {
   const root = document.getElementById('bpane-clienti');
   if (!root) return;
-  root.innerHTML = '<div class="loading">Caricamento pipeline…</div>';
+  root.innerHTML = '<div class="loading">Caricamento clienti…</div>';
   try {
+    // Forza sempre dati freschi: la data più recente potrebbe essere cambiata
+    // se è stato importato un nuovo file rolling durante la sessione.
     _latestRollingDate = null;
     _rollingEnriched   = null;
-
-    const cutoff = new Date(Date.now() - 730 * 86400000).toISOString().split('T')[0];
-    const [rows, { data: ordiniAll }] = await Promise.all([
-      loadRollingEnriched(),
-      sb.from('ordini')
-        .select('codice_cliente, data_ordine, totale_ordine')
-        .neq('stato', 'annullato')
-        .gte('data_ordine', cutoff)
-        .order('data_ordine', { ascending: false })
-        .limit(5000),
-    ]);
-
+    const rows = await loadRollingEnriched();
     if (!rows.length) {
       root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun dato rolling disponibile.</p>';
       return;
     }
 
-    // Raggruppa ordini per cliente e calcola ritmo
-    const ordiniByCliente = {};
-    for (const o of (ordiniAll || [])) {
-      if (!ordiniByCliente[o.codice_cliente]) ordiniByCliente[o.codice_cliente] = [];
-      ordiniByCliente[o.codice_cliente].push(o);
-    }
-    _bcRitmi = {};
-    for (const [cod, ordini] of Object.entries(ordiniByCliente)) {
-      _bcRitmi[cod] = calcolaRitmoOrdini(ordini);
-    }
-
+    _plCache = null;  // invalida cache pipeline quando i dati rolling vengono ricaricati
+    _plOrdiniLoaded = false;
+    _plModifiche = await _loadPlModifiche(); // carica modifiche salvate
     _bcRows = rows.filter(r => !r._escluso).map(r => {
-      const ritmo = _bcRitmi[r.codice_cliente] || null;
       const row = {
-        cliente:          r.ragione_sociale || '—',
-        codice:           r.codice_cliente  || '',
-        divisione:        r.divisione || '',
-        stato:            r._stato,
+        cliente:         r.ragione_sociale || '—',
+        codice:          r.codice_cliente  || '',
+        divisione:       r.divisione || '',
+        stato:           r._stato,
         _ordinaDiPersona: r._ordinaDiPersona || false,
         _media:     r._media                 || 0,
         bud:        r.fatt_mese_anno_prec    || 0,
@@ -505,8 +540,19 @@ async function loadBudgetClienti() {
                       ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100
                       : null,
         gap:        r._gap || 0,
-        ritmo,
-        urgenza:    ritmo?.urgenza || 'nessun_ordine',
+        // Dati mensili 2025 per il calcolo fatturato totale
+        fatt_gen_2025: r.fatt_gen_2025 || 0,
+        fatt_feb_2025: r.fatt_feb_2025 || 0,
+        fatt_mar_2025: r.fatt_mar_2025 || 0,
+        fatt_apr_2025: r.fatt_apr_2025 || 0,
+        fatt_mag_2025: r.fatt_mag_2025 || 0,
+        fatt_giu_2025: r.fatt_giu_2025 || 0,
+        fatt_lug_2025: r.fatt_lug_2025 || 0,
+        fatt_ago_2025: r.fatt_ago_2025 || 0,
+        fatt_set_2025: r.fatt_set_2025 || 0,
+        fatt_ott_2025: r.fatt_ott_2025 || 0,
+        fatt_nov_2025: r.fatt_nov_2025 || 0,
+        fatt_dic_2025: r.fatt_dic_2025 || 0,
       };
       row.priority = _bcPriority(row);
       // Applica modifiche salvate se esistono
@@ -565,14 +611,8 @@ function _renderClienti(root) {
     if (c.id && cnt === 0) return '';
     const on      = (_bcFilter || '') === c.id ? 'on' : '';
     const gapStr  = gap > 0 ? ` · –${_eur(gap)}` : '';
-    // data-stato invece di inline JSON per evitare quoting HTML
     return `<button class="bc-chip ${on}" data-stato="${c.id}" style="--chip-c:${c.color}" onclick="setBcFilter(this.dataset.stato)">${c.label} <span class="bc-chip-cnt">${cnt}${gapStr}</span></button>`;
   }).join('');
-
-  // Filtro + sort + render righe
-  // Clienti con ordini scaduti o urgenti (per KPI strip)
-  const nUrgenti  = rows.filter(r => r.urgenza === 'urgente').length;
-  const nScaduti  = rows.filter(r => r.urgenza === 'scaduto').length;
 
   const html = `
     <div class="bc-kpi-strip">
@@ -580,8 +620,6 @@ function _renderClienti(root) {
       <div class="bc-kpi"><div class="bc-kpi-label">ordinato mese</div><div class="bc-kpi-val ${_cls(dMese)}">${_eur(totOrd)}</div><div class="bc-kpi-sub ${_cls(dMese)}">${_pct(dMese)} vs anno prec</div></div>
       <div class="bc-kpi bc-kpi-neg"><div class="bc-kpi-label">gap da recuperare</div><div class="bc-kpi-val neg">–${_eur(totGap)}</div></div>
       <div class="bc-kpi"><div class="bc-kpi-label">progressivo 2026</div><div class="bc-kpi-val">${_eur(totP26)}</div><div class="bc-kpi-sub ${_cls(dProg)}">${_pct(dProg)} vs 2025</div></div>
-      ${nScaduti > 0 ? `<div class="bc-kpi bc-kpi-neg"><div class="bc-kpi-label">ordine scaduto</div><div class="bc-kpi-val neg">${nScaduti} clienti</div></div>` : ''}
-      ${nUrgenti > 0 ? `<div class="bc-kpi bc-kpi-warn"><div class="bc-kpi-label">ordine urgente</div><div class="bc-kpi-val warn">${nUrgenti} clienti</div></div>` : ''}
     </div>
     <div class="bc-chips" id="bc-chips">${chipHtml}</div>
     <div class="bc-toolbar">
@@ -592,7 +630,6 @@ function _renderClienti(root) {
         <thead><tr>
           <th class="bc-th-stato bc-srt" onclick="onBcSort('priority')">STATO ${_sortArrow('priority')}</th>
           <th class="bc-th-cliente bc-srt" onclick="onBcSort('cliente')">CLIENTE ${_sortArrow('cliente')}</th>
-          <th class="bc-th-quando bc-srt" onclick="onBcSort('urgenza')">PROSSIMO ORDINE ${_sortArrow('urgenza')}</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('ord')">ORDINATO MESE ${_sortArrow('ord')}</th>
           <th class="bc-th-narrow bc-srt" onclick="onBcSort('varMese')">Δ% MESE ${_sortArrow('varMese')}</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('gap')">GAP ${_sortArrow('gap')}</th>
@@ -629,27 +666,20 @@ function _renderBcRows() {
     return true;
   });
 
-  const _urgScore = u => ({ scaduto: 0, urgente: 1, ok: 2, nessun_ordine: 3 }[u] ?? 3);
-
   // Sort
   const { col, dir } = _bcSort;
   visible.sort((a, b) => {
     let va, vb;
     if (col === 'priority') { va = a.priority; vb = b.priority; }
     else if (col === 'cliente') { return dir * a.cliente.localeCompare(b.cliente, 'it'); }
-    else if (col === 'urgenza') { va = _urgScore(a.urgenza); vb = _urgScore(b.urgenza); }
     else if (col === 'ord')     { va = a.ord;    vb = b.ord; }
     else if (col === 'gap')     { va = a.gap;    vb = b.gap; }
     else if (col === 'prog26')  { va = a.prog26; vb = b.prog26; }
     else if (col === 'varMese') { va = a.bud > 0 ? (a.ord - a.bud) / a.bud : -999; vb = b.bud > 0 ? (b.ord - b.bud) / b.bud : -999; }
     else if (col === 'varProg') { va = a.varProg ?? -999; vb = b.varProg ?? -999; }
     else { va = a.priority; vb = b.priority; }
-    // Tiebreaker: urgenza dentro stesso gruppo, poi gap desc
-    if (col === 'priority' && va === vb) {
-      const us = _urgScore(a.urgenza) - _urgScore(b.urgenza);
-      if (us !== 0) return us;
-      return b.gap - a.gap;
-    }
+    // Dentro stesso gruppo di stato (solo per sort priority), gap desc
+    if (col === 'priority' && va === vb) return b.gap - a.gap;
     return dir * (va - vb);
   });
 
@@ -684,30 +714,15 @@ function _renderBcRows() {
       r.oltre > 0 ? `<span class="bc-det-item bc-det-oltre">+${_eur(r.oltre)} oltre</span>` : '',
     ].filter(Boolean).join(' ');
 
-    // Quando / prossimo ordine
-    let quandoCell = '<span style="color:var(--text2);font-size:11px">nessun ordine</span>';
-    if (r.ritmo) {
-      const { giorniDaUltimo, freqMedia, prossimo, urgenza } = r.ritmo;
-      const urgCls  = { ok: 'bc-urg-ok', urgente: 'bc-urg-urgente', scaduto: 'bc-urg-scaduto' }[urgenza] || '';
-      const urgLbl  = { ok: '✓ in tempo', urgente: '⚑ urgente', scaduto: '⚠ scaduto' }[urgenza] || '';
-      const proxStr = prossimo
-        ? prossimo.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
-        : '—';
-      const freqStr = freqMedia ? `ogni ${freqMedia} gg` : '—';
-      quandoCell = `<div class="bc-quando">
-        <div class="bc-quando-pross">${proxStr} <span class="bc-urg-badge ${urgCls}">${urgLbl}</span></div>
-        <div class="bc-quando-sub">${freqStr} · ${giorniDaUltimo} gg fa</div>
-      </div>`;
-    }
+    const cod = r.codice.replace(/'/g, "\\'");
+    const nom = r.cliente.replace(/'/g, "\\'");
 
-    const nomeEsc = r.cliente.replace(/'/g, "\\'");
-    return `<tr class="bc-row bc-row-${statoId} bc-row-click" onclick="apriClienteDaBudget('${r.codice}','${nomeEsc}')">
+    return `<tr class="bc-row bc-row-${statoId}">
       <td>${statoBadge}</td>
       <td>
         <div class="bc-cliente-nome">${r.cliente}${r._ordinaDiPersona ? ' <span class="bc-persona-tag">&#9734; di persona</span>' : ''}</div>
         ${r.divisione ? `<div class="bc-cliente-div">${r.divisione}</div>` : ''}
       </td>
-      <td>${quandoCell}</td>
       <td>
         <div class="bc-bar-wrap">
           <div class="b-bbg bc-barline"><div class="b-bfill" style="width:${barW.toFixed(1)}%;background:${barColor}"></div></div>
@@ -745,7 +760,7 @@ function onBcSearch(q) {
 
 function onBcSort(col) {
   if (_bcSort.col === col) _bcSort.dir *= -1;
-  else { _bcSort.col = col; _bcSort.dir = col === 'priority' || col === 'urgenza' ? 1 : -1; }
+  else { _bcSort.col = col; _bcSort.dir = col === 'priority' ? 1 : -1; }
   document.querySelectorAll('.bc-tbl thead th[onclick]').forEach(th => {
     const m = th.getAttribute('onclick')?.match(/onBcSort\('(.+)'\)/);
     if (!m) return;
@@ -755,6 +770,573 @@ function onBcSort(col) {
   _renderBcRows();
 }
 
+// ── PIPELINE ──────────────────────────────────────────────────────────────────
+
+async function openPipeline() {
+  const modal = document.getElementById('pl-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  const body = document.getElementById('pl-body');
+  body.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text2)">Caricamento…</div>';
+
+  try {
+    if (!_plCache) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await sb.from('budget')
+        .select('budget_mese, evaso_ordinato_resi, data_aggiornamento')
+        .lte('data_aggiornamento', today)
+        .not('budget_mese', 'is', null)
+        .order('data_aggiornamento', { ascending: false })
+        .limit(1);
+      const b = data?.[0];
+      _plCache = {
+        budgetMese: b?.budget_mese         || 0,
+        baseTotale: b?.evaso_ordinato_resi  || 0,
+        dataAgg:    b?.data_aggiornamento   || null,
+      };
+    }
+
+    const { budgetMese, baseTotale, dataAgg } = _plCache;
+    const meseLabel = _nomeMese(dataAgg || new Date().toISOString().split('T')[0]);
+
+    document.getElementById('pl-header-title').textContent = `Pipeline — ${meseLabel}`;
+
+    // Barra progresso
+    const pct   = budgetMese > 0 ? Math.min(100, baseTotale / budgetMese * 100) : 0;
+    const manca = budgetMese - baseTotale;
+    document.getElementById('pl-progress').innerHTML = `
+      <div class="pl-stats">
+        <span><strong>${_eur(baseTotale)}</strong> ordinato</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:var(--text2)">${_eur(budgetMese)} budget</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:${manca > 0 ? '#C84B2F' : '#2D7D4F'};font-weight:600">
+          ${manca > 0 ? '–' + _eur(manca) + ' da recuperare' : '✓ budget raggiunto'}
+        </span>
+      </div>
+      <div class="pl-bar-bg">
+        <div class="pl-bar-fill" style="width:${pct.toFixed(1)}%">
+          <span class="pl-bar-pct">${pct.toFixed(1)}%</span>
+        </div>
+      </div>`;
+
+    if (!_bcRows.length) {
+      body.innerHTML = '<p style="padding:1.5rem;color:var(--text2)">Nessun dato disponibile. Carica prima il tab Budget Clienti.</p>';
+      return;
+    }
+
+    // Separa in 3 gruppi: urgenti (0 ord + target), parziali, in target
+    const g0 = _bcRows.filter(r => r.ord === 0 && r.bud > 0)
+                      .sort((a, b) => b.bud - a.bud);
+    const g1 = _bcRows.filter(r => r.ord > 0 && r.gap > 0)
+                      .sort((a, b) => b.gap - a.gap);
+    const g2 = _bcRows.filter(r => r.gap === 0 && r.ord > 0)
+                      .sort((a, b) => b.ord - a.ord);
+
+    let running    = baseTotale;
+    let budgetHit  = false;
+    let budgetHitAfterIdx = -1;
+
+    const urgent = [...g0, ...g1];
+    const urgentRows = urgent.map((r, i) => {
+      running += r.gap;
+      const hitNow = !budgetHit && running >= budgetMese;
+      if (hitNow) { budgetHit = true; budgetHitAfterIdx = i; }
+      return { r, cum: running, hitAfter: hitNow, group: r.ord === 0 ? 0 : 1 };
+    });
+
+    let html = `<table class="pl-tbl">
+      <thead><tr>
+        <th>Cliente</th>
+        <th class="num-right">Stesso mese 2025</th>
+        <th class="num-right">Già ordinato</th>
+        <th class="num-right">Da ordinare</th>
+        <th class="num-right">Cumulato</th>
+      </tr></thead>
+      <tbody>`;
+
+    let lastGroup = -1;
+    for (const { r, cum, hitAfter, group } of urgentRows) {
+      if (group !== lastGroup) {
+        const label = group === 0 ? 'Da visitare — nessun ordine questo mese' : 'Parziali — ordine in corso';
+        const color = group === 0 ? '#C84B2F' : '#D97706';
+        html += `<tr class="pl-group-hdr"><td colspan="5" style="color:${color}">${label}</td></tr>`;
+        lastGroup = group;
+      }
+
+      const statoId    = r.stato?.id || 'inattivo';
+      const statoColor = STATO_COLOR[statoId] || '#9B9B97';
+      const cumColor   = cum >= budgetMese ? '#2D7D4F' : cum >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
+
+      html += `<tr class="pl-row">
+        <td>
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+                background:${statoColor};margin-right:7px;flex-shrink:0"></span>${r.cliente}
+          ${r.divisione ? `<div style="font-size:11px;color:var(--text2);margin-top:1px;margin-left:15px">${r.divisione}</div>` : ''}
+        </td>
+        <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
+        <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
+        <td class="num-right" style="font-weight:600;color:#C84B2F">–${_eur(r.gap)}</td>
+        <td class="num-right" style="font-weight:600;color:${cumColor}">${_eur(cum)}</td>
+      </tr>`;
+
+      if (hitAfter) {
+        html += `<tr class="pl-budget-line">
+          <td colspan="6">🎯 Budget raggiunto — ${_eur(budgetMese)}</td>
+        </tr>`;
+      }
+    }
+
+    if (!budgetHit && urgentRows.length) {
+      const still = budgetMese - running;
+      html += `<tr class="pl-group-hdr">
+        <td colspan="5" style="color:#C84B2F">
+          Budget non raggiunto anche completando tutti i gap — mancano ancora ${_eur(still)}
+        </td>
+      </tr>`;
+    }
+
+    if (g2.length) {
+      html += `<tr class="pl-group-hdr"><td colspan="5" style="color:#2D7D4F">In target (${g2.length} clienti)</td></tr>`;
+      html += g2.map(r => `<tr class="pl-row pl-row-ok">
+          <td>${r.cliente}${r.divisione ? ` <span style="font-size:11px;color:var(--text2)">${r.divisione}</span>` : ''}</td>
+          <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
+          <td class="num-right">${_eur(r.ord)}</td>
+          <td class="num-right" style="color:#2D7D4F;font-weight:600">in target</td>
+          <td></td>
+        </tr>`).join('');
+    }
+
+    html += '</tbody></table>';
+    body.innerHTML = html;
+
+  } catch(err) {
+    document.getElementById('pl-body').innerHTML =
+      `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
+
+function closePipeline() {
+  const modal = document.getElementById('pl-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function apriVerificaArticoli(codice, nome) {
+  const modal = document.getElementById('pl-modal');
+  const title = document.getElementById('pl-header-title');
+  const prog  = document.getElementById('pl-progress');
+  const body  = document.getElementById('pl-body');
+  if (!modal) return;
+
+  title.textContent = nome;
+  if (prog) prog.innerHTML = '';
+  body.innerHTML = '<div style="padding:1.5rem;color:var(--text2);font-size:13px">Analisi ordini…</div>';
+  modal.style.display = 'flex';
+
+  try {
+    const data = await loadPrevisioneArticoli(codice);
+    body.innerHTML = _renderVerificaArticoli(data, nome);
+  } catch (e) {
+    body.innerHTML = `<div style="padding:1.5rem;color:var(--red);font-size:13px">Errore: ${e.message}</div>`;
+  }
+}
+
+// ── Dettaglio Pipeline ────────────────────────────────────────────────────────
+
+async function renderDettaglioPipeline() {
+  const root = document.getElementById('bpane-dettaglio');
+  if (!root) return;
+
+  if (!_bcRows.length) {
+    root.innerHTML = '<p style="color:var(--text2);padding:1rem">Carica prima il tab "Budget Clienti".</p>';
+    return;
+  }
+
+  try {
+    if (!_plCache) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await sb.from('budget')
+        .select('budget_mese, evaso_ordinato_resi, data_aggiornamento')
+        .lte('data_aggiornamento', today)
+        .not('budget_mese', 'is', null)
+        .order('data_aggiornamento', { ascending: false })
+        .limit(1);
+      const b = data?.[0];
+      _plCache = {
+        budgetMese: b?.budget_mese        || 0,
+        baseTotale: b?.evaso_ordinato_resi || 0,
+        dataAgg:    b?.data_aggiornamento  || null,
+      };
+    }
+
+    // Carica ordini 2025 e 2026 per ogni cliente (solo la prima volta, non ad ogni ricerca)
+    if (!_plOrdiniLoaded) {
+      const oggiStr = new Date().toISOString().split('T')[0];
+      const [{ data: ordiniRecenti }, { data: agendaVisite }] = await Promise.all([
+        sb.from('ordini')
+          .select('codice_cliente, data_ordine')
+          .gte('data_ordine', '2025-01-01')
+          .lte('data_ordine', '2026-12-31')
+          .order('data_ordine', { ascending: false }),
+        sb.from('agenda_visite')
+          .select('id, codice_cliente, data_visita')
+          .gte('data_visita', oggiStr)
+          .order('data_visita', { ascending: true }),
+      ]);
+
+      const ordiniPerCliente = {};
+      if (ordiniRecenti?.length) {
+        for (const ord of ordiniRecenti) {
+          const cod = String(ord.codice_cliente || '').trim();
+          if (cod) {
+            if (!ordiniPerCliente[cod]) ordiniPerCliente[cod] = [];
+            ordiniPerCliente[cod].push(ord.data_ordine);
+          }
+        }
+      }
+
+      const agendaPerCliente = {};
+      if (agendaVisite?.length) {
+        for (const v of agendaVisite) {
+          const cod = String(v.codice_cliente || '').trim();
+          if (cod && !agendaPerCliente[cod]) agendaPerCliente[cod] = v;
+        }
+      }
+
+      for (const r of _bcRows) {
+        const ordini = ordiniPerCliente[r.codice] || [];
+        r._ultimoOrdine = ordini.length > 0 ? ordini[0] : null;
+        r._ultimoOrdine2025 = ordini.find(d => d.startsWith('2025')) || null;
+        r._ultimoOrdine2026 = ordini.find(d => d.startsWith('2026')) || null;
+
+        const fatt2025 = [
+          r.fatt_gen_2025, r.fatt_feb_2025, r.fatt_mar_2025, r.fatt_apr_2025,
+          r.fatt_mag_2025, r.fatt_giu_2025, r.fatt_lug_2025, r.fatt_ago_2025,
+          r.fatt_set_2025, r.fatt_ott_2025, r.fatt_nov_2025, r.fatt_dic_2025,
+        ].reduce((s, v) => s + (v || 0), 0);
+        r._fatt2025 = fatt2025;
+
+        const av = agendaPerCliente[r.codice];
+        r._agendaVisitaId = av?.id || null;
+        r._agendaData     = av?.data_visita || null;
+      }
+
+      _plOrdiniLoaded = true;
+    }
+
+    const { budgetMese, baseTotale, dataAgg } = _plCache;
+    const meseLabel = _nomeMese(dataAgg || new Date().toISOString().split('T')[0]);
+
+    const _calcolaTotali = () => {
+      let totGap = 0, contInclusi = 0;
+      for (const r of _bcRows) {
+        const escluso = r._esclusoManuale === true;
+        if (!escluso) {
+          contInclusi++;
+          totGap += r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap;
+        }
+      }
+      const manca = budgetMese - baseTotale - totGap;
+      const pct = budgetMese > 0 ? Math.min(100, (baseTotale + totGap) / budgetMese * 100) : 0;
+      return { totGap, contInclusi, manca, pct };
+    };
+
+    const stats = _calcolaTotali();
+    const manca = stats.manca;
+    const pct   = stats.pct;
+
+    const progressHtml = `
+      <div class="pl-stats">
+        <span><strong>${_eur(baseTotale + stats.totGap)}</strong> totale (ordinato + pipeline)</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:var(--text2)">${_eur(budgetMese)} budget</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:${manca > 0 ? '#C84B2F' : '#2D7D4F'};font-weight:600">
+          ${manca > 0 ? '–' + _eur(manca) + ' da recuperare' : '✓ budget raggiunto'}
+        </span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:var(--text2);font-size:11px">${stats.contInclusi} clienti inclusi</span>
+      </div>
+      <div class="pl-bar-bg" style="margin-bottom:1.5rem">
+        <div class="pl-bar-fill" style="width:${pct.toFixed(1)}%">
+          <span class="pl-bar-pct">${pct.toFixed(1)}%</span>
+        </div>
+      </div>`;
+
+    const _tableGroup = (filterFn, label, color) => {
+      const rows = _bcRows
+        .filter(r => filterFn(r) && (_plSearchQuery === '' || r.cliente.toLowerCase().includes(_plSearchQuery.toLowerCase()) || r.codice.includes(_plSearchQuery)))
+        .sort((a, b) => {
+          if (a._esclusoManuale !== b._esclusoManuale) return a._esclusoManuale ? 1 : -1;
+          const gapA = a._esclusoManuale ? 0 : (a._gapPersonalizzato !== null ? a._gapPersonalizzato : a.gap);
+          const gapB = b._esclusoManuale ? 0 : (b._gapPersonalizzato !== null ? b._gapPersonalizzato : b.gap);
+          return gapB - gapA;
+        });
+      if (!rows.length) return '';
+
+      let running   = baseTotale;
+      let budgetHit = false;
+
+      const tRows = rows.map(r => {
+        const gap = r._esclusoManuale ? 0 : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap);
+        running += gap;
+        const hitNow = !budgetHit && running >= budgetMese && !r._esclusoManuale;
+        if (hitNow) budgetHit = true;
+        const cumColor = running >= budgetMese ? '#2D7D4F' : running >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
+        return { r, gap, cum: running, hitNow, cumColor };
+      });
+
+      const totGap = rows.reduce((s, r) => s + (r._esclusoManuale ? 0 : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)), 0);
+
+      let html = `
+        <div style="margin-bottom:1.5rem">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                      color:${color};margin-bottom:.5rem">
+            ${label} <span style="font-weight:400;opacity:.7">(${rows.filter(r => !r._esclusoManuale).length} clienti · da recuperare ${_eur(totGap)})</span>
+          </div>
+          <table class="pl-tbl" style="width:100%">
+            <thead><tr>
+              <th></th>
+              <th>Cliente</th>
+              <th class="num-right">Budget mese</th>
+              <th class="num-right">Già ordinato</th>
+              <th class="num-right">Fatt. 2025</th>
+              <th class="num-right">Ultimo ordine</th>
+              <th class="num-right">Δ annuale</th>
+              <th class="num-right">Da recuperare</th>
+              <th class="num-right">Cumulativo</th>
+              <th style="text-align:center">Stati</th>
+            </tr></thead>
+            <tbody>`;
+
+      for (const { r, gap, cum, hitNow, cumColor } of tRows) {
+        const statoColor = STATO_COLOR[r.stato?.id] || '#9B9B97';
+        const cod = r.codice.replace(/'/g, "\\'");
+        const isModified = r._gapPersonalizzato !== null;
+        const rowStyle = r._esclusoManuale ? 'opacity:0.5;background:var(--bg)' : '';
+        const inputDisabled = r._esclusoManuale ? 'disabled' : '';
+        const deltaAnnColor = r.varProg !== null && r.varProg >= 0 ? '#2D7D4F' : '#C84B2F';
+
+        html += `<tr class="pl-row" style="${rowStyle}">
+          <td style="width:40px;text-align:center">
+            <button class="btn-action" onclick="togglePlEstcluso('${cod}');return false" title="${r._esclusoManuale ? 'Includi' : 'Escludi'}" style="color:${r._esclusoManuale ? '#999' : 'var(--text)'}">
+              <i class="ti ${r._esclusoManuale ? 'ti-eye-off' : 'ti-eye'}"></i>
+            </button>
+          </td>
+          <td>
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+                  background:${statoColor};margin-right:7px"></span>${r.cliente}
+            ${r.divisione ? `<div style="font-size:11px;color:var(--text2);margin-left:15px">${r.divisione}</div>` : ''}
+          </td>
+          <td class="num-right" style="color:var(--text2)">${_eur(r.bud)}</td>
+          <td class="num-right">${r.ord > 0 ? _eur(r.ord) : '<span style="color:var(--text2)">—</span>'}</td>
+          <td class="num-right" style="color:${r._fatt2025 > 0 ? 'var(--text)' : 'var(--text2)'};font-weight:600">${r._fatt2025 > 0 ? _eur(r._fatt2025) : '—'}</td>
+          <td class="num-right" style="font-size:11px;color:var(--text2)">${r._ultimoOrdine ? new Date(r._ultimoOrdine).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}</td>
+          <td class="num-right" style="font-weight:600;color:${deltaAnnColor}">${r.varProg !== null ? _pct(r.varProg) : '—'}</td>
+          <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : '#C84B2F'}">
+            <input type="number" value="${((r._esclusoManuale ? r.gap : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap)) / 1).toFixed(0)}" onchange="updatePlGap('${cod}', this.value)" style="width:80px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-family:monospace;font-size:11px;text-align:right" ${inputDisabled}>
+          </td>
+          <td class="num-right" style="font-weight:600;color:${r._esclusoManuale ? '#ccc' : cumColor}">${_eur(cum)}</td>
+          <td style="text-align:center;white-space:nowrap">
+            ${PL_STATI.map(s => {
+              const attivo = r._statiPipeline?.[s.key] === true;
+              return `<button class="btn-action" onclick="togglePlStato('${cod}','${s.key}');return false" title="${s.label}${attivo ? ' ✓' : ''}"
+                        style="color:${attivo ? s.color : '#ccc'};opacity:${attivo ? '1' : '.6'}">
+                        <i class="ti ${s.icon}"></i>
+                      </button>`;
+            }).join('')}
+            <input type="date" value="${r._agendaData || ''}" onchange="updatePlAgenda('${cod}', this.value)"
+                   title="Prossima visita in agenda"
+                   style="margin-left:6px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-size:11px;font-family:inherit;vertical-align:middle">
+          </td>
+        </tr>`;
+        if (hitNow) {
+          html += `<tr class="pl-budget-line"><td colspan="10">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
+        }
+      }
+
+      html += '</tbody></table></div>';
+      return html;
+    };
+
+    const _prevSearchInput = document.getElementById('pl-search');
+    const _searchHadFocus = document.activeElement === _prevSearchInput;
+    const _selStart = _searchHadFocus ? _prevSearchInput.selectionStart : null;
+    const _selEnd   = _searchHadFocus ? _prevSearchInput.selectionEnd   : null;
+
+    root.innerHTML = `
+      <h2 style="margin-bottom:1rem">Dettaglio Pipeline — ${meseLabel}</h2>
+      ${progressHtml}
+      <div style="margin-bottom:1rem;display:flex;gap:10px;align-items:center">
+        <input type="text" id="pl-search" placeholder="🔍 Cerca cliente..." value="${_plSearchQuery}"
+               oninput="_plSearchQuery = this.value; renderDettaglioPipeline()"
+               style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit">
+        ${_plSearchQuery ? `<button onclick="_plSearchQuery=''; document.getElementById('pl-search').value=''; renderDettaglioPipeline()" style="padding:6px 12px;background:var(--red);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px">Cancella</button>` : ''}
+      </div>
+      ${_tableGroup(r => (r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0, 'Non ancora ordinato (vs anno scorso)', STATO_COLOR.da_visitare || '#D97706')}
+      ${_tableGroup(r => (r.stato?.id || '') === 'indietro' && r.gap > 0, 'Indietro — ordine insufficiente', STATO_COLOR.indietro)}
+      ${_tableGroup(r => !((r.stato?.id || '') === 'da_visitare' && r.bud > 0 && r.gap > 0) && !((r.stato?.id || '') === 'indietro' && r.gap > 0), 'Clienti in linea / Altri', '#378ADD')}`;
+
+    if (_searchHadFocus) {
+      const _newSearchInput = document.getElementById('pl-search');
+      if (_newSearchInput) {
+        _newSearchInput.focus();
+        _newSearchInput.setSelectionRange(_selStart, _selEnd);
+      }
+    }
+
+  } catch (err) {
+    root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
+
+// Toggle include/esclude cliente nel dettaglio pipeline
+function togglePlEstcluso(codice) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (r) {
+    r._esclusoManuale = !r._esclusoManuale;
+    if (!_plModifiche[codice]) _plModifiche[codice] = {};
+    _plModifiche[codice].escluso = r._esclusoManuale;
+    _savePlModifica(codice);
+    renderDettaglioPipeline();
+  }
+}
+
+// Toggle stato di contatto cliente (avvisato / mail / mex / ordine) nel dettaglio pipeline
+function togglePlStato(codice, chiave) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (r) {
+    if (!r._statiPipeline) r._statiPipeline = {};
+    r._statiPipeline[chiave] = !r._statiPipeline[chiave];
+    if (!_plModifiche[codice]) _plModifiche[codice] = {};
+    _plModifiche[codice].stati = r._statiPipeline;
+    _savePlModifica(codice);
+    renderDettaglioPipeline();
+  }
+}
+
+// Associa/sposta/rimuove la prossima visita in agenda per il cliente, dal Dettaglio Pipeline
+async function updatePlAgenda(codice, valore) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (!r) return;
+  try {
+    if (!valore) {
+      if (r._agendaVisitaId) {
+        await sb.from('agenda_visite').delete().eq('id', r._agendaVisitaId);
+      }
+      r._agendaVisitaId = null;
+      r._agendaData = null;
+    } else if (r._agendaVisitaId) {
+      await sb.from('agenda_visite').update({ data_visita: valore }).eq('id', r._agendaVisitaId);
+      r._agendaData = valore;
+    } else {
+      const { data, error } = await sb.from('agenda_visite')
+        .insert({ codice_cliente: codice, data_visita: valore, completata: false, generata_auto: false })
+        .select('id')
+        .single();
+      if (error) throw error;
+      r._agendaVisitaId = data.id;
+      r._agendaData = valore;
+    }
+    renderDettaglioPipeline();
+  } catch (e) {
+    alert('Errore salvataggio data agenda: ' + e.message);
+  }
+}
+
+// Aggiorna gap personalizzato e ricalcola
+function updatePlGap(codice, valore) {
+  const r = _bcRows.find(x => x.codice === codice);
+  if (r) {
+    const v = parseFloat(valore) || 0;
+    r._gapPersonalizzato = v > 0 ? v : null;
+    if (!_plModifiche[codice]) _plModifiche[codice] = {};
+    _plModifiche[codice].gapPersonalizzato = r._gapPersonalizzato;
+    _savePlModifica(codice);
+    renderDettaglioPipeline();
+  }
+}
+
+function _renderVerificaArticoli({ products, currentYM, mancanti }, nome) {
+  const fmtQ    = n => Number.isInteger(n) ? n.toLocaleString('it-IT') : n.toFixed(1);
+  const fmtCyc  = c => c <= 1 ? 'mensile' : c <= 2 ? 'ogni 2 mesi' : `ogni ${Math.round(c)} mesi`;
+  const nomiM   = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  const ymLabel = ym => { const [y, m] = ym.split('-'); return nomiM[+m - 1] + ' ' + y; };
+
+  const dueList    = products.filter(p => p.isDue);
+  const activeList = products.filter(p => !p.isDue && p.ordNow === 0);
+  const doneList   = products.filter(p => p.ordNow > 0);
+
+  const colHdr = `<thead><tr style="font-size:10px;color:var(--text2)">
+    <th style="padding:5px 8px">Articolo</th>
+    <th style="padding:5px 8px;text-align:right">Media</th>
+    <th style="padding:5px 8px;text-align:right">Carry</th>
+    <th style="padding:5px 8px;text-align:right;font-weight:700;color:var(--accent)">Suggerito</th>
+  </tr></thead>`;
+
+  const rowDue = p => `<tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:5px 8px">
+      <div style="font-size:12px">${p.descrizione}</div>
+      <div style="font-size:10px;color:var(--text2)">${p.cod} · ${fmtCyc(p.rotCycle)} · ult. ${ymLabel(p.lastYM)}</div>
+    </td>
+    <td style="padding:5px 8px;text-align:right;font-size:12px;color:var(--text2)">${fmtQ(p.avgQty)} ${p.um}</td>
+    <td style="padding:5px 8px;text-align:right;font-size:12px;color:${p.carryover > 0 ? '#D97706' : 'var(--text2)'}">${p.carryover > 0 ? '+' + fmtQ(p.carryover) : '—'}</td>
+    <td style="padding:5px 8px;text-align:right;font-size:13px;font-weight:700;color:var(--accent)">${fmtQ(p.suggestedQty)} ${p.um}</td>
+  </tr>`;
+
+  const rowOther = p => `<tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:5px 8px">
+      <div style="font-size:12px">${p.descrizione}</div>
+      <div style="font-size:10px;color:var(--text2)">${p.cod} · ${fmtCyc(p.rotCycle)} · ult. ${ymLabel(p.lastYM)}</div>
+    </td>
+    <td style="padding:5px 8px;text-align:right;font-size:12px;color:var(--text2)">${fmtQ(p.avgQty)} ${p.um}</td>
+    <td colspan="2" style="padding:5px 8px;text-align:right;font-size:11px;color:var(--text2)">
+      ${p.ordNow > 0 ? `<span style="color:#2D7D4F">✓ ${fmtQ(p.ordNow)} ${p.um}</span>` : `fra ${Math.max(1, Math.ceil(p.rotCycle - p.mesiDa))} mes${Math.ceil(p.rotCycle - p.mesiDa) === 1 ? 'e' : 'i'}`}
+    </td>
+  </tr>`;
+
+  let html = `<div style="padding:1rem">`;
+  html += `<div style="font-size:11px;color:var(--text2);margin-bottom:1rem">${ymLabel(currentYM)} · ${products.length} articoli in storico</div>`;
+
+  if (dueList.length) {
+    html += `<div style="font-size:10px;font-weight:700;color:#C84B2F;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">⚑ Da ordinare (${dueList.length})</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:1rem">${colHdr}<tbody>${dueList.map(rowDue).join('')}</tbody></table>`;
+  } else {
+    html += `<div style="font-size:12px;color:#2D7D4F;margin-bottom:1rem">✓ Nessun articolo urgente</div>`;
+  }
+
+  if (doneList.length) {
+    html += `<details style="margin-bottom:1rem" open>
+      <summary style="font-size:10px;font-weight:700;color:#2D7D4F;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;margin-bottom:6px">✓ Già ordinati (${doneList.length})</summary>
+      <table style="width:100%;border-collapse:collapse;margin-top:6px">${colHdr}<tbody>${doneList.map(rowOther).join('')}</tbody></table>
+    </details>`;
+  }
+
+  if (activeList.length) {
+    html += `<details style="margin-bottom:1rem">
+      <summary style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;cursor:pointer;margin-bottom:6px">Articoli fissi — non in scadenza (${activeList.length})</summary>
+      <table style="width:100%;border-collapse:collapse;margin-top:6px">${colHdr}<tbody>${activeList.map(rowOther).join('')}</tbody></table>
+    </details>`;
+  }
+
+  if (mancanti?.length) {
+    const rows = mancanti.map(s => `
+      <div style="margin-bottom:10px">
+        <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:4px">${s.settore}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${s.prodotti.map(p => `<span style="font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 7px;color:#378ADD">✗ ${p}</span>`).join('')}
+        </div>
+      </div>`).join('');
+    html += `<details>
+      <summary style="font-size:10px;font-weight:700;color:#378ADD;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;margin-bottom:6px">Mai ordinati — commesse potenziali</summary>
+      <div style="margin-top:8px">${rows}</div>
+    </details>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 function apriClienteDaBudget(codice, nome) {
   _pendingOpenCodice = codice;
   const el = document.getElementById('filtro-clienti');
@@ -762,72 +1344,4 @@ function apriClienteDaBudget(codice, nome) {
   const sel = document.getElementById('filtro-stato');
   if (sel) sel.value = '';
   showPage('clienti', { preventDefault: () => {} });
-}
-
-// ── Dettaglio Pipeline ────────────────────────────────────────────────────────
-
-const PIPELINE_GRUPPI = [
-  { id: 'da_visitare',  label: 'Da visitare',   color: '#9B9B97' },
-  { id: 'indietro',     label: 'Indietro',       color: '#C84B2F' },
-  { id: 'da_stimolare', label: 'Da stimolare',   color: '#D97706' },
-  { id: 'in_linea',     label: 'In linea',       color: '#378ADD' },
-  { id: 'ottimo',       label: 'Ottimo',         color: '#2D7D4F' },
-  { id: 'nuovo',        label: 'Nuovo',          color: '#8B5CF6' },
-  { id: 'inattivo',     label: 'Inattivo',       color: '#9B9B97' },
-];
-
-function renderDettaglioPipeline() {
-  const root = document.getElementById('bpane-dettaglio');
-  if (!root) return;
-
-  if (!_bcRows.length) {
-    root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun dato disponibile. Carica prima la pipeline clienti.</p>';
-    return;
-  }
-
-  const urgLabel = { ok: 'ok', urgente: 'urgente', scaduto: 'scaduto', nessun_ordine: '—' };
-  const urgColor = { ok: '#2D7D4F', urgente: '#D97706', scaduto: '#C84B2F', nessun_ordine: '#9B9B97' };
-
-  const byGruppo = {};
-  for (const g of PIPELINE_GRUPPI) byGruppo[g.id] = [];
-  for (const r of _bcRows) {
-    const sid = r.stato?.id || 'inattivo';
-    if (byGruppo[sid]) byGruppo[sid].push(r);
-  }
-
-  const cols = PIPELINE_GRUPPI.filter(g => byGruppo[g.id].length > 0).map(g => {
-    const rows = byGruppo[g.id].slice().sort((a, b) => a.priority - b.priority);
-    const cards = rows.map(r => {
-      const ritmo = r.ritmo;
-      const urg = r.urgenza || 'nessun_ordine';
-      const urgC = urgColor[urg] || '#9B9B97';
-      const prossLabel = ritmo?.prossimoOrdineData
-        ? new Date(ritmo.prossimoOrdineData).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })
-        : '—';
-      const freqLabel = ritmo?.frequenzaMedia ? `ogni ~${Math.round(ritmo.frequenzaMedia)}gg` : '';
-      const gapLabel  = r.gap ? (r.gap > 0 ? `+${_eur(r.gap)}` : _eur(r.gap)) : '';
-      const gapCls    = r.gap > 0 ? 'pos' : r.gap < 0 ? 'neg' : '';
-      return `<div class="dp-card" onclick="apriClienteDaBudget('${r.codice}','${r.cliente.replace(/'/g,"\\'")}')">
-        <div class="dp-card-top">
-          <span class="dp-nome">${r.cliente}</span>
-          ${urg !== 'nessun_ordine' ? `<span class="bc-urg-badge bc-urg-${urg}">${urgLabel[urg]}</span>` : ''}
-        </div>
-        <div class="dp-card-meta">
-          ${gapLabel ? `<span class="${gapCls}" style="font-size:11px">${gapLabel}</span>` : ''}
-          ${prossLabel !== '—' ? `<span style="font-size:11px;color:var(--text2)">prossimo ${prossLabel}</span>` : ''}
-          ${freqLabel ? `<span style="font-size:10px;color:var(--text2)">${freqLabel}</span>` : ''}
-        </div>
-      </div>`;
-    }).join('');
-
-    return `<div class="dp-col">
-      <div class="dp-col-header" style="border-top:3px solid ${g.color}">
-        <span style="color:${g.color};font-weight:600;font-size:12px">${g.label}</span>
-        <span class="dp-count">${rows.length}</span>
-      </div>
-      <div class="dp-cards">${cards}</div>
-    </div>`;
-  }).join('');
-
-  root.innerHTML = `<div class="dp-board">${cols}</div>`;
 }
