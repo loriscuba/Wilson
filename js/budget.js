@@ -68,7 +68,6 @@ function swBudget(tab, btn) {
   document.querySelectorAll('.budget-pane').forEach(p => p.classList.remove('on'));
   document.getElementById('bpane-' + tab)?.classList.add('on');
   btn.classList.add('on');
-  if (tab === 'dettaglio') renderDettaglioPipeline();
 }
 
 async function loadBudget() {
@@ -505,61 +504,85 @@ const STATO_COLOR = { ottimo: '#2D7D4F', in_linea: '#378ADD', da_stimolare: '#D9
 async function loadBudgetClienti() {
   const root = document.getElementById('bpane-clienti');
   if (!root) return;
-  root.innerHTML = '<div class="loading">Caricamento clienti…</div>';
+  root.innerHTML = '<div class="loading">Caricamento pipeline…</div>';
   try {
-    // Forza sempre dati freschi: la data più recente potrebbe essere cambiata
-    // se è stato importato un nuovo file rolling durante la sessione.
     _latestRollingDate = null;
     _rollingEnriched   = null;
-    const rows = await loadRollingEnriched();
+
+    const today  = new Date().toISOString().split('T')[0];
+    const [rows, { data: budgetData }, { data: ordiniRecenti }, { data: agendaVisite }, plMod] = await Promise.all([
+      loadRollingEnriched(),
+      sb.from('budget').select('budget_mese, evaso_ordinato_resi, data_aggiornamento')
+        .lte('data_aggiornamento', today).not('budget_mese', 'is', null)
+        .order('data_aggiornamento', { ascending: false }).limit(1),
+      sb.from('ordini').select('codice_cliente, data_ordine')
+        .gte('data_ordine', '2025-01-01').lte('data_ordine', '2026-12-31')
+        .order('data_ordine', { ascending: false }),
+      sb.from('agenda_visite').select('id, codice_cliente, data_visita')
+        .gte('data_visita', today).order('data_visita', { ascending: true }),
+      _loadPlModifiche(),
+    ]);
+
     if (!rows.length) {
       root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun dato rolling disponibile.</p>';
       return;
     }
 
-    _plCache = null;  // invalida cache pipeline quando i dati rolling vengono ricaricati
-    _plOrdiniLoaded = false;
-    _plModifiche = await _loadPlModifiche(); // carica modifiche salvate
+    // Budget cache
+    const b = budgetData?.[0];
+    _plCache = { budgetMese: b?.budget_mese || 0, baseTotale: b?.evaso_ordinato_resi || 0, dataAgg: b?.data_aggiornamento || null };
+
+    // Indici ordini e agenda per cliente
+    const ordiniPerCliente = {};
+    for (const o of (ordiniRecenti || [])) {
+      const cod = String(o.codice_cliente || '').trim();
+      if (cod) { if (!ordiniPerCliente[cod]) ordiniPerCliente[cod] = []; ordiniPerCliente[cod].push(o.data_ordine); }
+    }
+    const agendaPerCliente = {};
+    for (const v of (agendaVisite || [])) {
+      const cod = String(v.codice_cliente || '').trim();
+      if (cod && !agendaPerCliente[cod]) agendaPerCliente[cod] = v;
+    }
+
+    _plModifiche    = plMod;
+    _plOrdiniLoaded = true;
+
     _bcRows = rows.filter(r => !r._escluso).map(r => {
+      const ordini = ordiniPerCliente[r.codice_cliente] || [];
+      const av     = agendaPerCliente[r.codice_cliente];
+      const fatt25 = [
+        r.fatt_gen_2025, r.fatt_feb_2025, r.fatt_mar_2025, r.fatt_apr_2025,
+        r.fatt_mag_2025, r.fatt_giu_2025, r.fatt_lug_2025, r.fatt_ago_2025,
+        r.fatt_set_2025, r.fatt_ott_2025, r.fatt_nov_2025, r.fatt_dic_2025,
+      ].reduce((s, v) => s + (v || 0), 0);
+
       const row = {
-        cliente:         r.ragione_sociale || '—',
-        codice:          r.codice_cliente  || '',
-        divisione:       r.divisione || '',
-        stato:           r._stato,
+        cliente:          r.ragione_sociale || '—',
+        codice:           r.codice_cliente  || '',
+        divisione:        r.divisione || '',
+        stato:            r._stato,
         _ordinaDiPersona: r._ordinaDiPersona || false,
-        _media:     r._media                 || 0,
-        bud:        r.fatt_mese_anno_prec    || 0,
-        ord:        r.spedito_ordinato_mese  || 0,
-        cons:       r.mese_consegnato        || 0,
-        prep:       r.mese_in_preparazione   || 0,
-        sped:       r.mese_da_spedire        || 0,
-        oltre:      r.ordinato_oltre_mese    || 0,
-        prog26:     r.fatt_prog_anno_corr    || 0,
-        prog25:     r.fatt_prog_anno_prec    || 0,
-        varProg:    r.fatt_prog_anno_prec > 0
-                      ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100
-                      : null,
-        gap:        r._gap || 0,
-        // Dati mensili 2025 per il calcolo fatturato totale
-        fatt_gen_2025: r.fatt_gen_2025 || 0,
-        fatt_feb_2025: r.fatt_feb_2025 || 0,
-        fatt_mar_2025: r.fatt_mar_2025 || 0,
-        fatt_apr_2025: r.fatt_apr_2025 || 0,
-        fatt_mag_2025: r.fatt_mag_2025 || 0,
-        fatt_giu_2025: r.fatt_giu_2025 || 0,
-        fatt_lug_2025: r.fatt_lug_2025 || 0,
-        fatt_ago_2025: r.fatt_ago_2025 || 0,
-        fatt_set_2025: r.fatt_set_2025 || 0,
-        fatt_ott_2025: r.fatt_ott_2025 || 0,
-        fatt_nov_2025: r.fatt_nov_2025 || 0,
-        fatt_dic_2025: r.fatt_dic_2025 || 0,
+        bud:    r.fatt_mese_anno_prec   || 0,
+        ord:    r.spedito_ordinato_mese  || 0,
+        cons:   r.mese_consegnato        || 0,
+        prep:   r.mese_in_preparazione   || 0,
+        sped:   r.mese_da_spedire        || 0,
+        oltre:  r.ordinato_oltre_mese    || 0,
+        prog26: r.fatt_prog_anno_corr    || 0,
+        prog25: r.fatt_prog_anno_prec    || 0,
+        varProg: r.fatt_prog_anno_prec > 0
+          ? (r.fatt_prog_anno_corr - r.fatt_prog_anno_prec) / r.fatt_prog_anno_prec * 100 : null,
+        gap: r._gap || 0,
+        _fatt2025:        fatt25,
+        _ultimoOrdine:    ordini[0] || null,
+        _agendaVisitaId:  av?.id || null,
+        _agendaData:      av?.data_visita || null,
       };
       row.priority = _bcPriority(row);
-      // Applica modifiche salvate se esistono
-      const modifica = _plModifiche[row.codice] || {};
-      row._esclusoManuale = modifica.escluso === true ? true : false;
-      row._gapPersonalizzato = modifica.gapPersonalizzato ?? null;
-      row._statiPipeline = modifica.stati || {};
+      const mod = _plModifiche[row.codice] || {};
+      row._esclusoManuale    = mod.escluso === true;
+      row._gapPersonalizzato = mod.gapPersonalizzato ?? null;
+      row._statiPipeline     = mod.stati || {};
       return row;
     });
 
@@ -567,7 +590,6 @@ async function loadBudgetClienti() {
     _bcQuery  = '';
     _bcSort   = { col: 'priority', dir: 1 };
     _renderClienti(root);
-    renderDettaglioPipeline();
   } catch(err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
   }
@@ -577,16 +599,14 @@ function _renderClienti(root) {
   const rows = _bcRows;
   if (!rows.length) return;
 
-  // Aggregati totali
-  const totBud   = rows.reduce((s, r) => s + r.bud,    0);
-  const totOrd   = rows.reduce((s, r) => s + r.ord,    0);
-  const totGap   = rows.reduce((s, r) => s + r.gap,    0);
-  const totP26   = rows.reduce((s, r) => s + r.prog26, 0);
-  const totP25   = rows.reduce((s, r) => s + r.prog25, 0);
-  const dProg    = totP25 > 0 ? (totP26 - totP25) / totP25 * 100 : null;
-  const dMese    = totBud > 0 ? (totOrd - totBud) / totBud * 100 : null;
+  const totBud = rows.reduce((s, r) => s + r.bud,    0);
+  const totOrd = rows.reduce((s, r) => s + r.ord,    0);
+  const totGap = rows.reduce((s, r) => s + r.gap,    0);
+  const totP26 = rows.reduce((s, r) => s + r.prog26, 0);
+  const totP25 = rows.reduce((s, r) => s + r.prog25, 0);
+  const dProg  = totP25 > 0 ? (totP26 - totP25) / totP25 * 100 : null;
+  const dMese  = totBud > 0 ? (totOrd - totBud) / totBud * 100 : null;
 
-  // Aggrega per stato
   const byStato = {};
   for (const r of rows) {
     const id = r.stato?.id || 'inattivo';
@@ -595,7 +615,6 @@ function _renderClienti(root) {
     byStato[id].gap += r.gap;
   }
 
-  // Chip html
   const allCount = rows.length;
   const chipHtml = [
     { id: '',            label: 'Tutti',         color: '#6B6860' },
@@ -606,15 +625,39 @@ function _renderClienti(root) {
     { id: 'ottimo',      label: 'Ottimo',         color: STATO_COLOR.ottimo },
     { id: 'inattivo',    label: 'Inattivo/Nuovo', color: STATO_COLOR.inattivo },
   ].map(c => {
-    const cnt  = c.id ? (byStato[c.id]?.count || 0) : allCount;
-    const gap  = c.id ? (byStato[c.id]?.gap   || 0) : totGap;
+    const cnt = c.id ? (byStato[c.id]?.count || 0) : allCount;
+    const gap = c.id ? (byStato[c.id]?.gap   || 0) : totGap;
     if (c.id && cnt === 0) return '';
-    const on      = (_bcFilter || '') === c.id ? 'on' : '';
-    const gapStr  = gap > 0 ? ` · –${_eur(gap)}` : '';
+    const on     = (_bcFilter || '') === c.id ? 'on' : '';
+    const gapStr = gap > 0 ? ` · –${_eur(gap)}` : '';
     return `<button class="bc-chip ${on}" data-stato="${c.id}" style="--chip-c:${c.color}" onclick="setBcFilter(this.dataset.stato)">${c.label} <span class="bc-chip-cnt">${cnt}${gapStr}</span></button>`;
   }).join('');
 
+  // Pipeline progress bar (ordinato vs budget mese)
+  let progressHtml = '';
+  if (_plCache) {
+    const { budgetMese, baseTotale } = _plCache;
+    const pct   = budgetMese > 0 ? Math.min(100, baseTotale / budgetMese * 100) : 0;
+    const manca = budgetMese - baseTotale;
+    progressHtml = `
+      <div class="pl-stats" style="margin-bottom:6px">
+        <span><strong>${_eur(baseTotale)}</strong> ordinato</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:var(--text2)">${_eur(budgetMese)} budget</span>
+        <span class="pl-stats-sep">·</span>
+        <span style="color:${manca > 0 ? '#C84B2F' : '#2D7D4F'};font-weight:600">
+          ${manca > 0 ? '–' + _eur(manca) + ' da recuperare' : '✓ budget raggiunto'}
+        </span>
+      </div>
+      <div class="pl-bar-bg" style="margin-bottom:12px">
+        <div class="pl-bar-fill" style="width:${pct.toFixed(1)}%">
+          <span class="pl-bar-pct">${pct.toFixed(1)}%</span>
+        </div>
+      </div>`;
+  }
+
   const html = `
+    ${progressHtml}
     <div class="bc-kpi-strip">
       <div class="bc-kpi"><div class="bc-kpi-label">budget mese</div><div class="bc-kpi-val">${_eur(totBud)}</div></div>
       <div class="bc-kpi"><div class="bc-kpi-label">ordinato mese</div><div class="bc-kpi-val ${_cls(dMese)}">${_eur(totOrd)}</div><div class="bc-kpi-sub ${_cls(dMese)}">${_pct(dMese)} vs anno prec</div></div>
@@ -626,16 +669,18 @@ function _renderClienti(root) {
       <input type="text" class="b-srch" id="bc-srch" placeholder="cerca cliente…" value="${_bcQuery}" oninput="onBcSearch(this.value)">
     </div>
     <div class="b-panel" style="padding:.5rem 1rem;overflow-x:auto">
-      <table class="b-tbl bc-tbl" id="bc-table">
+      <table class="b-tbl bc-tbl" id="bc-table" style="min-width:1000px">
         <thead><tr>
+          <th style="width:36px"></th>
           <th class="bc-th-stato bc-srt" onclick="onBcSort('priority')">STATO ${_sortArrow('priority')}</th>
           <th class="bc-th-cliente bc-srt" onclick="onBcSort('cliente')">CLIENTE ${_sortArrow('cliente')}</th>
-          <th class="bc-th-num bc-srt" onclick="onBcSort('ord')">ORDINATO MESE ${_sortArrow('ord')}</th>
+          <th class="bc-th-num bc-srt" onclick="onBcSort('ord')">ORDINATO / BUD ${_sortArrow('ord')}</th>
           <th class="bc-th-narrow bc-srt" onclick="onBcSort('varMese')">Δ% MESE ${_sortArrow('varMese')}</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('gap')">GAP ${_sortArrow('gap')}</th>
-          <th class="bc-th-detail">CONS · PREP · SPED</th>
+          <th class="bc-th-num bc-srt" onclick="onBcSort('fatt2025')">FATT. 2025 ${_sortArrow('fatt2025')}</th>
           <th class="bc-th-num bc-srt" onclick="onBcSort('prog26')">PROG 2026 ${_sortArrow('prog26')}</th>
-          <th class="bc-th-narrow bc-srt" onclick="onBcSort('varProg')">Δ% PROG ${_sortArrow('varProg')}</th>
+          <th class="bc-th-num">CUMULATIVO</th>
+          <th style="min-width:170px">STATI · AGENDA</th>
           <th style="width:36px"></th>
         </tr></thead>
         <tbody id="bc-tbody"></tbody>
@@ -655,47 +700,48 @@ function _renderBcRows() {
   const tbody = document.getElementById('bc-tbody');
   if (!tbody) return;
 
-  // Filtro stato + ricerca
   let visible = _bcRows.filter(r => {
     if (_bcFilter) {
       const id = r.stato?.id || 'inattivo';
-      // chip "inattivo" copre anche "nuovo"
       if (_bcFilter === 'inattivo' ? (id !== 'inattivo' && id !== 'nuovo') : id !== _bcFilter) return false;
     }
     if (_bcQuery) return r.cliente.toLowerCase().includes(_bcQuery.toLowerCase());
     return true;
   });
 
-  // Sort
   const { col, dir } = _bcSort;
   visible.sort((a, b) => {
     let va, vb;
-    if (col === 'priority') { va = a.priority; vb = b.priority; }
-    else if (col === 'cliente') { return dir * a.cliente.localeCompare(b.cliente, 'it'); }
-    else if (col === 'ord')     { va = a.ord;    vb = b.ord; }
-    else if (col === 'gap')     { va = a.gap;    vb = b.gap; }
-    else if (col === 'prog26')  { va = a.prog26; vb = b.prog26; }
-    else if (col === 'varMese') { va = a.bud > 0 ? (a.ord - a.bud) / a.bud : -999; vb = b.bud > 0 ? (b.ord - b.bud) / b.bud : -999; }
-    else if (col === 'varProg') { va = a.varProg ?? -999; vb = b.varProg ?? -999; }
+    if      (col === 'priority')  { va = a.priority;   vb = b.priority; }
+    else if (col === 'cliente')   { return dir * a.cliente.localeCompare(b.cliente, 'it'); }
+    else if (col === 'ord')       { va = a.ord;         vb = b.ord; }
+    else if (col === 'gap')       { va = a.gap;         vb = b.gap; }
+    else if (col === 'prog26')    { va = a.prog26;      vb = b.prog26; }
+    else if (col === 'fatt2025')  { va = a._fatt2025;   vb = b._fatt2025; }
+    else if (col === 'varMese')   { va = a.bud > 0 ? (a.ord - a.bud) / a.bud : -999; vb = b.bud > 0 ? (b.ord - b.bud) / b.bud : -999; }
+    else if (col === 'varProg')   { va = a.varProg ?? -999; vb = b.varProg ?? -999; }
     else { va = a.priority; vb = b.priority; }
-    // Dentro stesso gruppo di stato (solo per sort priority), gap desc
     if (col === 'priority' && va === vb) return b.gap - a.gap;
     return dir * (va - vb);
   });
 
   if (!visible.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
     return;
   }
+
+  const budgetMese = _plCache?.budgetMese || 0;
+  let running   = _plCache?.baseTotale || 0;
+  let budgetHit = false;
 
   tbody.innerHTML = visible.map(r => {
     const statoId    = r.stato?.id || 'inattivo';
     const statoColor = STATO_COLOR[statoId] || '#9B9B97';
     const statoBadge = `<span class="bc-stato" style="background:${statoColor}20;color:${statoColor};border-color:${statoColor}40">${r.stato?.label || '—'}</span>`;
 
-    const barColor   = statoColor;
-    const barW       = r.bud > 0 ? Math.min(100, r.ord / r.bud * 100) : 0;
-    const varMese    = r.bud > 0 ? (r.ord - r.bud) / r.bud * 100 : null;
+    const barColor = statoColor;
+    const barW     = r.bud > 0 ? Math.min(100, r.ord / r.bud * 100) : 0;
+    const varMese  = r.bud > 0 ? (r.ord - r.bud) / r.bud * 100 : null;
     const varMeseBadge = varMese != null
       ? `<span class="bc-badge ${varMese >= 0 ? 'bc-bdg-pos' : varMese >= -20 ? 'bc-bdg-neu' : 'bc-bdg-neg'}">${_pct(varMese)}</span>`
       : '<span class="bc-badge bc-bdg-gray">—</span>';
@@ -703,21 +749,44 @@ function _renderBcRows() {
       ? `<span class="bc-badge ${r.varProg >= 0 ? 'bc-bdg-pos' : 'bc-bdg-neg'}">${_pct(r.varProg)}</span>`
       : '<span class="bc-badge bc-bdg-gray">—</span>';
 
-    const gapCell = r.gap > 0
-      ? `<span class="neg" style="font-weight:500">–${_eur(r.gap)}</span>`
-      : `<span class="pos" style="font-size:11px">in target</span>`;
-
     const dettaglio = [
-      r.cons > 0 ? `<span class="bc-det-item">Cons. ${_eur(r.cons)}</span>` : '',
-      r.prep > 0 ? `<span class="bc-det-item bc-det-prep">Prep. ${_eur(r.prep)}</span>` : '',
-      r.sped > 0 ? `<span class="bc-det-item bc-det-sped">Sped. ${_eur(r.sped)}</span>` : '',
+      r.cons  > 0 ? `<span class="bc-det-item">Cons. ${_eur(r.cons)}</span>` : '',
+      r.prep  > 0 ? `<span class="bc-det-item bc-det-prep">Prep. ${_eur(r.prep)}</span>` : '',
+      r.sped  > 0 ? `<span class="bc-det-item bc-det-sped">Sped. ${_eur(r.sped)}</span>` : '',
       r.oltre > 0 ? `<span class="bc-det-item bc-det-oltre">+${_eur(r.oltre)} oltre</span>` : '',
     ].filter(Boolean).join(' ');
+
+    // Cumulativo: somma da baseTotale + gap di ogni riga non esclusa
+    const effGap  = r._esclusoManuale ? 0 : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap);
+    running += effGap;
+    const hitNow  = !budgetHit && running >= budgetMese && !r._esclusoManuale && budgetMese > 0;
+    if (hitNow) budgetHit = true;
+    const cumColor = running >= budgetMese ? '#2D7D4F' : running >= budgetMese * 0.85 ? '#D97706' : 'var(--text)';
+
+    const effGapDisplay = r._esclusoManuale ? r.gap : (r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap);
+    const isModified    = r._gapPersonalizzato !== null;
+
+    const ultOrdStr = r._ultimoOrdine
+      ? new Date(r._ultimoOrdine).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
+      : '—';
 
     const cod = r.codice.replace(/'/g, "\\'");
     const nom = r.cliente.replace(/'/g, "\\'");
 
-    return `<tr class="bc-row bc-row-${statoId}">
+    const statiHtml = PL_STATI.map(s => {
+      const attivo = r._statiPipeline?.[s.key] === true;
+      return `<button class="btn-action" onclick="togglePlStato('${cod}','${s.key}');return false" title="${s.label}${attivo ? ' ✓' : ''}"
+                style="color:${attivo ? s.color : '#ccc'};opacity:${attivo ? '1' : '.5'}">
+                <i class="ti ${s.icon}"></i>
+              </button>`;
+    }).join('');
+
+    let rowHtml = `<tr class="bc-row bc-row-${statoId}" style="${r._esclusoManuale ? 'opacity:0.45' : ''}">
+      <td style="text-align:center">
+        <button class="btn-action" onclick="togglePlEstcluso('${cod}');return false" title="${r._esclusoManuale ? 'Includi' : 'Escludi'}" style="color:${r._esclusoManuale ? '#999' : 'var(--text)'}">
+          <i class="ti ${r._esclusoManuale ? 'ti-eye-off' : 'ti-eye'}"></i>
+        </button>
+      </td>
       <td>${statoBadge}</td>
       <td>
         <div class="bc-cliente-nome">${r.cliente}${r._ordinaDiPersona ? ' <span class="bc-persona-tag">&#9734; di persona</span>' : ''}</div>
@@ -728,19 +797,39 @@ function _renderBcRows() {
           <div class="b-bbg bc-barline"><div class="b-bfill" style="width:${barW.toFixed(1)}%;background:${barColor}"></div></div>
           <div class="bc-bar-vals">${_eur(r.ord)} <span class="bc-bud">/ ${_eur(r.bud)}</span></div>
         </div>
+        ${dettaglio ? `<div class="bc-det" style="margin-top:2px">${dettaglio}</div>` : ''}
       </td>
       <td>${varMeseBadge}</td>
-      <td>${gapCell}</td>
-      <td><div class="bc-det">${dettaglio || '<span style="color:var(--text2);font-size:11px">—</span>'}</div></td>
-      <td>
-        <div style="font-weight:500">${_eur(r.prog26)}</div>
-        <div style="font-size:11px;color:var(--text2)">${_eur(r.prog25)} 2025</div>
+      <td style="text-align:right">
+        <input type="number" value="${effGapDisplay.toFixed(0)}" onchange="updatePlGap('${cod}',this.value)"
+               style="width:78px;padding:2px 4px;border:1px solid ${isModified ? '#D97706' : 'var(--border)'};border-radius:3px;font-size:11px;font-family:monospace;text-align:right;background:${isModified ? '#D9770610' : 'transparent'}"
+               ${r._esclusoManuale ? 'disabled' : ''}>
       </td>
-      <td>${varProgBadge}</td>
+      <td style="text-align:right">
+        <div style="font-weight:500">${r._fatt2025 > 0 ? _eur(r._fatt2025) : '<span style="color:var(--text2)">—</span>'}</div>
+        <div style="font-size:10px;color:var(--text2)">${ultOrdStr}</div>
+      </td>
+      <td style="text-align:right">
+        <div style="font-weight:500">${_eur(r.prog26)}</div>
+        <div style="font-size:10px">${varProgBadge}</div>
+      </td>
+      <td style="text-align:right;font-weight:600;color:${r._esclusoManuale ? '#ccc' : cumColor}">${_eur(running)}</td>
+      <td style="white-space:nowrap">
+        ${statiHtml}
+        <input type="date" value="${r._agendaData || ''}" onchange="updatePlAgenda('${cod}',this.value)"
+               title="Prossima visita in agenda"
+               style="margin-left:4px;padding:2px 3px;border:1px solid var(--border);border-radius:3px;font-size:10px;font-family:inherit;vertical-align:middle;max-width:105px">
+      </td>
       <td style="text-align:center">
         <button class="pl-art-btn" title="Verifica articoli" onclick="apriVerificaArticoli('${cod}','${nom}')">📋</button>
       </td>
     </tr>`;
+
+    if (hitNow) {
+      rowHtml += `<tr class="pl-budget-line"><td colspan="11">🎯 Budget raggiunto — ${_eur(budgetMese)}</td></tr>`;
+    }
+
+    return rowHtml;
   }).join('');
 }
 
@@ -1198,11 +1287,11 @@ function togglePlEstcluso(codice) {
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].escluso = r._esclusoManuale;
     _savePlModifica(codice);
-    renderDettaglioPipeline();
+    _renderBcRows();
   }
 }
 
-// Toggle stato di contatto cliente (avvisato / mail / mex / ordine) nel dettaglio pipeline
+// Toggle stato di contatto cliente (avvisato / mail / mex / ordine)
 function togglePlStato(codice, chiave) {
   const r = _bcRows.find(x => x.codice === codice);
   if (r) {
@@ -1211,7 +1300,7 @@ function togglePlStato(codice, chiave) {
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].stati = r._statiPipeline;
     _savePlModifica(codice);
-    renderDettaglioPipeline();
+    _renderBcRows();
   }
 }
 
@@ -1238,7 +1327,7 @@ async function updatePlAgenda(codice, valore) {
       r._agendaVisitaId = data.id;
       r._agendaData = valore;
     }
-    renderDettaglioPipeline();
+    _renderBcRows();
   } catch (e) {
     alert('Errore salvataggio data agenda: ' + e.message);
   }
@@ -1253,7 +1342,7 @@ function updatePlGap(codice, valore) {
     if (!_plModifiche[codice]) _plModifiche[codice] = {};
     _plModifiche[codice].gapPersonalizzato = r._gapPersonalizzato;
     _savePlModifica(codice);
-    renderDettaglioPipeline();
+    _renderBcRows();
   }
 }
 
