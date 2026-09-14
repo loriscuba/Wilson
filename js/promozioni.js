@@ -54,16 +54,21 @@ async function _loadFamiglieLiv2() {
 }
 
 function _renderPromoRoot(root) {
+  const toolbar = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
+      <button class="bc-btn-primary" onclick="apriFondoPdf()">📄 Carica PDF promo</button>
+    </div>`;
+
   if (!_promoList.length) {
-    root.innerHTML = `
+    root.innerHTML = toolbar + `
       <div style="text-align:center;padding:3rem;color:var(--text2)">
         <div style="font-size:36px;margin-bottom:1rem">🏷️</div>
         <div style="font-size:15px;font-weight:600;margin-bottom:.5rem">Nessuna promozione attiva</div>
-        <div style="font-size:12px">Carica una promo con <code>python import_promo.py</code></div>
+        <div style="font-size:12px">Carica il PDF di una promo con il pulsante qui sopra.</div>
       </div>`;
     return;
   }
-  root.innerHTML = _promoList.map(p => _promoCardHtml(p)).join('');
+  root.innerHTML = toolbar + _promoList.map(p => _promoCardHtml(p)).join('');
 }
 
 function _promoCardHtml(p) {
@@ -597,6 +602,285 @@ async function salvaAggiungiClientePromo(promoId) {
   if (!_promoIdonei[promoId]) _promoIdonei[promoId] = [];
   if (!_promoIdonei[promoId].find(r => r.codice_cliente === cod)) {
     _promoIdonei[promoId].push({ codice_cliente: cod, ragione_sociale: nome || '', n_ordini: 0, tot_importo: 0, _manuale: true });
+  }
+}
+
+// ── PDF Upload ────────────────────────────────────────────────────────────────
+
+const MESI_IT = {
+  gennaio:1, febbraio:2, marzo:3, aprile:4, maggio:5, giugno:6,
+  luglio:7, agosto:8, settembre:9, ottobre:10, novembre:11, dicembre:12,
+};
+
+function apriFondoPdf() {
+  let inp = document.getElementById('promo-pdf-input');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type    = 'file';
+    inp.id      = 'promo-pdf-input';
+    inp.accept  = '.pdf';
+    inp.style.display = 'none';
+    inp.addEventListener('change', () => { if (inp.files[0]) _caricaPdfFile(inp.files[0]); inp.value = ''; });
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
+
+async function _caricaPdfFile(file) {
+  const root   = document.getElementById('promo-root');
+  const banner = document.createElement('div');
+  banner.id = 'pdf-loading-banner';
+  banner.style.cssText = 'padding:.75rem 1rem;background:var(--surface);border-bottom:1px solid var(--border);font-size:13px;color:var(--text2);border-radius:var(--r);margin-bottom:.75rem';
+  banner.textContent = '📄 Lettura PDF in corso…';
+  root.prepend(banner);
+
+  try {
+    if (!window.pdfjsLib) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src     = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload  = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf         = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page    = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it => it.str).join(' ') + '\n';
+    }
+
+    banner.remove();
+    const parsed = _parsePdfPromo(text, file.name);
+    _mostraReviewModal(parsed, text);
+  } catch (e) {
+    banner.remove();
+    alert('Errore lettura PDF: ' + e.message);
+  }
+}
+
+function _parsePdfPromo(text, fileName) {
+  const tl = text.toLowerCase();
+
+  // Month/year
+  let mese = null, anno = null;
+  for (const [nome, num] of Object.entries(MESI_IT)) {
+    const m = tl.match(new RegExp(nome + '\\s+(\\d{4})'));
+    if (m) { mese = num; anno = parseInt(m[1]); break; }
+  }
+  if (!anno) { const m = text.match(/\b(20\d\d)\b/); if (m) anno = parseInt(m[1]); }
+
+  // Date range dd/mm/yyyy
+  let data_inizio = null, data_fine = null;
+  const dates = [...text.matchAll(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/g)]
+    .map(m => `${m[3]}-${m[2]}-${m[1]}`);
+  if (dates.length >= 2) {
+    data_inizio = dates[0];
+    data_fine   = dates[1];
+  } else if (mese && anno) {
+    data_inizio = `${anno}-${String(mese).padStart(2,'0')}-01`;
+    const last  = new Date(anno, mese, 0).getDate();
+    data_fine   = `${anno}-${String(mese).padStart(2,'0')}-${last}`;
+  }
+
+  // Settore / divisione
+  let settore   = /edilizia/i.test(text) ? 'Edilizia' : /industria/i.test(text) ? 'Industria' : '';
+  let divisione = '';
+  const divM    = text.match(/div(?:isione)?\.?\s*(\d+)/i);
+  if (divM) divisione = divM[1];
+
+  const non_cumulabile = /non\s+cumulabile/i.test(text);
+  const pdf_nome       = fileName;
+
+  // Heuristic: all-caps short lines as promo titles
+  const lines  = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const titleRe = /^[A-ZÀÈÉÌÒÙA-Z0-9 \-\/—–&.,:;()'°]{5,70}$/;
+  const skipRe  = /^(PROMO|PROMOZIONI?|CONDIZIONI|OFFERTA|FISCHER|EDILIZIA|INDUSTRIA|PAGINA|PAGE|\d+)$/i;
+
+  const entries = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (titleRe.test(lines[i]) && !skipRe.test(lines[i].trim())) {
+      const nome    = lines[i].trim();
+      const cLines  = [];
+      i++;
+      while (i < lines.length && !titleRe.test(lines[i])) {
+        cLines.push(lines[i]);
+        i++;
+      }
+      const condizioni  = cLines.join('\n').trim();
+      const noteM       = condizioni.match(/ORDINE\s+[A-Z ]+/);
+      entries.push({ nome, condizioni, note_ordine: noteM ? noteM[0].trim() : '' });
+    } else {
+      i++;
+    }
+  }
+
+  if (!entries.length) entries.push({ nome: '', condizioni: '', note_ordine: '' });
+
+  return { mese, anno, data_inizio, data_fine, settore, divisione, non_cumulabile, pdf_nome, entries };
+}
+
+let _promoEntryCount = 0;
+
+function _mostraReviewModal(parsed, rawText) {
+  document.getElementById('promo-review-modal')?.remove();
+  _promoEntryCount = parsed.entries.length - 1;
+
+  const entriesHtml = parsed.entries.map((e, idx) => _entryFormHtml(idx, e)).join('');
+
+  const html = `
+    <div class="pl-modal-overlay" id="promo-review-modal" onclick="if(event.target===this)chiudiReviewModal()">
+      <div class="pl-modal-content" style="max-width:620px;max-height:90vh;overflow-y:auto">
+        <div class="pl-modal-hdr">
+          <span style="font-weight:600">📄 Nuova promozione da PDF</span>
+          <button class="pl-modal-close" onclick="chiudiReviewModal()">×</button>
+        </div>
+        <div style="padding:1.25rem;display:flex;flex-direction:column;gap:14px">
+
+          <fieldset style="border:1px solid var(--border);border-radius:var(--r);padding:.75rem;margin:0">
+            <legend style="font-size:12px;font-weight:600;color:var(--text2);padding:0 4px">Dati comuni</legend>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label class="promo-label">Settore</label>
+                <input type="text" id="prev-settore" value="${_esc(parsed.settore)}"
+                       style="display:block;margin-top:3px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label class="promo-label">Divisione</label>
+                <input type="text" id="prev-divisione" value="${_esc(parsed.divisione)}" placeholder="es. 11"
+                       style="display:block;margin-top:3px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label class="promo-label">Data inizio</label>
+                <input type="date" id="prev-dinizio" value="${parsed.data_inizio || ''}"
+                       style="display:block;margin-top:3px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label class="promo-label">Data fine</label>
+                <input type="date" id="prev-dfine" value="${parsed.data_fine || ''}"
+                       style="display:block;margin-top:3px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+              </div>
+            </div>
+            <div style="margin-top:10px">
+              <label class="promo-check-lbl" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="prev-noncum" ${parsed.non_cumulabile ? 'checked' : ''}> Non cumulabile
+              </label>
+            </div>
+          </fieldset>
+
+          <div id="prev-entries">${entriesHtml}</div>
+
+          <button class="bc-btn-secondary" style="align-self:flex-start" onclick="_aggiungiEntryPromo()">+ Aggiungi voce promo</button>
+
+          <details style="font-size:11px;color:var(--text2)">
+            <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);user-select:none">Testo estratto dal PDF ▸</summary>
+            <pre style="margin-top:8px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);white-space:pre-wrap;word-break:break-word;max-height:200px;overflow-y:auto;font-size:11px">${_esc(rawText.slice(0, 8000))}</pre>
+          </details>
+
+          <div style="display:flex;gap:8px">
+            <button class="bc-btn-primary" style="flex:1" onclick="_salvaTutti()">Salva promozione</button>
+            <button class="bc-btn-secondary" onclick="chiudiReviewModal()">Annulla</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.insertAdjacentHTML('beforeend', html);
+  window._promoPdfParsed = parsed;
+}
+
+function _entryFormHtml(idx, e) {
+  return `
+    <div class="promo-entry-box" id="prev-entry-${idx}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:12px;font-weight:600;color:var(--text2)">Voce promo ${idx + 1}</span>
+        ${idx > 0 ? `<button class="bc-btn-secondary" style="padding:2px 8px;font-size:11px" onclick="this.closest('.promo-entry-box').remove()">Rimuovi</button>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label class="promo-label">Nome promo *</label>
+          <input type="text" class="prev-nome" value="${_esc(e.nome || '')}" placeholder="es. DISCHI DA TAGLIO"
+                 style="display:block;margin-top:3px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label class="promo-label">Condizioni</label>
+          <textarea class="prev-cond" rows="4"
+            style="display:block;margin-top:3px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box">${_esc(e.condizioni || '')}</textarea>
+        </div>
+        <div>
+          <label class="promo-label">Nota ordine</label>
+          <input type="text" class="prev-nota" value="${_esc(e.note_ordine || '')}" placeholder="es. ORDINE PROMO DISCHI"
+                 style="display:block;margin-top:3px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+    </div>`;
+}
+
+function _aggiungiEntryPromo() {
+  _promoEntryCount++;
+  const container = document.getElementById('prev-entries');
+  if (!container) return;
+  container.insertAdjacentHTML('beforeend', _entryFormHtml(_promoEntryCount, { nome: '', condizioni: '', note_ordine: '' }));
+}
+
+function chiudiReviewModal() {
+  document.getElementById('promo-review-modal')?.remove();
+  window._promoPdfParsed = null;
+}
+
+async function _salvaTutti() {
+  const settore     = document.getElementById('prev-settore')?.value.trim()  || '';
+  const divisione   = document.getElementById('prev-divisione')?.value.trim() || '';
+  const data_inizio = document.getElementById('prev-dinizio')?.value || null;
+  const data_fine   = document.getElementById('prev-dfine')?.value   || null;
+  const non_cum     = document.getElementById('prev-noncum')?.checked ?? true;
+  const pdf_nome    = window._promoPdfParsed?.pdf_nome || '';
+
+  let mese = null, anno = null;
+  if (data_inizio) {
+    const d = new Date(data_inizio + 'T00:00:00');
+    mese = d.getMonth() + 1;
+    anno = d.getFullYear();
+  }
+
+  const boxes  = [...document.querySelectorAll('#prev-entries .promo-entry-box')];
+  const promos = boxes.map(box => ({
+    nome:           box.querySelector('.prev-nome')?.value.trim() || '',
+    condizioni:     box.querySelector('.prev-cond')?.value.trim() || null,
+    note_ordine:    box.querySelector('.prev-nota')?.value.trim() || null,
+    settore, divisione, mese, anno, data_inizio, data_fine,
+    non_cumulabile: non_cum, attiva: true, pdf_nome,
+    famiglie: [], codici_extra: [],
+  })).filter(p => p.nome);
+
+  if (!promos.length) {
+    alert('Inserisci almeno una voce promo con un nome.');
+    return;
+  }
+
+  const btn = document.querySelector('#promo-review-modal .bc-btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvataggio…'; }
+
+  try {
+    const { error } = await sb.from('promozioni')
+      .upsert(promos, { onConflict: 'nome,anno,mese' });
+    if (error) throw error;
+
+    chiudiReviewModal();
+    _promoList    = [];
+    _famiglieLiv2 = [];
+    await loadPromozioni();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Salva promozione'; }
+    alert('Errore salvataggio: ' + e.message);
   }
 }
 

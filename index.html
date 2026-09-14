@@ -1434,6 +1434,8 @@
         .pl-modal-content { background:var(--surface); border-radius:10px; max-width:440px; width:100%; margin:1rem; box-shadow:0 8px 40px #0003; max-height:90vh; overflow-y:auto; }
         .pl-modal-hdr { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border); font-size:14px; }
         .pl-modal-close { background:none; border:none; font-size:20px; cursor:pointer; color:var(--text2); padding:0 4px; line-height:1; }
+        .promo-entry-box { border:1px solid var(--border); border-radius:var(--r); padding:12px; background:var(--bg); }
+        .promo-entry-box + .promo-entry-box { margin-top:10px; }
     </style>
 </head>
 <body class="wilson-locked">
@@ -1910,7 +1912,7 @@
     <script src="js/statistiche.js?v=1"></script>
     <script src="js/note_visite.js?v=1"></script>
     <script src="js/listino.js?v=1"></script>
-    <script src="js/promozioni.js?v=1"></script>
+    <script src="js/promozioni.js?v=2"></script>
     <script src="js/app.js?v=15"></script>
     <script>
         document.addEventListener('keydown', e => {

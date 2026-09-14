@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS promozioni (
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   nome            TEXT NOT NULL,
+  CONSTRAINT promozioni_nome_anno_mese UNIQUE (nome, anno, mese),
   mese            INT,                       -- 4 per aprile
   anno            INT,                       -- 2026
   data_inizio     DATE,
