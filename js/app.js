@@ -39,6 +39,7 @@ const PAGE_LOADERS = {
   'note-visite': loadNoteVisite,
   agenda:       loadAgenda,
   listino:      loadListino,
+  promozioni:   loadPromozioni,
   impostazioni: loadImpostazioni,
 };
 
