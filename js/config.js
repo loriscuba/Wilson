@@ -15,7 +15,7 @@ if (!window.supabase) {
 }
 const sb = window.supabase
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { persistSession: true, detectSessionInUrl: true, storage: _getSafeStorage() },
+      auth: { persistSession: false, detectSessionInUrl: true, storage: _getSafeStorage() },
     })
   : null;
 
