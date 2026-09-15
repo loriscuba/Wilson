@@ -261,24 +261,16 @@ async function _loadPromoIdonei(promo) {
     const famiglie    = promo.famiglie    || [];
     const codiciExtra = (promo.codici_extra || []).filter(Boolean);
 
-    let codiciPromo = [];
+    // Parti dell'OR da passare a PostgREST
+    const orParts = [];
 
-    // 1. Risolvi codici_extra: l'utente inserisce codici corti (es. "71044")
-    //    ma in DB sono 10 cifre (es. "0007104400") → cerco via ILIKE
-    if (codiciExtra.length) {
-      for (const shortCode of codiciExtra) {
-        const { data: matching } = await sb.from('prodotti')
-          .select('codice_articolo')
-          .ilike('codice_articolo', `%${shortCode}%`);
-        if (matching?.length) {
-          codiciPromo.push(...matching.map(p => String(p.codice_articolo)));
-        } else {
-          codiciPromo.push(shortCode); // fallback: usa il codice as-is
-        }
-      }
+    // 1. codici_extra → ILIKE direttamente su righe_ordine
+    //    Funziona indipendentemente dal formato (5, 7, 10 cifre, con o senza zeri)
+    for (const code of codiciExtra) {
+      orParts.push(`codice_articolo.ilike.%${code}%`);
     }
 
-    // 2. Codici dalle famiglie selezionate
+    // 2. Famiglie → codici esatti via prodotti → exact match
     if (famiglie.length) {
       const { data: sfData } = await sb.from('sottofamiglie_prodotto')
         .select('id').in('nome', famiglie);
@@ -286,18 +278,19 @@ async function _loadPromoIdonei(promo) {
       if (sfIds.length) {
         const { data: prodData } = await sb.from('prodotti')
           .select('codice_articolo').in('sottofamiglia_id', sfIds);
-        codiciPromo.push(...(prodData || []).map(p => String(p.codice_articolo)));
+        const familyCodes = [...new Set((prodData || []).map(p => String(p.codice_articolo)))];
+        if (familyCodes.length) {
+          orParts.push(`codice_articolo.in.(${familyCodes.join(',')})`);
+        }
       }
     }
 
-    codiciPromo = [...new Set(codiciPromo)];
-    if (!codiciPromo.length) { _promoIdonei[promo.id] = []; return; }
+    if (!orParts.length) { _promoIdonei[promo.id] = []; return; }
 
-    // 3. Righe ordine che contengono quei codici
-    //    Filtro data applicato lato client per evitare problemi PostgREST su join
+    // 3. Unica query OR su righe_ordine
     const { data: righe, error } = await sb.from('righe_ordine')
       .select('ordine_id, codice_articolo, importo_eur, ordini!inner(codice_cliente, destinazione_ragione_sociale, data_ordine)')
-      .in('codice_articolo', codiciPromo);
+      .or(orParts.join(','));
     if (error) throw error;
 
     const since = new Date();
@@ -329,8 +322,9 @@ async function _loadPromoIdonei(promo) {
       (b.ultimo_acquisto || '').localeCompare(a.ultimo_acquisto || '')
     );
   } catch (e) {
-    console.warn('loadPromoIdonei error:', e);
-    _promoIdonei[promo.id] = [];
+    console.error('loadPromoIdonei error:', e);
+    // Mostra l'errore nell'UI invece di nasconderlo silenziosamente
+    _promoIdonei[promo.id] = { _errore: e.message };
   }
 }
 
@@ -339,7 +333,8 @@ async function _loadPromoIdonei(promo) {
 function _promoDettaglioHtml(promo) {
   const id       = promo.id;
   const tracking = _promoClienti[id]  || [];
-  const idonei   = _promoIdonei[id]   || null;  // null = ancora in caricamento
+  const raw      = _promoIdonei[id];
+  const idonei   = (!raw || raw._errore) ? null : raw;  // null = caricamento o errore
 
   // Mappa stato per codice_cliente
   const statoMap = Object.fromEntries(tracking.map(r => [r.codice_cliente, r]));
@@ -422,7 +417,8 @@ function _promoDettaglioHtml(promo) {
         <button class="bc-btn-secondary" onclick="apriAggiungiClientePromo(${id})">+ Aggiungi cliente</button>
       </div>
 
-      ${idonei === null ? '<div class="loading" style="padding:.5rem">Analisi storico ordini…</div>' : ''}
+      ${!raw ? '<div class="loading" style="padding:.5rem">Analisi storico ordini…</div>' : ''}
+      ${raw?._errore ? `<div style="padding:.5rem;color:var(--red);font-size:12px">⚠ Errore ricerca clienti: ${_esc(raw._errore)}</div>` : ''}
 
       <div style="overflow-x:auto">
         <table class="b-tbl" style="min-width:700px">
