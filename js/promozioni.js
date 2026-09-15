@@ -1,13 +1,17 @@
 // ── Promozioni ────────────────────────────────────────────────────────────────
 
-let _promoList      = [];   // promozioni caricate
-let _promoAperta    = null; // id promo espansa
-let _promoFiltro    = '';   // filtro stato clienti
-let _promoQuery     = '';   // ricerca clienti
-let _promoClienti   = {};   // { promoId: [rows dal DB] }
-let _promoIdonei    = {};   // { promoId: [clienti idonei dallo storico ordini] }
-let _promoSetup     = null; // id promo in setup famiglie
-let _famiglieLiv2   = [];   // [{nome, sottofamiglie:[{nome,count}]}]
+let _promoList        = [];
+let _promoAperta      = null;
+let _promoFiltro      = '';
+let _promoQuery       = '';
+let _promoClienti     = {};
+let _promoIdonei      = {};
+let _promoSetup       = null;
+let _famiglieLiv2     = [];
+let _promoRigaAperta  = {};  // { promoId: codice_cliente espanso | null }
+let _promoOrdiniCache = {};  // { `${promoId}:${codice}`: [] | 'loading' | 'error:msg' }
+let _promoArchivio    = null;
+let _archivioAperto   = false;
 
 const PROMO_STATI = [
   { id: 'da_contattare',  label: 'Da contattare', color: '#9B9B97' },
@@ -59,16 +63,50 @@ function _renderPromoRoot(root) {
       <button class="bc-btn-primary" onclick="apriFondoPdf()">📄 Carica PDF promo</button>
     </div>`;
 
-  if (!_promoList.length) {
-    root.innerHTML = toolbar + `
-      <div style="text-align:center;padding:3rem;color:var(--text2)">
+  const listaHtml = _promoList.length
+    ? _promoList.map(p => _promoCardHtml(p)).join('')
+    : `<div style="text-align:center;padding:3rem;color:var(--text2)">
         <div style="font-size:36px;margin-bottom:1rem">🏷️</div>
         <div style="font-size:15px;font-weight:600;margin-bottom:.5rem">Nessuna promozione attiva</div>
         <div style="font-size:12px">Carica il PDF di una promo con il pulsante qui sopra.</div>
-      </div>`;
-    return;
+       </div>`;
+
+  root.innerHTML = toolbar + listaHtml + _archivioSectionHtml();
+}
+
+function _archivioSectionHtml() {
+  const chevron = _archivioAperto ? '▾' : '▸';
+  let inner = '';
+  if (_archivioAperto) {
+    if (!_promoArchivio) {
+      inner = '<div class="loading" style="padding:.5rem">Caricamento archivio…</div>';
+    } else if (!_promoArchivio.length) {
+      inner = '<p style="font-size:12px;color:var(--text2);padding:.5rem 0">Nessuna promo archiviata.</p>';
+    } else {
+      inner = _promoArchivio.map(p => {
+        const di = p.data_inizio ? new Date(p.data_inizio + 'T00:00:00').toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+        const df = p.data_fine   ? new Date(p.data_fine   + 'T00:00:00').toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-weight:600;font-size:13px">${_esc(p.nome)}</div>
+              <div style="font-size:11px;color:var(--text2)">${di}–${df} · ${p.settore || ''}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="bc-btn-secondary" style="font-size:11px;padding:3px 8px" onclick="riattivraPromo(${p.id})">Riattiva</button>
+              <button class="bc-btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red);border-color:var(--red)40" onclick="cancellaPromo(${p.id})">Cancella</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
   }
-  root.innerHTML = toolbar + _promoList.map(p => _promoCardHtml(p)).join('');
+  return `
+    <div style="margin-top:2rem;border-top:1px solid var(--border);padding-top:.75rem">
+      <button class="bc-btn-secondary" style="font-size:12px" onclick="_toggleArchivio()">
+        📁 ${chevron} Archivio
+      </button>
+      ${_archivioAperto ? `<div style="margin-top:.75rem">${inner}</div>` : ''}
+    </div>`;
 }
 
 function _promoCardHtml(p) {
@@ -298,6 +336,7 @@ async function _loadPromoIdonei(promo) {
     const sinceStr = since.toISOString().split('T')[0];
 
     // 4. Aggrega per cliente (filtro data client-side)
+    const currentYear = new Date().getFullYear();
     const map = {};
     for (const r of (righe || [])) {
       const ord = r.ordini;
@@ -311,11 +350,17 @@ async function _loadPromoIdonei(promo) {
           ultimo_acquisto: ord.data_ordine,
           n_ordini:        0,
           tot_importo:     0,
+          fatt_corrente:   0,
+          fatt_prec:       0,
         };
       }
       if (ord.data_ordine > map[cod].ultimo_acquisto) map[cod].ultimo_acquisto = ord.data_ordine;
       map[cod].n_ordini++;
-      map[cod].tot_importo += r.importo_eur || 0;
+      const imp = r.importo_eur || 0;
+      map[cod].tot_importo += imp;
+      const yr = parseInt((ord.data_ordine || '').slice(0, 4));
+      if (yr === currentYear)         map[cod].fatt_corrente += imp;
+      else if (yr === currentYear - 1) map[cod].fatt_prec    += imp;
     }
 
     _promoIdonei[promo.id] = Object.values(map).sort((a, b) =>
@@ -389,9 +434,11 @@ function _promoDettaglioHtml(promo) {
     `<div style="margin-bottom:4px">${_esc(l)}</div>`
   ).join('');
 
+  const yr  = new Date().getFullYear();
+
   const tbodyHtml = rows.length
     ? rows.map(r => _promoRigaHtml(r, promo)).join('')
-    : `<tr><td colspan="7" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
+    : `<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
 
   return `
     <div style="padding:1rem 0">
@@ -421,18 +468,24 @@ function _promoDettaglioHtml(promo) {
       ${raw?._errore ? `<div style="padding:.5rem;color:var(--red);font-size:12px">⚠ Errore ricerca clienti: ${_esc(raw._errore)}</div>` : ''}
 
       <div style="overflow-x:auto">
-        <table class="b-tbl" style="min-width:700px">
+        <table class="b-tbl" style="min-width:750px">
           <thead><tr>
             <th>Cliente</th>
+            <th style="text-align:right">${yr}</th>
+            <th style="text-align:right">${yr - 1}</th>
             <th style="text-align:center">Ultimo acq.</th>
-            <th style="text-align:right">N° ordini</th>
-            <th style="text-align:right">Importo medio</th>
+            <th style="text-align:right">N° acq.</th>
             <th style="text-align:center">Stato</th>
-            <th style="text-align:center">Data proposta</th>
+            <th style="text-align:center">Data prop.</th>
             <th style="width:32px"></th>
           </tr></thead>
           <tbody id="promo-tbody-${id}">${tbodyHtml}</tbody>
         </table>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <button class="bc-btn-secondary" style="font-size:12px" onclick="archiviPromo(${id})">📁 Archivia promo</button>
+        <button class="bc-btn-secondary" style="font-size:12px;color:var(--red);border-color:var(--red)40" onclick="cancellaPromo(${id})">🗑 Cancella promo</button>
       </div>
     </div>`;
 }
@@ -443,26 +496,69 @@ function _promoRigaHtml(r, promo) {
   const statoInfo  = PROMO_STATI.find(s => s.id === stato) || PROMO_STATI[0];
   const statoBadge = `<span class="bc-stato" style="background:${statoInfo.color}20;color:${statoInfo.color};border-color:${statoInfo.color}40;white-space:nowrap">${statoInfo.label}</span>`;
   const nome       = _esc(r.ragione_sociale || t?.ragione_sociale || r.codice_cliente);
-  const dtUlt      = r.ultimo_acquisto ? new Date(r.ultimo_acquisto).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' }) : (r._manuale ? '—' : '—');
-  const dtProp     = t?.data_proposta   ? new Date(t.data_proposta  + 'T00:00:00').toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
-  const media      = r.n_ordini > 0 && r.tot_importo > 0 ? '€ ' + Math.round(r.tot_importo / r.n_ordini).toLocaleString('it-IT') : '—';
+  const dtUlt      = r.ultimo_acquisto ? new Date(r.ultimo_acquisto).toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
+  const dtProp     = t?.data_proposta   ? new Date(t.data_proposta + 'T00:00:00').toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
+  const fc         = r.fatt_corrente > 0 ? '€ ' + Math.round(r.fatt_corrente).toLocaleString('it-IT') : '—';
+  const fp         = r.fatt_prec     > 0 ? '€ ' + Math.round(r.fatt_prec).toLocaleString('it-IT')     : '—';
   const cod        = r.codice_cliente.replace(/'/g, "\\'");
   const nomeEsc    = nome.replace(/'/g, "\\'");
+  const isOpen     = _promoRigaAperta[promo.id] === r.codice_cliente;
 
-  return `<tr class="bc-row">
+  const detailRow = isOpen ? `<tr style="background:var(--bg)"><td colspan="8" style="padding:6px 12px 12px 16px">${_ordiniDetailHtml(promo.id, r.codice_cliente)}</td></tr>` : '';
+
+  return `<tr class="bc-row" style="cursor:pointer" onclick="toggleRigaPromo(${promo.id},'${cod}',event)">
     <td>
-      <div class="bc-cliente-nome">${nome}</div>
+      <div class="bc-cliente-nome">${nome} <span style="font-size:10px;color:var(--text2)">${isOpen ? '▴' : '▾'}</span></div>
       <div class="bc-cliente-div">${r.codice_cliente}</div>
     </td>
+    <td style="text-align:right;font-size:12px;font-weight:500">${fc}</td>
+    <td style="text-align:right;font-size:12px;color:var(--text2)">${fp}</td>
     <td style="text-align:center;font-size:12px;color:var(--text2)">${dtUlt}</td>
-    <td style="text-align:right;font-size:12px;color:var(--text2)">${r.n_ordini || (r._manuale ? '—' : '—')}</td>
-    <td style="text-align:right;font-size:12px">${media}</td>
+    <td style="text-align:right;font-size:12px;color:var(--text2)">${r.n_ordini || '—'}</td>
     <td style="text-align:center">${statoBadge}</td>
     <td style="text-align:center;font-size:12px;color:var(--text2)">${dtProp}</td>
     <td style="text-align:center">
-      <button class="pl-art-btn" title="Modifica stato" onclick="apriEditPromoCliente(${promo.id},'${cod}','${nomeEsc}')">✏</button>
+      <button class="pl-art-btn" title="Modifica stato" onclick="event.stopPropagation();apriEditPromoCliente(${promo.id},'${cod}','${nomeEsc}')">✏</button>
     </td>
-  </tr>`;
+  </tr>${detailRow}`;
+}
+
+function _ordiniDetailHtml(promoId, codice) {
+  const key    = `${promoId}:${codice}`;
+  const cached = _promoOrdiniCache[key];
+  if (!cached || cached === 'loading') {
+    return '<div class="loading" style="font-size:12px;padding:4px 0">Caricamento ordini…</div>';
+  }
+  if (typeof cached === 'string' && cached.startsWith('error:')) {
+    return `<span style="color:var(--red);font-size:12px">⚠ ${_esc(cached.slice(6))}</span>`;
+  }
+  if (!cached.length) {
+    return '<span style="font-size:12px;color:var(--text2)">Nessun ordine trovato con questi articoli negli ultimi 2 anni.</span>';
+  }
+  const righe = cached.flatMap(o =>
+    o.righe.map(r => ({
+      data:    new Date(o.data_ordine).toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }),
+      codice:  r.codice_articolo,
+      qty:     r.quantita ?? '—',
+      netto:   r.importo_eur != null ? '€ ' + r.importo_eur.toLocaleString('it-IT', { minimumFractionDigits:2, maximumFractionDigits:2 }) : '—',
+    }))
+  );
+  return `<table style="font-size:11px;width:100%;max-width:480px">
+    <thead><tr>
+      <th style="text-align:left;color:var(--text2);font-weight:500;padding:2px 10px 4px 0">Data</th>
+      <th style="text-align:left;color:var(--text2);font-weight:500;padding:2px 10px 4px 0">Articolo</th>
+      <th style="text-align:right;color:var(--text2);font-weight:500;padding:2px 10px 4px 0">Qtà</th>
+      <th style="text-align:right;color:var(--text2);font-weight:500;padding:2px 0 4px 0">Netto</th>
+    </tr></thead>
+    <tbody>
+      ${righe.map(r => `<tr>
+        <td style="padding:2px 10px 2px 0;color:var(--text2)">${r.data}</td>
+        <td style="padding:2px 10px">${_esc(r.codice)}</td>
+        <td style="text-align:right;padding:2px 10px">${r.qty}</td>
+        <td style="text-align:right">${r.netto}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
 }
 
 // ── Event handlers ─────────────────────────────────────────────────────────────
@@ -617,6 +713,120 @@ async function salvaAggiungiClientePromo(promoId) {
   if (!_promoIdonei[promoId].find(r => r.codice_cliente === cod)) {
     _promoIdonei[promoId].push({ codice_cliente: cod, ragione_sociale: nome || '', n_ordini: 0, tot_importo: 0, _manuale: true });
   }
+}
+
+// ── Toggle riga cliente ───────────────────────────────────────────────────────
+
+async function toggleRigaPromo(promoId, codice, event) {
+  if (event?.target?.closest('button')) return; // non espandere se click su bottone
+  const isOpen = _promoRigaAperta[promoId] === codice;
+  _promoRigaAperta[promoId] = isOpen ? null : codice;
+
+  if (!isOpen) {
+    const key = `${promoId}:${codice}`;
+    if (!_promoOrdiniCache[key]) {
+      _promoOrdiniCache[key] = 'loading';
+      _renderPromoTbody(promoId);
+      const promo = _promoList.find(p => p.id === promoId);
+      await _loadOrdiniCliente(promoId, codice, promo);
+    }
+  }
+  _renderPromoTbody(promoId);
+}
+
+function _renderPromoTbody(promoId) {
+  const promo  = _promoList.find(p => p.id === promoId);
+  const bodyEl = document.querySelector(`#promo-card-${promoId} .promo-card-body`);
+  if (bodyEl && promo) bodyEl.innerHTML = _promoDettaglioHtml(promo);
+}
+
+async function _loadOrdiniCliente(promoId, codice, promo) {
+  const key = `${promoId}:${codice}`;
+  try {
+    const codiciExtra = (promo?.codici_extra || []).filter(Boolean);
+    const orParts     = codiciExtra.map(c => `codice_articolo.ilike.%${c}%`);
+
+    const famiglie = promo?.famiglie || [];
+    if (famiglie.length) {
+      const { data: sfData } = await sb.from('sottofamiglie_prodotto').select('id').in('nome', famiglie);
+      const sfIds = (sfData || []).map(s => s.id);
+      if (sfIds.length) {
+        const { data: prodData } = await sb.from('prodotti').select('codice_articolo').in('sottofamiglia_id', sfIds);
+        const fc = [...new Set((prodData || []).map(p => String(p.codice_articolo)))];
+        if (fc.length) orParts.push(`codice_articolo.in.(${fc.join(',')})`);
+      }
+    }
+
+    if (!orParts.length) { _promoOrdiniCache[key] = []; return; }
+
+    const { data: ordiniCli } = await sb.from('ordini')
+      .select('id, data_ordine')
+      .eq('codice_cliente', codice)
+      .order('data_ordine', { ascending: false })
+      .limit(100);
+
+    if (!ordiniCli?.length) { _promoOrdiniCache[key] = []; return; }
+
+    const ordineIds = ordiniCli.map(o => o.id);
+    const { data: righe, error } = await sb.from('righe_ordine')
+      .select('ordine_id, codice_articolo, quantita, importo_eur')
+      .in('ordine_id', ordineIds)
+      .or(orParts.join(','));
+    if (error) throw error;
+
+    const ordineMap = {};
+    for (const o of ordiniCli) ordineMap[o.id] = { ...o, righe: [] };
+    for (const r of (righe || [])) ordineMap[r.ordine_id]?.righe.push(r);
+
+    _promoOrdiniCache[key] = Object.values(ordineMap)
+      .filter(o => o.righe.length > 0)
+      .sort((a, b) => b.data_ordine.localeCompare(a.data_ordine))
+      .slice(0, 4);
+  } catch (e) {
+    _promoOrdiniCache[key] = `error:${e.message}`;
+  }
+}
+
+// ── Archivia / Cancella ────────────────────────────────────────────────────────
+
+async function archiviPromo(promoId) {
+  if (!confirm('Archiviare questa promo? Sparirà dalla lista principale ma potrà essere riattivata dall\'Archivio.')) return;
+  const { error } = await sb.from('promozioni').update({ attiva: false }).eq('id', promoId);
+  if (error) { alert('Errore: ' + error.message); return; }
+  _promoList     = _promoList.filter(p => p.id !== promoId);
+  _promoAperta   = null;
+  _promoArchivio = null; // forza ricaricamento archivio
+  _rerenderRoot();
+}
+
+async function cancellaPromo(promoId) {
+  if (!confirm('CANCELLARE definitivamente questa promo?\nVerranno cancellati anche tutti i dati di tracking clienti.\nQuesta azione è irreversibile.')) return;
+  const { error } = await sb.from('promozioni').delete().eq('id', promoId);
+  if (error) { alert('Errore: ' + error.message); return; }
+  _promoList   = _promoList.filter(p => p.id !== promoId);
+  if (_promoArchivio) _promoArchivio = _promoArchivio.filter(p => p.id !== promoId);
+  _promoAperta = null;
+  _rerenderRoot();
+}
+
+async function riattivraPromo(promoId) {
+  const { error } = await sb.from('promozioni').update({ attiva: true }).eq('id', promoId);
+  if (error) { alert('Errore: ' + error.message); return; }
+  if (_promoArchivio) _promoArchivio = _promoArchivio.filter(p => p.id !== promoId);
+  const { data } = await sb.from('promozioni').select('*').eq('attiva', true).order('data_inizio', { ascending: false });
+  _promoList = data || [];
+  _rerenderRoot();
+}
+
+async function _toggleArchivio() {
+  _archivioAperto = !_archivioAperto;
+  if (_archivioAperto && !_promoArchivio) {
+    const { data } = await sb.from('promozioni')
+      .select('*').eq('attiva', false)
+      .order('data_inizio', { ascending: false });
+    _promoArchivio = data || [];
+  }
+  _rerenderRoot();
 }
 
 // ── PDF Upload ────────────────────────────────────────────────────────────────
