@@ -185,6 +185,9 @@ function _renderDDTTabella(todayMs) {
     } else {
       trkCell = '—';
     }
+    const forzaBtn = isConsegnato
+      ? ''
+      : `<button class="forza-cons-btn" onclick="forzaConsegnato('${d.numero_consegna}')" title="Segna manualmente come consegnato">✓ Forza</button>`;
     return `
     <tr>
       <td><strong>${d.numero_consegna || '—'}</strong></td>
@@ -193,7 +196,7 @@ function _renderDDTTabella(todayMs) {
       <td><span title="${d.codice_cliente || ''}">${nome}</span></td>
       <td>${ordineCell}</td>
       <td>${d.corriere || '—'}</td>
-      <td>${statoBadge}</td>
+      <td>${statoBadge}${forzaBtn}</td>
       <td>${trkCell}</td>
     </tr>`;
   }).join('');
@@ -372,6 +375,7 @@ function openTrackingModal(numConsegna) {
       ${d.fercam_url  ? `<a class="trk-ext-link" href="${d.fercam_url}"  target="_blank" rel="noopener">Fercam →</a>`  : ''}
       ${d.tnt_url     ? `<a class="trk-ext-link" href="${d.tnt_url}"     target="_blank" rel="noopener">TNT →</a>`     : ''}
       ${d.shippeo_url ? `<a class="trk-ext-link" href="${d.shippeo_url}" target="_blank" rel="noopener">Shippeo →</a>` : ''}
+      ${!isConsegnato ? `<button class="forza-cons-btn" onclick="forzaConsegnato('${d.numero_consegna}');closeTrackingModal()" style="margin-left:auto">✓ Forza consegnato</button>` : ''}
     </div>`;
 
   overlay.style.display = 'flex';
@@ -379,4 +383,18 @@ function openTrackingModal(numConsegna) {
 
 function closeTrackingModal() {
   document.getElementById('trk-overlay').style.display = 'none';
+}
+
+async function forzaConsegnato(numConsegna) {
+  const oggi = new Date().toISOString().split('T')[0];
+  const { error } = await sb.from('ddt')
+    .update({ stato: 'consegnato', data_consegna_effettiva: oggi })
+    .eq('numero_consegna', numConsegna);
+  if (error) { alert('Errore: ' + error.message); return; }
+  // Aggiorna cache locale e ri-renderizza senza ricaricare tutto
+  const row = _ddtRows.find(r => r.numero_consegna === numConsegna);
+  if (row) { row.stato = 'consegnato'; row.data_consegna_effettiva = oggi; }
+  const todayMs = new Date().setHours(0, 0, 0, 0);
+  _renderDDTFiltri();
+  _renderDDTTabella(todayMs);
 }
