@@ -255,14 +255,30 @@ async function _loadPromoClienti(promoId) {
 
 async function _loadPromoIdonei(promo) {
   if (!promo) return;
-  if (_promoIdonei[promo.id]) return;  // già caricati
+  if (_promoIdonei[promo.id]) return;
 
   try {
     const famiglie    = promo.famiglie    || [];
     const codiciExtra = (promo.codici_extra || []).filter(Boolean);
 
-    // Codici articolo dalle famiglie selezionate
-    let codiciPromo = [...codiciExtra];
+    let codiciPromo = [];
+
+    // 1. Risolvi codici_extra: l'utente inserisce codici corti (es. "71044")
+    //    ma in DB sono 10 cifre (es. "0007104400") → cerco via ILIKE
+    if (codiciExtra.length) {
+      for (const shortCode of codiciExtra) {
+        const { data: matching } = await sb.from('prodotti')
+          .select('codice_articolo')
+          .ilike('codice_articolo', `%${shortCode}%`);
+        if (matching?.length) {
+          codiciPromo.push(...matching.map(p => String(p.codice_articolo)));
+        } else {
+          codiciPromo.push(shortCode); // fallback: usa il codice as-is
+        }
+      }
+    }
+
+    // 2. Codici dalle famiglie selezionate
     if (famiglie.length) {
       const { data: sfData } = await sb.from('sottofamiglie_prodotto')
         .select('id').in('nome', famiglie);
@@ -270,29 +286,31 @@ async function _loadPromoIdonei(promo) {
       if (sfIds.length) {
         const { data: prodData } = await sb.from('prodotti')
           .select('codice_articolo').in('sottofamiglia_id', sfIds);
-        codiciPromo = [...new Set([...codiciPromo, ...(prodData || []).map(p => String(p.codice_articolo))])];
+        codiciPromo.push(...(prodData || []).map(p => String(p.codice_articolo)));
       }
     }
 
+    codiciPromo = [...new Set(codiciPromo)];
     if (!codiciPromo.length) { _promoIdonei[promo.id] = []; return; }
 
-    // Ordini che includono quei codici negli ultimi 24 mesi
+    // 3. Righe ordine che contengono quei codici
+    //    Filtro data applicato lato client per evitare problemi PostgREST su join
+    const { data: righe, error } = await sb.from('righe_ordine')
+      .select('ordine_id, codice_articolo, importo_eur, ordini!inner(codice_cliente, destinazione_ragione_sociale, data_ordine)')
+      .in('codice_articolo', codiciPromo);
+    if (error) throw error;
+
     const since = new Date();
     since.setFullYear(since.getFullYear() - 2);
     const sinceStr = since.toISOString().split('T')[0];
 
-    const { data: righe } = await sb.from('righe_ordine')
-      .select('ordine_id, codice_articolo, importo_eur, ordini!inner(codice_cliente, destinazione_ragione_sociale, data_ordine)')
-      .in('codice_articolo', codiciPromo)
-      .gte('ordini.data_ordine', sinceStr);
-
-    // Aggrega per cliente
+    // 4. Aggrega per cliente (filtro data client-side)
     const map = {};
     for (const r of (righe || [])) {
       const ord = r.ordini;
-      if (!ord) continue;
+      if (!ord || !ord.codice_cliente) continue;
+      if (ord.data_ordine < sinceStr) continue;
       const cod = ord.codice_cliente;
-      if (!cod) continue;
       if (!map[cod]) {
         map[cod] = {
           codice_cliente:  cod,
@@ -669,7 +687,7 @@ async function _caricaPdfFile(file) {
 function _parsePdfPromo(text, fileName) {
   const tl = text.toLowerCase();
 
-  // Month/year
+  // ── Mese/anno ─────────────────────────────────────────────────────────────
   let mese = null, anno = null;
   for (const [nome, num] of Object.entries(MESI_IT)) {
     const m = tl.match(new RegExp(nome + '\\s+(\\d{4})'));
@@ -677,62 +695,88 @@ function _parsePdfPromo(text, fileName) {
   }
   if (!anno) { const m = text.match(/\b(20\d\d)\b/); if (m) anno = parseInt(m[1]); }
 
-  // Date range dd/mm/yyyy
+  // ── Date: "dal DD mese al DD mese YYYY" (formato Fischer) ─────────────────
   let data_inizio = null, data_fine = null;
-  const dates = [...text.matchAll(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/g)]
-    .map(m => `${m[3]}-${m[2]}-${m[1]}`);
-  if (dates.length >= 2) {
-    data_inizio = dates[0];
-    data_fine   = dates[1];
-  } else if (mese && anno) {
-    data_inizio = `${anno}-${String(mese).padStart(2,'0')}-01`;
-    const last  = new Date(anno, mese, 0).getDate();
-    data_fine   = `${anno}-${String(mese).padStart(2,'0')}-${last}`;
+  const reDataTesto = /dal\s+(\d{1,2})\s+(\w+)\b.*?\bal\s+(\d{1,2})\s+(\w+)\s+(\d{4})/i;
+  const mdt = text.match(reDataTesto);
+  if (mdt) {
+    const [, gdI, mnI, gdF, mnF, yrF] = mdt;
+    const mI = MESI_IT[mnI.toLowerCase()];
+    const mF = MESI_IT[mnF.toLowerCase()];
+    if (mI) data_inizio = `${yrF}-${String(mI).padStart(2,'0')}-${String(gdI).padStart(2,'0')}`;
+    if (mF) data_fine   = `${yrF}-${String(mF).padStart(2,'0')}-${String(gdF).padStart(2,'0')}`;
+  }
+  // fallback dd/mm/yyyy
+  if (!data_inizio) {
+    const dates = [...text.matchAll(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/g)]
+      .map(m => `${m[3]}-${m[2]}-${m[1]}`);
+    if (dates.length >= 2) { data_inizio = dates[0]; data_fine = dates[1]; }
+    else if (mese && anno) {
+      data_inizio = `${anno}-${String(mese).padStart(2,'0')}-01`;
+      data_fine   = `${anno}-${String(mese).padStart(2,'0')}-${new Date(anno, mese, 0).getDate()}`;
+    }
   }
 
-  // Settore / divisione
-  let settore   = /edilizia/i.test(text) ? 'Edilizia' : /industria/i.test(text) ? 'Industria' : '';
-  let divisione = '';
-  const divM    = text.match(/div(?:isione)?\.?\s*(\d+)/i);
+  // ── Settore / divisione ───────────────────────────────────────────────────
+  const settore   = /edilizia/i.test(text) ? 'Edilizia' : /industria/i.test(text) ? 'Industria' : '';
+  let   divisione = '';
+  const divM      = text.match(/div(?:isione)?\.?\s*(\d+)/i);
   if (divM) divisione = divM[1];
 
   const non_cumulabile = /non\s+cumulabile/i.test(text);
   const pdf_nome       = fileName;
 
-  // Heuristic: all-caps short lines as promo titles
-  const lines  = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-  const titleRe = /^[A-ZÀÈÉÌÒÙA-Z0-9 \-\/—–&.,:;()'°]{5,70}$/;
-  const skipRe  = /^(PROMO|PROMOZIONI?|CONDIZIONI|OFFERTA|FISCHER|EDILIZIA|INDUSTRIA|PAGINA|PAGE|\d+)$/i;
+  // ── Codici articolo: tutti gli "art. XXXXX" ───────────────────────────────
+  const artCodes = [...new Set(
+    [...text.matchAll(/art\.\s*(\d{4,8})/gi)].map(m => m[1])
+  )];
 
-  const entries = [];
-  let i = 0;
-  while (i < lines.length) {
-    if (titleRe.test(lines[i]) && !skipRe.test(lines[i].trim())) {
-      const nome    = lines[i].trim();
-      const cLines  = [];
-      i++;
-      while (i < lines.length && !titleRe.test(lines[i])) {
-        cLines.push(lines[i]);
-        i++;
-      }
-      const condizioni  = cLines.join('\n').trim();
-      const noteM       = condizioni.match(/ORDINE\s+[A-Z ]+/);
-      entries.push({ nome, condizioni, note_ordine: noteM ? noteM[0].trim() : '' });
-    } else {
-      i++;
-    }
+  // ── Condizioni: tutto dopo "Dinamica promozionale:" ───────────────────────
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const dinamicaIdx = lines.findIndex(l => /dinamica\s+promozionale/i.test(l));
+
+  let nome      = '';
+  let condizioni = '';
+
+  if (dinamicaIdx >= 0) {
+    // Condizioni: da "Dinamica promozionale:" in poi
+    condizioni = lines.slice(dinamicaIdx + 1)
+      .filter(l => !/^(Vuoi regali|fischergift|Promo\s+Gruppi|Contenuto|Listino|Dinamica$)/i.test(l))
+      .join('\n').trim();
+
+    // Nome: le prime righe significative prima della tabella
+    const preLines = lines.slice(0, dinamicaIdx)
+      .filter(l =>
+        l.length >= 4 &&
+        !/^(Schiume|Tasselli|Punte|Kimono|Abrasivi|Fissaggio|Fischer|Promozioni?|Promo\s+Gruppi|Contenuto|Listino|Dinamica|\+|-{2,}|\d+\s*(pz|art))/i.test(l) &&
+        !/^[\d\+\-\*\|\/\\]+$/.test(l) &&
+        !/art\.\s*\d+/i.test(l)
+      );
+    nome = preLines.slice(0, 3).join(' — ').replace(/\s{2,}/g, ' ').slice(0, 100).trim();
+  } else {
+    // Nessuna sezione dinamica trovata: usa tutto come condizioni
+    condizioni = text.trim();
   }
 
-  if (!entries.length) entries.push({ nome: '', condizioni: '', note_ordine: '' });
+  if (!nome) {
+    nome = `Promo ${settore} ${mese ? Object.keys(MESI_IT)[mese - 1].toUpperCase() : ''} ${anno || ''}`.trim();
+  }
 
-  return { mese, anno, data_inizio, data_fine, settore, divisione, non_cumulabile, pdf_nome, entries };
+  const noteM      = condizioni.match(/ORDINE\s+PROMO\s+\S+/i) || condizioni.match(/ORDINE\s+[A-Z ]{3,30}/);
+  const note_ordine = noteM ? noteM[0].trim() : '';
+
+  return {
+    mese, anno, data_inizio, data_fine, settore, divisione,
+    non_cumulabile, pdf_nome, artCodes,
+    entries: [{ nome, condizioni, note_ordine }],
+  };
 }
 
 let _promoEntryCount = 0;
 
 function _mostraReviewModal(parsed, rawText) {
   document.getElementById('promo-review-modal')?.remove();
-  _promoEntryCount = parsed.entries.length - 1;
+  _promoEntryCount = parsed.entries.length - 1; // indice dell'ultima entry
 
   const entriesHtml = parsed.entries.map((e, idx) => _entryFormHtml(idx, e)).join('');
 
@@ -775,6 +819,14 @@ function _mostraReviewModal(parsed, rawText) {
               </label>
             </div>
           </fieldset>
+
+          ${parsed.artCodes?.length ? `
+          <div>
+            <label class="promo-label">Codici articolo rilevati dal PDF</label>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Verranno salvati come codici extra per trovare i clienti idonei. Modifica se necessario.</div>
+            <input type="text" id="prev-artcodes" value="${_esc(parsed.artCodes.join(', '))}"
+                   style="display:block;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+          </div>` : ''}
 
           <div id="prev-entries">${entriesHtml}</div>
 
@@ -851,6 +903,9 @@ async function _salvaTutti() {
     anno = d.getFullYear();
   }
 
+  const artCodesRaw = document.getElementById('prev-artcodes')?.value || '';
+  const codici_extra = artCodesRaw.split(',').map(s => s.trim()).filter(Boolean);
+
   const boxes  = [...document.querySelectorAll('#prev-entries .promo-entry-box')];
   const promos = boxes.map(box => ({
     nome:           box.querySelector('.prev-nome')?.value.trim() || '',
@@ -858,7 +913,7 @@ async function _salvaTutti() {
     note_ordine:    box.querySelector('.prev-nota')?.value.trim() || null,
     settore, divisione, mese, anno, data_inizio, data_fine,
     non_cumulabile: non_cum, attiva: true, pdf_nome,
-    famiglie: [], codici_extra: [],
+    famiglie: [], codici_extra,
   })).filter(p => p.nome);
 
   if (!promos.length) {
