@@ -1406,6 +1406,36 @@
             background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
         }
         .wl-btn:hover { opacity: .92; }
+
+        /* ── Promozioni ── */
+        .promo-card { border:1px solid var(--border); border-radius:var(--r); margin-bottom:12px; overflow:hidden; background:var(--surface); }
+        .promo-card-hdr { display:flex; align-items:flex-start; gap:12px; padding:14px 16px; cursor:pointer; }
+        .promo-card-hdr:hover { background:var(--bg); }
+        .promo-card-nome { font-size:15px; font-weight:700; margin-bottom:4px; }
+        .promo-card-meta { font-size:12px; color:var(--text2); }
+        .promo-nc { background:#C84B2F20; color:#C84B2F; border:1px solid #C84B2F30; border-radius:4px; padding:1px 5px; font-size:10px; font-weight:700; letter-spacing:.04em; }
+        .promo-setup-badge { background:#D9770620; color:#D97706; border:1px solid #D9770640; border-radius:4px; padding:2px 7px; font-size:11px; font-weight:600; }
+        .promo-chev { font-size:16px; color:var(--text2); transition:transform .2s; }
+        .promo-chev.open { transform:rotate(180deg); }
+        .promo-card-body { padding:0 16px 16px; border-top:1px solid var(--border); }
+        .promo-fam-chip { display:inline-block; background:var(--accent)15; color:var(--accent); border:1px solid var(--accent)30; border-radius:10px; padding:2px 8px; font-size:11px; font-weight:500; }
+        .promo-cod-chip { display:inline-block; background:#D9770615; color:#D97706; border:1px solid #D9770630; border-radius:10px; padding:2px 8px; font-size:11px; font-weight:500; }
+        .promo-condizioni { font-size:12px; color:var(--text2); background:var(--bg); border-radius:var(--r); padding:10px 12px; margin:12px 0; line-height:1.6; }
+        .promo-label { font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:.04em; }
+        .promo-setup { padding-top:12px; }
+        .promo-setup-title { font-size:13px; font-weight:700; margin-bottom:8px; }
+        .promo-check-lbl { display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; padding:3px 0; }
+        .promo-check-lbl input { margin:0; }
+        .bc-btn-primary { padding:7px 16px; background:var(--accent); color:#fff; border:none; border-radius:var(--r); font-size:13px; font-weight:600; cursor:pointer; }
+        .bc-btn-primary:hover { opacity:.9; }
+        .bc-btn-secondary { padding:7px 12px; background:transparent; color:var(--text); border:1px solid var(--border); border-radius:var(--r); font-size:13px; cursor:pointer; }
+        .bc-btn-secondary:hover { background:var(--bg); }
+        .pl-modal-overlay { position:fixed; inset:0; background:#0007; display:flex; align-items:center; justify-content:center; z-index:200; }
+        .pl-modal-content { background:var(--surface); border-radius:10px; max-width:440px; width:100%; margin:1rem; box-shadow:0 8px 40px #0003; max-height:90vh; overflow-y:auto; }
+        .pl-modal-hdr { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border); font-size:14px; }
+        .pl-modal-close { background:none; border:none; font-size:20px; cursor:pointer; color:var(--text2); padding:0 4px; line-height:1; }
+        .promo-entry-box { border:1px solid var(--border); border-radius:var(--r); padding:12px; background:var(--bg); }
+        .promo-entry-box + .promo-entry-box { margin-top:10px; }
     </style>
 </head>
 <body class="wilson-locked">
@@ -1446,6 +1476,8 @@
           <i class="ti ti-chart-line top-nav-icon"></i><span class="top-nav-label">Statistiche</span></a>
         <a class="top-nav-link" data-page="listino" data-tip="Listino FL" href="#" onclick="showPage('listino',event)">
           <i class="ti ti-tag top-nav-icon"></i><span class="top-nav-label">Listino</span></a>
+        <a class="top-nav-link" data-page="promozioni" data-tip="Promozioni" href="#" onclick="showPage('promozioni',event)">
+          <i class="ti ti-speakerphone top-nav-icon"></i><span class="top-nav-label">Promo</span></a>
         <a class="top-nav-link" data-page="impostazioni" data-tip="Impostazioni" href="#" onclick="showPage('impostazioni',event)">
           <i class="ti ti-adjustments top-nav-icon"></i><span class="top-nav-label">Impostazioni</span></a>
       </div>
@@ -1788,6 +1820,11 @@
             <div id="listino-root"><div class="loading">Caricamento…</div></div>
         </div>
 
+        <div id="promozioni" class="page">
+            <h1>Promozioni</h1>
+            <div id="promo-root"><div class="loading">Caricamento…</div></div>
+        </div>
+
         <div id="impostazioni" class="page">
             <h1>Impostazioni</h1>
             <div id="cfg-token-root" style="margin-bottom:2rem"></div>
@@ -1833,6 +1870,7 @@
                 <button type="button" onclick="navToPage('statistiche'); closeMobileDrawer()">Statistiche</button>
                 <button type="button" onclick="navToPage('note-visite'); closeMobileDrawer()">Note Visite</button>
                 <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Listino</button>
+                <button type="button" onclick="navToPage('promozioni'); closeMobileDrawer()">Promozioni</button>
                 <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
         </div>
@@ -1874,6 +1912,7 @@
     <script src="js/statistiche.js?v=1"></script>
     <script src="js/note_visite.js?v=1"></script>
     <script src="js/listino.js?v=1"></script>
+    <script src="js/promozioni.js?v=2"></script>
     <script src="js/app.js?v=15"></script>
     <script>
         document.addEventListener('keydown', e => {
