@@ -93,7 +93,7 @@ async function getLatestRollingDate() {
     .lte('data_aggiornamento', today)
     .order('data_aggiornamento', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
   _latestRollingDate = data?.data_aggiornamento || null;
   return _latestRollingDate;
 }

@@ -90,7 +90,7 @@ async function loadUltimoSync() {
   try {
     const { data, error } = await sb.from('importazioni')
       .select('created_at').eq('esito', 'ok')
-      .order('created_at', { ascending: false }).limit(1).single();
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (error || !data) {
       if (el)  el.textContent  = 'Nessun sync';
       if (mel) mel.textContent = 'Nessun sync';
