@@ -100,14 +100,14 @@ async function loadClienti() {
       .or('solo_destinazione.eq.false,solo_destinazione.is.null')
       .order('ragione_sociale', { ascending: true }));
 
-    if (error) {
-      // Fallback: senza filtro solo_destinazione (colonna potrebbe mancare)
+    if (error || !clienti?.length) {
+      // Fallback: senza filtro solo_destinazione (colonna assente o tutti solo_destinazione=true)
       ({ data: clienti, error } = await sb.from('clienti')
         .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
         .or('attivo.eq.true,attivo.is.null')
         .order('ragione_sociale', { ascending: true }));
     }
-    if (error) {
+    if (error || !clienti?.length) {
       // Fallback 2: senza join
       ({ data: clienti, error } = await sb.from('clienti')
         .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, attivo')
