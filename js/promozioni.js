@@ -567,16 +567,64 @@ function setPromoFiltro(stato, promoId) {
   _promoFiltro = stato;
   const promo = _promoList.find(p => p.id === promoId);
   if (!promo) return;
-  const bodyEl = document.querySelector(`#promo-card-${promoId} .promo-card-body`);
-  if (bodyEl) bodyEl.innerHTML = _promoDettaglioHtml(promo);
+  // Aggiorna chips (stato attivo) e tbody senza toccare l'input di ricerca
+  const tracking = _promoClienti[promoId] || [];
+  const byCounts = {};
+  for (const s of PROMO_STATI) byCounts[s.id] = 0;
+  for (const r of tracking) byCounts[r.stato] = (byCounts[r.stato] || 0) + 1;
+  const chipHtml = PROMO_STATI.map(s => {
+    const cnt = byCounts[s.id] || 0;
+    const on  = _promoFiltro === s.id ? 'on' : '';
+    return `<button class="bc-chip ${on}" style="--chip-c:${s.color}" onclick="setPromoFiltro('${s.id}',${promoId})">${s.label} <span class="bc-chip-cnt">${cnt}</span></button>`;
+  });
+  chipHtml.unshift(`<button class="bc-chip ${_promoFiltro === '' ? 'on' : ''}" style="--chip-c:#6B6860" onclick="setPromoFiltro('',${promoId})">Tutti <span class="bc-chip-cnt">${tracking.length}</span></button>`);
+  const chipsEl = document.getElementById(`promo-chips-${promoId}`);
+  if (chipsEl) chipsEl.innerHTML = chipHtml.join('');
+  _updatePromoTbody(promoId, promo);
 }
 
 function setPromoQuery(q, promoId) {
   _promoQuery = q;
   const promo = _promoList.find(p => p.id === promoId);
   if (!promo) return;
-  const bodyEl = document.querySelector(`#promo-card-${promoId} .promo-card-body`);
-  if (bodyEl) bodyEl.innerHTML = _promoDettaglioHtml(promo);
+  // Aggiorna solo il tbody — NON ricostruire il body intero o l'input perde il focus
+  _updatePromoTbody(promoId, promo);
+}
+
+function _updatePromoTbody(promoId, promo) {
+  const tbodyEl = document.getElementById(`promo-tbody-${promoId}`);
+  if (!tbodyEl) return;
+  const tracking  = _promoClienti[promoId] || [];
+  const raw       = _promoIdonei[promoId];
+  const idonei    = (!raw || raw._errore) ? null : raw;
+  const statoMap  = Object.fromEntries(tracking.map(r => [r.codice_cliente, r]));
+
+  let rows = [];
+  if (idonei === null) {
+    rows = tracking;
+  } else {
+    const idoneiCodici = new Set(idonei.map(c => c.codice_cliente));
+    rows = idonei.map(c => ({ ...c, _tracking: statoMap[c.codice_cliente] || null }));
+    for (const t of tracking) {
+      if (!idoneiCodici.has(t.codice_cliente))
+        rows.push({ codice_cliente: t.codice_cliente, ragione_sociale: t.ragione_sociale || '', _tracking: t, _manuale: true });
+    }
+  }
+
+  if (_promoFiltro) {
+    rows = rows.filter(r => (r._tracking?.stato || 'da_contattare') === _promoFiltro);
+  }
+  if (_promoQuery) {
+    const q = _promoQuery.toLowerCase();
+    rows = rows.filter(r =>
+      (r.ragione_sociale || r._tracking?.ragione_sociale || '').toLowerCase().includes(q) ||
+      r.codice_cliente.includes(q)
+    );
+  }
+
+  tbodyEl.innerHTML = rows.length
+    ? rows.map(r => _promoRigaHtml(r, promo)).join('')
+    : `<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
 }
 
 function _riapriSetup(promoId) {
