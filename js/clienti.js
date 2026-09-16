@@ -92,15 +92,30 @@ async function loadClienti() {
   tbody.innerHTML = '<tr><td colspan="8" class="loading">Caricamento…</td></tr>';
 
   try {
-    const [{ data: clienti, error }, rolling] = await Promise.all([
-      sb.from('clienti')
+    // Prova query completa; se fallisce (colonna mancante, FK mancante) degradi progressivamente
+    let clienti, error;
+    ({ data: clienti, error } = await sb.from('clienti')
+      .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
+      .eq('attivo', true)
+      .or('solo_destinazione.eq.false,solo_destinazione.is.null')
+      .order('ragione_sociale', { ascending: true }));
+
+    if (error) {
+      // Fallback 1: senza filtro solo_destinazione
+      ({ data: clienti, error } = await sb.from('clienti')
         .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, settori(nome), categorie(nome), attivo')
         .eq('attivo', true)
-        .or('solo_destinazione.eq.false,solo_destinazione.is.null')
-        .order('ragione_sociale', { ascending: true }),
-      loadRollingEnriched(),
-    ]);
+        .order('ragione_sociale', { ascending: true }));
+    }
+    if (error) {
+      // Fallback 2: senza join e senza filtro attivo
+      ({ data: clienti, error } = await sb.from('clienti')
+        .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, attivo')
+        .order('ragione_sociale', { ascending: true }));
+    }
     if (error) throw error;
+
+    const rolling = await loadRollingEnriched();
 
     _clientiData   = clienti || [];
     _clientiFiltrati = _clientiData;
@@ -122,7 +137,8 @@ async function loadClienti() {
       if (c) toggleClienteDetail(cod, c.ragione_sociale || '', document.body);
     }
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}</td></tr>`;
+    const detail = err.code ? ` [${err.code}] ${err.hint || err.details || ''}` : '';
+    tbody.innerHTML = `<tr><td colspan="8" class="loading">Errore: ${err.message}${detail}</td></tr>`;
   }
 }
 
