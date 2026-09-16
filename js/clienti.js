@@ -100,8 +100,6 @@ async function loadClienti() {
       .or('solo_destinazione.eq.false,solo_destinazione.is.null')
       .order('ragione_sociale', { ascending: true }));
 
-    const diag = [`q1:${error ? 'ERR('+error.message+')' : (clienti?.length ?? 0)+'righe'}`];
-
     if (error || !clienti?.length) {
       // Fallback: senza filtro solo_destinazione
       let e2; ({ data: clienti, error: e2 } = await sb.from('clienti')
@@ -109,7 +107,6 @@ async function loadClienti() {
         .or('attivo.eq.true,attivo.is.null')
         .order('ragione_sociale', { ascending: true }));
       error = e2;
-      diag.push(`q2:${e2 ? 'ERR('+e2.message+')' : (clienti?.length ?? 0)+'righe'}`);
     }
     if (error || !clienti?.length) {
       // Fallback 2: senza join né filtri
@@ -117,14 +114,8 @@ async function loadClienti() {
         .select('codice_cliente, ragione_sociale, citta, provincia, giorno_visita, attivo')
         .order('ragione_sociale', { ascending: true }));
       error = e3;
-      diag.push(`q3:${e3 ? 'ERR('+e3.message+')' : (clienti?.length ?? 0)+'righe'}`);
     }
     if (error) throw error;
-
-    if (!clienti?.length) {
-      tbody.innerHTML = `<tr><td colspan="8" class="loading">Nessun cliente trovato — diag: ${diag.join(', ')}</td></tr>`;
-      return;
-    }
 
     const rolling = await loadRollingEnriched();
 
