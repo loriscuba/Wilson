@@ -1035,6 +1035,7 @@
                 gap: 1px;
                 flex: 1;
                 min-width: 0;
+                overflow: hidden;
             }
             .top-nav-link {
                 display: flex;
@@ -1093,6 +1094,13 @@
                 gap: 8px;
                 margin-left: 8px;
                 flex-shrink: 0;
+            }
+            @media (max-width: 1300px) {
+                .top-nav .top-nav-label { max-width: 0 !important; opacity: 0 !important; margin-left: 0 !important; }
+                .top-nav .top-nav-link  { gap: 0 !important; }
+                .top-nav-sync-time      { display: none !important; }
+                .top-nav #sync-label    { display: none !important; }
+                .top-nav .sync-btn      { padding: 5px 8px !important; }
             }
             .top-nav-sync-time {
                 font-size: 11px;
