@@ -203,8 +203,8 @@ async function loadBudgetPremio() {
       loadRollingEnriched(),
       sb.from('cedi_ridistribuito')
         .select('valore_ridistribuito, data_aggiornamento')
-        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
-        .order('data_aggiornamento', { ascending: false }),
+        .order('data_aggiornamento', { ascending: false })
+        .limit(500),
     ]);
 
     const b        = bArr?.[0];
@@ -358,8 +358,8 @@ async function loadBudgetMensile() {
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false }).limit(1),
       sb.from('cedi_ridistribuito').select('valore_ridistribuito, data_aggiornamento')
-        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
-        .order('data_aggiornamento', { ascending: false }),
+        .order('data_aggiornamento', { ascending: false })
+        .limit(500),
     ]);
     if (bErr) throw bErr;
     const latest = latestArr?.[0];
