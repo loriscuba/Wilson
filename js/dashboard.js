@@ -200,7 +200,7 @@ async function loadDashboard() {
             <h3>Fatturato ordini oggi</h3>
             <div class="kpi-value">€${fmt(ordiniOggiValue)}</div>
             <div class="kpi-sub">${ordiniOggi.length} ordini oggi</div>
-            <div class="kpi-sub">Mese (incluso oggi): €${fmt(ordiniValue + totCEDI)}</div>
+            <div class="kpi-sub">Mese (incluso oggi): €${fmt(totOrdinato + ordiniOggiValue)}</div>
             ${totCEDI > 0 ? `<div class="kpi-sub">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
           </div>
           <div class="flip-card-back">
