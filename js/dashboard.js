@@ -194,18 +194,23 @@ async function loadDashboard() {
           </div>
         </div>
       </div>
-      <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')" title="Somma degli importi delle righe ordine abbinate ai DDT emessi oggi">
-        <h3>Fatturato evaso oggi</h3>
-        <div class="kpi-value">€${fmt(fatturatoOggi.totale)}</div>
-        <div class="kpi-sub">
-          ${fatturatoOggi.numDdt} DDT · ${fatturatoOggi.numRigheAbbinate} articoli abbinati${fatturatoOggi.numRigheNonAbbinate ? ` · <span style="color:#D97706">${fatturatoOggi.numRigheNonAbbinate} senza prezzo</span>` : ''}
+      <div class="flip-card-wrap" onclick="this.classList.toggle('flipped')" title="Clicca per vedere il fatturato evaso (DDT) di oggi">
+        <div class="flip-card-inner">
+          <div class="flip-card-front">
+            <h3>Fatturato ordini oggi</h3>
+            <div class="kpi-value">€${fmt(ordiniOggiValue)}</div>
+            <div class="kpi-sub">${ordiniOggi.length} ordini oggi</div>
+            <div class="kpi-sub">Mese (incluso oggi): €${fmt(ordiniValue + totCEDI)}</div>
+            ${totCEDI > 0 ? `<div class="kpi-sub">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
+          </div>
+          <div class="flip-card-back">
+            <h3>Fatturato evaso oggi (DDT)</h3>
+            <div class="kpi-value">€${fmt(fatturatoOggi.totale)}</div>
+            <div class="kpi-sub">
+              ${fatturatoOggi.numDdt} DDT · ${fatturatoOggi.numRigheAbbinate} articoli abbinati${fatturatoOggi.numRigheNonAbbinate ? ` · <span style="color:#D97706">${fatturatoOggi.numRigheNonAbbinate} senza prezzo</span>` : ''}
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="kpi-card kpi-card-link" onclick="navToPage('ordini')" title="Somma dei totali degli ordini con data odierna">
-        <h3>Fatturato ordini oggi</h3>
-        <div class="kpi-value">€${fmt(ordiniOggiValue)}</div>
-        <div class="kpi-sub">${ordiniOggi.length} ordini oggi</div>
-        <div class="kpi-sub">Mese (incluso oggi): €${fmt(ordiniValue)}</div>
       </div>
       <div class="kpi-card">
         <h3>Consuntivo ${progLabel}</h3>
@@ -241,15 +246,15 @@ async function loadDashboard() {
 
     // Aggiusta altezza flip card in base al contenuto reale delle due facce
     requestAnimationFrame(() => {
-      const wrap = kpiGrid.querySelector('.flip-card-wrap');
-      if (!wrap) return;
-      const front = wrap.querySelector('.flip-card-front');
-      const back  = wrap.querySelector('.flip-card-back');
-      if (front && back) {
-        const h = Math.max(front.scrollHeight, back.scrollHeight);
-        wrap.style.minHeight = h + 'px';
-        wrap.querySelector('.flip-card-inner').style.minHeight = h + 'px';
-      }
+      kpiGrid.querySelectorAll('.flip-card-wrap').forEach(wrap => {
+        const front = wrap.querySelector('.flip-card-front');
+        const back  = wrap.querySelector('.flip-card-back');
+        if (front && back) {
+          const h = Math.max(front.scrollHeight, back.scrollHeight);
+          wrap.style.minHeight = h + 'px';
+          wrap.querySelector('.flip-card-inner').style.minHeight = h + 'px';
+        }
+      });
     });
 
     renderStatoMese(rows);
