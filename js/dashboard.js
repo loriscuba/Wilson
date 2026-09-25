@@ -89,9 +89,12 @@ async function loadDashboard() {
     const annoP = annoC - 1;
 
     // Parallel fetch: rolling + ordini mese + ddt + cedi + budget
-    const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-    const today     = now.toISOString().split('T')[0];
+    // Date in ora locale: toISOString() converte in UTC e in Italia sposta la
+    // data al giorno prima (es. 1° del mese → ultimo giorno del mese prima).
+    const _ymd      = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const startMese = _ymd(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endMese   = _ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    const today     = _ymd(now);
 
     const [rows, rollingDate, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }, fatturatoOggi] = await Promise.all([
       loadRollingEnriched(),
@@ -134,6 +137,8 @@ async function loadDashboard() {
 
     const ordiniCount      = ordiniData?.length || 0;
     const ordiniValue      = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
+    const ordiniOggi       = (ordiniData || []).filter(o => (o.data_ordine || '').slice(0, 10) === today);
+    const ordiniOggiValue  = ordiniOggi.reduce((s, o) => s + (o.totale_ordine || 0), 0);
     const todayMs          = new Date().setHours(0, 0, 0, 0);
     const _ddtNonConsegnati = (ddtData || []).filter(d => !(d.stato_shippeo && d.stato_shippeo.toLowerCase() === 'deliverycompliant'));
     const ddtCount         = _ddtNonConsegnati.filter(d => d.stato === 'spedito').length;
@@ -195,6 +200,12 @@ async function loadDashboard() {
         <div class="kpi-sub">
           ${fatturatoOggi.numDdt} DDT · ${fatturatoOggi.numRigheAbbinate} articoli abbinati${fatturatoOggi.numRigheNonAbbinate ? ` · <span style="color:#D97706">${fatturatoOggi.numRigheNonAbbinate} senza prezzo</span>` : ''}
         </div>
+      </div>
+      <div class="kpi-card kpi-card-link" onclick="navToPage('ordini')" title="Somma dei totali degli ordini con data odierna">
+        <h3>Fatturato ordini oggi</h3>
+        <div class="kpi-value">€${fmt(ordiniOggiValue)}</div>
+        <div class="kpi-sub">${ordiniOggi.length} ordini oggi</div>
+        <div class="kpi-sub">Mese (incluso oggi): €${fmt(ordiniValue)}</div>
       </div>
       <div class="kpi-card">
         <h3>Consuntivo ${progLabel}</h3>
