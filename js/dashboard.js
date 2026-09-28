@@ -135,8 +135,6 @@ async function loadDashboard() {
     const totMese25  = rows.reduce((s, r) => s + (r.fatt_mese_anno_prec   || 0), 0);
     const varProgPct = totProg25 > 0 ? ((totProg26 - totProg25) / totProg25) * 100 : null;
 
-    const ordiniCount      = ordiniData?.length || 0;
-    const ordiniValue      = (ordiniData || []).reduce((s, o) => s + (o.totale_ordine || 0), 0);
     const ordiniOggi       = (ordiniData || []).filter(o => (o.data_ordine || '').slice(0, 10) === today);
     const ordiniOggiValue  = ordiniOggi.reduce((s, o) => s + (o.totale_ordine || 0), 0);
     const todayMs          = new Date().setHours(0, 0, 0, 0);
@@ -228,11 +226,6 @@ async function loadDashboard() {
           ${gapBudgetProg != null ? `<span class="badge" style="background:${gapBudgetProg >= 0 ? '#FFF7ED' : '#FEF2F2'};color:${gapBudgetProg >= 0 ? '#D97706' : '#C84B2F'};">${gapBudgetProg >= 0 ? '+' : ''}€${fmt(gapBudgetProg)}</span>` : ''}
         </div>` : ''}
       </div>
-      <div class="kpi-card kpi-card-link" onclick="navToPage('ordini')">
-        <h3>Ordini del mese</h3>
-        <div class="kpi-value">${ordiniCount}</div>
-        <div class="kpi-sub">€${fmt(ordiniValue)}</div>
-      </div>
       <div class="kpi-card kpi-card-link" onclick="navToPage('ddt')">
         <h3>DDT in transito</h3>
         <div class="kpi-value">${ddtCount}</div>
@@ -257,7 +250,7 @@ async function loadDashboard() {
       });
     });
 
-    renderStatoMese(rows);
+    renderStatoMese(rows, totCEDI, cediDate);
 
     // Top 10 da ordinare nel mese
     document.getElementById('top-clienti-h2').textContent = 'Top 10 da ordinare nel mese';
@@ -321,16 +314,19 @@ async function loadDashboard() {
   }
 }
 
-function renderStatoMese(rows) {
+function renderStatoMese(rows, totCEDI = 0, cediDate = '') {
   const el = document.getElementById('stato-mese');
   if (!el || !rows?.length) return;
 
   const ries       = riepilogoStato(rows);
-  const pctFill    = ries.totPrec > 0 ? Math.min(100, (ries.totCorr / ries.totPrec) * 100) : 0;
+  // Ordinato del mese + CEDI (ridistribuito dall'ultimo import)
+  const totCorr    = ries.totCorr + totCEDI;
+  const totGap     = Math.max(0, ries.totGap - totCEDI);
+  const pctFill    = ries.totPrec > 0 ? Math.min(100, (totCorr / ries.totPrec) * 100) : 0;
   const barColor   = pctFill >= 80 ? 'var(--green)' : pctFill >= 40 ? '#D97706' : 'var(--red)';
   const meseLabel  = MESI_LABEL[new Date().getMonth()];
   const totMedia   = rows.reduce((s, r) => s + r._media, 0);
-  const gapMedia   = Math.max(0, totMedia - ries.totCorr);
+  const gapMedia   = Math.max(0, totMedia - totCorr);
   const daAttivare = (ries.byStato.da_visitare?.count || 0) +
                      (ries.byStato.indietro?.count      || 0) +
                      (ries.byStato.da_stimolare?.count  || 0);
@@ -358,8 +354,9 @@ function renderStatoMese(rows) {
       </h3>
       <div class="stato-mese-header">
         <div>
-          <span class="stato-mese-total">€${fmt(ries.totCorr)}</span>
+          <span class="stato-mese-total">€${fmt(totCorr)}</span>
           <span style="font-size:14px;color:var(--text2);margin-left:10px;">/ €${fmt(ries.totPrec)} anno scorso</span>
+          ${totCEDI > 0 ? `<div style="font-size:12px;color:var(--text2);margin-top:2px;">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
         </div>
         <span class="stato-mese-pct" style="color:${barColor};">${pctFill.toFixed(1)}%</span>
       </div>
@@ -369,7 +366,7 @@ function renderStatoMese(rows) {
       <div class="stato-chips">${chips}</div>
       <div class="gap-row">
         <span class="gap-row-text">
-          Gap vs anno scorso: <strong style="color:var(--red);">€${fmt(ries.totGap)}</strong>
+          Gap vs anno scorso: <strong style="color:var(--red);">€${fmt(totGap)}</strong>
           &nbsp;·&nbsp; ${daAttivare} clienti da attivare
           ${gapMedia > 0 ? `&nbsp;·&nbsp; vs media mensile: <strong>€${fmt(gapMedia)}</strong>` : '&nbsp;·&nbsp; <strong style="color:var(--green);">Sopra la media ✓</strong>'}
         </span>
