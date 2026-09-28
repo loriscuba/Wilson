@@ -2,6 +2,7 @@
 
 let _budgetTab      = 'mensile';
 let _bcFilter       = null;   // stato filter chip attivo
+let _bcPendingFilter = null;  // filtro da applicare al prossimo load (link da dashboard)
 let _bcSort         = { col: 'priority', dir: 1 };
 let _bcRows         = [];
 let _bcQuery        = '';
@@ -62,6 +63,15 @@ async function _savePlModifica(codice) {
 }
 
 // ── Tab switch ────────────────────────────────────────────────────────────────
+// Apre Budget → Pipeline clienti con il chip stato già selezionato
+function apriPipelineStato(statoId) {
+  // "nuovo" è raggruppato nel chip "Inattivo/Nuovo"
+  _bcPendingFilter = statoId === 'nuovo' ? 'inattivo' : (statoId || null);
+  showPage('budget', { preventDefault: () => {} });
+  const btn = [...document.querySelectorAll('.budget-tab')].find(b => b.getAttribute('onclick')?.includes("'clienti'"));
+  if (btn) swBudget('clienti', btn);
+}
+
 function swBudget(tab, btn) {
   _budgetTab = tab;
   document.querySelectorAll('.budget-tab').forEach(t => t.classList.remove('on'));
@@ -586,7 +596,8 @@ async function loadBudgetClienti() {
       return row;
     });
 
-    _bcFilter = null;
+    _bcFilter = _bcPendingFilter;
+    _bcPendingFilter = null;
     _bcQuery  = '';
     _bcSort   = { col: 'priority', dir: 1 };
     _renderClienti(root);
