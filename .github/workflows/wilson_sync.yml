@@ -30,7 +30,7 @@ jobs:
 
       - name: Installa dipendenze Python
         run: |
-          pip install pdfplumber openpyxl xlrd pandas python-dotenv supabase google-auth google-api-python-client
+          pip install pdfplumber pymupdf openpyxl xlrd pandas python-dotenv supabase google-auth google-api-python-client
 
       - name: Scarica file da Google Drive
         env:

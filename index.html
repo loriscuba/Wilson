@@ -528,6 +528,66 @@
         .b-prow-val { font-weight:500; }
         .b-prow-val span { color:var(--text2); font-weight:400; }
         .b-hint { display:flex; justify-content:space-between; font-size:11px; color:var(--text2); margin-top:6px; }
+        /* ── Griglie Netti ── */
+        .gn-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px; position:sticky; top:0; z-index:5; background:var(--bg); padding:6px 0; }
+        .gn-search-wrap { flex:1 1 260px; position:relative; }
+        .gn-search-wrap i { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--text2); font-size:15px; }
+        .gn-search-wrap input { width:100%; padding:8px 12px 8px 32px; border:1px solid var(--border); border-radius:var(--r); font-size:14px; background:var(--surface); color:var(--text); }
+        .gn-select { font-size:13px; padding:7px 8px; border:1px solid var(--border); border-radius:var(--r); background:var(--surface); color:var(--text); max-width:260px; }
+        .gn-ediz { font-size:12px; color:var(--text2); }
+        .gn-toggle { font-size:13px; color:var(--text2); display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap; }
+        .gn-btn { border:1px solid var(--border); background:var(--surface); color:var(--text2); border-radius:var(--r); padding:6px 9px; cursor:pointer; }
+        .gn-layout { display:grid; grid-template-columns:220px minmax(0,1fr); gap:16px; align-items:start; }
+        .gn-index { position:sticky; top:60px; max-height:calc(100vh - 140px); overflow-y:auto; display:flex; flex-direction:column; gap:1px; }
+        .gn-idx { display:flex; justify-content:space-between; gap:6px; text-align:left; font-size:12px; padding:5px 8px; border:none; background:none; color:var(--text); border-radius:var(--r); cursor:pointer; }
+        .gn-idx:hover { background:var(--surface); }
+        .gn-idx.on { background:var(--text); color:var(--surface); }
+        .gn-idx.dim { opacity:.35; }
+        .gn-idx-n { color:var(--text2); font-variant-numeric:tabular-nums; }
+        .gn-idx.on .gn-idx-n { color:inherit; }
+        .gn-sec { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); margin-bottom:12px; box-shadow:var(--shadow); scroll-margin-top:64px; }
+        .gn-sec-h { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border); }
+        .gn-sec.collapsed .gn-sec-h { border-bottom:none; }
+        .gn-sec.collapsed .gn-tbl-wrap { display:none; }
+        .gn-sec.collapsed .gn-chev { transform:rotate(-90deg); }
+        .gn-chev { color:var(--text2); transition:transform .15s; align-self:center; }
+        .gn-sec-h h3 { font-size:14px; font-weight:700; margin:0; }
+        .gn-sec-n { font-size:12px; color:var(--text2); }
+        .gn-sec-t { font-size:11px; color:var(--text2); margin-left:auto; font-style:italic; }
+        .gn-tbl-wrap { overflow-x:auto; }
+        .gn-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+        .gn-tbl th { font-size:11px; font-weight:600; color:var(--text2); text-align:left; padding:8px 8px; border-bottom:1px solid var(--border); background:var(--bg); white-space:nowrap; vertical-align:bottom; }
+        .gn-tbl td { padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:middle; }
+        .gn-tbl tbody tr:last-child td { border-bottom:none; }
+        .gn-tbl tbody tr:hover td { background:#FAF7F6; }
+        .gn-sub { font-weight:400; font-size:10px; }
+        .gn-c-code { width:78px; }
+        .gn-c-um { width:36px; text-align:center; color:var(--text2); font-size:12px; }
+        .gn-c-num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--text2); }
+        .gn-c-tier { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; min-width:78px; }
+        .gn-tbl th.gn-c-tier, .gn-tbl th.gn-c-num { text-align:right; }
+        .gn-code { font:inherit; font-weight:700; background:none; border:none; padding:0; cursor:copy; color:var(--text); font-variant-numeric:tabular-nums; }
+        .gn-code.copied { color:var(--green); }
+        .gn-desc { font-weight:500; }
+        .gn-desc mark { background:#FDE68A; color:inherit; border-radius:2px; }
+        .gn-badges { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
+        .gn-badge { font-size:10px; padding:1px 6px; border-radius:8px; }
+        .gn-badge.fl { background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; }
+        .gn-badge.note { background:var(--bg); color:var(--text2); border:1px solid var(--border); }
+        .gn-equiv { font-size:11px; color:var(--text2); margin-top:2px; }
+        .gn-lordo { text-decoration:line-through; text-decoration-color:rgba(0,0,0,.25); }
+        .gn-net { font-weight:600; color:var(--text); }
+        .gn-net.best { color:var(--green); }
+        .gn-disc { font-size:10px; color:var(--text2); }
+        .gn-pct, .gn-qty { font-weight:600; color:#378ADD; }
+        @media (max-width: 900px) {
+            .gn-layout { grid-template-columns:minmax(0,1fr); }
+            .gn-index { display:none; }
+            .gn-toolbar { top:0; }
+            .gn-sec-t { margin-left:0; width:100%; }
+            .gn-tbl td:nth-child(2) { min-width:170px; }
+            .gn-c-min { display:none; }
+        }
         .b-tbl { width:100%; border-collapse:collapse; font-size:13px; }
         .b-tbl th { font-size:11px; font-weight:600; color:var(--text2); padding:0 8px 8px 0;
                     text-align:left; border-bottom:1px solid var(--border); }
@@ -1486,8 +1546,8 @@
           <i class="ti ti-calendar-event top-nav-icon"></i><span class="top-nav-label">Agenda</span></a>
         <a class="top-nav-link" data-page="statistiche" data-tip="Statistiche" href="#" onclick="showPage('statistiche',event)">
           <i class="ti ti-chart-line top-nav-icon"></i><span class="top-nav-label">Statistiche</span></a>
-        <a class="top-nav-link" data-page="listino" data-tip="Listino FL" href="#" onclick="showPage('listino',event)">
-          <i class="ti ti-tag top-nav-icon"></i><span class="top-nav-label">Listino</span></a>
+        <a class="top-nav-link" data-page="listino" data-tip="Griglie Netti" href="#" onclick="showPage('listino',event)">
+          <i class="ti ti-tag top-nav-icon"></i><span class="top-nav-label">Griglie</span></a>
         <a class="top-nav-link" data-page="promozioni" data-tip="Promozioni" href="#" onclick="showPage('promozioni',event)">
           <i class="ti ti-speakerphone top-nav-icon"></i><span class="top-nav-label">Promo</span></a>
         <a class="top-nav-link" data-page="impostazioni" data-tip="Impostazioni" href="#" onclick="showPage('impostazioni',event)">
@@ -1813,7 +1873,7 @@
 
         <!-- ── LISTINO ── -->
         <div id="listino" class="page">
-            <h1>Listino FL <span id="listino-count" style="font-size:14px;font-weight:400;color:var(--text2);margin-left:6px"></span></h1>
+            <h1>Griglie Netti <span id="listino-count" style="font-size:14px;font-weight:400;color:var(--text2);margin-left:6px"></span></h1>
             <div id="listino-root"><div class="loading">Caricamento…</div></div>
         </div>
 
@@ -1828,10 +1888,6 @@
             <div id="agenda-cal"><div class="loading">Caricamento…</div></div>
         </div>
 
-        <div id="listino" class="page">
-            <h1>Listino FL <span id="listino-count" style="font-size:14px;font-weight:400;color:var(--text2);margin-left:6px"></span></h1>
-            <div id="listino-root"><div class="loading">Caricamento…</div></div>
-        </div>
 
         <div id="promozioni" class="page">
             <h1>Promozioni</h1>
@@ -1882,7 +1938,7 @@
                 <button type="button" onclick="mobileNavSelect('agenda', event); closeMobileDrawer()">Agenda</button>
                 <button type="button" onclick="navToPage('statistiche'); closeMobileDrawer()">Statistiche</button>
                 <button type="button" onclick="navToPage('note-visite'); closeMobileDrawer()">Note Visite</button>
-                <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Listino</button>
+                <button type="button" onclick="navToPage('listino'); closeMobileDrawer()">Griglie Netti</button>
                 <button type="button" onclick="navToPage('promozioni'); closeMobileDrawer()">Promozioni</button>
                 <button type="button" onclick="navToPage('impostazioni'); closeMobileDrawer()">Impostazioni</button>
             </div>
@@ -1925,7 +1981,7 @@
     <script src="js/agenda.js?v=1"></script>
     <script src="js/statistiche.js?v=1"></script>
     <script src="js/note_visite.js?v=1"></script>
-    <script src="js/listino.js?v=1"></script>
+    <script src="js/listino.js?v=2"></script>
     <script src="js/promozioni.js?v=6"></script>
     <script src="js/app.js?v=15"></script>
     <script>

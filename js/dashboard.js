@@ -341,7 +341,7 @@ function renderStatoMese(rows, totCEDI = 0, cediDate = '') {
                     'badge-orange': '#D97706', 'badge-red': 'var(--red)',
                     'badge-gray': '#6B6860' }[cls] || '#6B6860';
     return `<button class="stato-chip" style="color:${color};border-color:${color};"
-        onclick="filtraPerStato('${id}')" title="${STATI[id].desc}">
+        onclick="apriPipelineStato('${id}')" title="${STATI[id].desc}">
       <span class="stato-chip-count">${info.count}</span>
       <span class="stato-chip-label">${STATI[id].label}</span>
     </button>`;
@@ -370,7 +370,7 @@ function renderStatoMese(rows, totCEDI = 0, cediDate = '') {
           &nbsp;·&nbsp; ${daAttivare} clienti da attivare
           ${gapMedia > 0 ? `&nbsp;·&nbsp; vs media mensile: <strong>€${fmt(gapMedia)}</strong>` : '&nbsp;·&nbsp; <strong style="color:var(--green);">Sopra la media ✓</strong>'}
         </span>
-        <button class="gap-row-btn" onclick="filtraPerStato('da_visitare')">Vedi lista →</button>
+        <button class="gap-row-btn" onclick="apriPipelineStato('da_visitare')">Vedi lista →</button>
       </div>
     </div>`;
 }
