@@ -694,8 +694,16 @@ async function apriRicercaProdottoCliente(codice, nome) {
     const { data, error } = await sb.from('statistiche_salvate')
       .select('*').eq('tipo', 'prezzo_prodotto').order('created_at').limit(1);
     if (error) throw error;
-    const stat = data?.[0];
-    if (!stat) { alert('Nessuna statistica salvata di tipo "' + TIPO_LABEL.prezzo_prodotto + '". Creane una in Statistiche.'); return; }
+    let stat = data?.[0];
+    if (!stat) {
+      // Nessuna statistica di questo tipo: la crea e aggiorna l'elenco
+      const { data: nuova, error: errIns } = await sb.from('statistiche_salvate')
+        .insert({ nome: 'Ricerca Codice Prodotto', tipo: 'prezzo_prodotto', parametri: {} })
+        .select().single();
+      if (errIns) throw errIns;
+      stat = nuova;
+      _renderStatList();
+    }
 
     // Il campo cliente accetta nome o codice (testo libero, usato in un filtro
     // ilike). Virgole e parentesi rompono il filtro, quindi in quel caso si usa il codice.
