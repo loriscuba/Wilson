@@ -683,6 +683,38 @@ async function _disegnaGrafico(tipo, params) {
   });
 }
 
+// ── Apertura da scheda cliente ────────────────────────────────────────────────
+
+// Dalla scheda cliente: apre la statistica salvata "Ricerca Codice Prodotto"
+// con il cliente già inserito e il campo articolo vuoto, pronto per la ricerca.
+async function apriRicercaProdottoCliente(codice, nome) {
+  navToPage('statistiche');
+  try {
+    const { data, error } = await sb.from('statistiche_salvate')
+      .select('*').ilike('nome', '%ricerca codice prodotto%').limit(1);
+    if (error) throw error;
+    let stat = data?.[0];
+    if (!stat) {
+      // Fallback: prima statistica di tipo "prezzo prodotto" salvata
+      const { data: alt } = await sb.from('statistiche_salvate')
+        .select('*').eq('tipo', 'prezzo_prodotto').order('created_at').limit(1);
+      stat = alt?.[0];
+    }
+    if (!stat) { alert('Statistica "Ricerca Codice Prodotto" non trovata.'); return; }
+
+    // Il campo cliente di "prezzo prodotto" accetta nome o codice (testo libero,
+    // usato in un filtro ilike). Virgole e parentesi rompono il filtro, quindi
+    // in quel caso si usa il codice. Gli altri tipi hanno un select per codice.
+    const nomeOk  = nome && !/[,()]/.test(nome);
+    const cliente = stat.tipo === 'prezzo_prodotto' && nomeOk ? nome : codice;
+
+    await _openStat({ ...stat, parametri: { ...(stat.parametri || {}), codice_cliente: cliente, codice_articolo: '' } });
+    document.getElementById('ip-articolo')?.focus();
+  } catch (err) {
+    alert('Errore apertura ricerca prodotto: ' + err.message);
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function apriOrdine(numeroOrdine) {

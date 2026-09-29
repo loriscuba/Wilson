@@ -248,6 +248,11 @@ async function loadClienteDetail(codice, nome, container) {
           ${stBadge}
           <span class="cks">${r._stato.desc}${r._gap > 0 ? ` · gap €${fmt(r._gap)}` : ''}</span>
         </div>
+        <div class="cliente-azioni">
+          <button class="cliente-azione-btn" onclick="event.stopPropagation();apriRicercaProdottoCliente('${codice}','${nome.replace(/'/g,"\\'")}')" title="Cerca un prodotto negli ordini di questo cliente (Statistiche)">
+            <i class="ti ti-search"></i> Ricerca prodotto
+          </button>
+        </div>
         <button class="btn-ordini" onclick="refreshClienteDetail('${codice}','${nome.replace(/'/g,"\\'")}')">↺ Aggiorna</button>
       </div>
       <div class="cliente-kpi-grid">
