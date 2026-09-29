@@ -685,28 +685,21 @@ async function _disegnaGrafico(tipo, params) {
 
 // ── Apertura da scheda cliente ────────────────────────────────────────────────
 
-// Dalla scheda cliente: apre la statistica salvata "Ricerca Codice Prodotto"
+// Dalla scheda cliente: apre una statistica salvata di tipo "prezzo prodotto"
 // con il cliente già inserito e il campo articolo vuoto, pronto per la ricerca.
 async function apriRicercaProdottoCliente(codice, nome) {
   navToPage('statistiche');
   try {
+    // Usa sempre una statistica già salvata di tipo "prezzo prodotto" (la più vecchia)
     const { data, error } = await sb.from('statistiche_salvate')
-      .select('*').ilike('nome', '%ricerca codice prodotto%').limit(1);
+      .select('*').eq('tipo', 'prezzo_prodotto').order('created_at').limit(1);
     if (error) throw error;
-    let stat = data?.[0];
-    if (!stat) {
-      // Fallback: prima statistica di tipo "prezzo prodotto" salvata
-      const { data: alt } = await sb.from('statistiche_salvate')
-        .select('*').eq('tipo', 'prezzo_prodotto').order('created_at').limit(1);
-      stat = alt?.[0];
-    }
-    if (!stat) { alert('Statistica "Ricerca Codice Prodotto" non trovata.'); return; }
+    const stat = data?.[0];
+    if (!stat) { alert('Nessuna statistica salvata di tipo "' + TIPO_LABEL.prezzo_prodotto + '". Creane una in Statistiche.'); return; }
 
-    // Il campo cliente di "prezzo prodotto" accetta nome o codice (testo libero,
-    // usato in un filtro ilike). Virgole e parentesi rompono il filtro, quindi
-    // in quel caso si usa il codice. Gli altri tipi hanno un select per codice.
-    const nomeOk  = nome && !/[,()]/.test(nome);
-    const cliente = stat.tipo === 'prezzo_prodotto' && nomeOk ? nome : codice;
+    // Il campo cliente accetta nome o codice (testo libero, usato in un filtro
+    // ilike). Virgole e parentesi rompono il filtro, quindi in quel caso si usa il codice.
+    const cliente = nome && !/[,()]/.test(nome) ? nome : codice;
 
     await _openStat({ ...stat, parametri: { ...(stat.parametri || {}), codice_cliente: cliente, codice_articolo: '' } });
     document.getElementById('ip-articolo')?.focus();
