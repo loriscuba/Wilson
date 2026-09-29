@@ -683,6 +683,39 @@ async function _disegnaGrafico(tipo, params) {
   });
 }
 
+// ── Apertura da scheda cliente ────────────────────────────────────────────────
+
+// Dalla scheda cliente: apre una statistica salvata di tipo "prezzo prodotto"
+// con il cliente già inserito e il campo articolo vuoto, pronto per la ricerca.
+async function apriRicercaProdottoCliente(codice, nome) {
+  navToPage('statistiche');
+  try {
+    // Usa sempre una statistica già salvata di tipo "prezzo prodotto" (la più vecchia)
+    const { data, error } = await sb.from('statistiche_salvate')
+      .select('*').eq('tipo', 'prezzo_prodotto').order('created_at').limit(1);
+    if (error) throw error;
+    let stat = data?.[0];
+    if (!stat) {
+      // Nessuna statistica di questo tipo: la crea e aggiorna l'elenco
+      const { data: nuova, error: errIns } = await sb.from('statistiche_salvate')
+        .insert({ nome: 'Ricerca Codice Prodotto', tipo: 'prezzo_prodotto', parametri: {} })
+        .select().single();
+      if (errIns) throw errIns;
+      stat = nuova;
+      _renderStatList();
+    }
+
+    // Il campo cliente accetta nome o codice (testo libero, usato in un filtro
+    // ilike). Virgole e parentesi rompono il filtro, quindi in quel caso si usa il codice.
+    const cliente = nome && !/[,()]/.test(nome) ? nome : codice;
+
+    await _openStat({ ...stat, parametri: { ...(stat.parametri || {}), codice_cliente: cliente, codice_articolo: '' } });
+    document.getElementById('ip-articolo')?.focus();
+  } catch (err) {
+    alert('Errore apertura ricerca prodotto: ' + err.message);
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function apriOrdine(numeroOrdine) {
