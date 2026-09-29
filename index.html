@@ -1103,7 +1103,11 @@
                 gap: 1px;
                 flex: 1;
                 min-width: 0;
-                overflow: hidden;
+                /* Taglia solo in orizzontale (evita che i link finiscano sotto la
+                   sezione di destra) ma lascia visibili in verticale i tooltip
+                   data-tip che compaiono sotto le icone. overflow:hidden li tagliava. */
+                overflow-x: clip;
+                overflow-y: visible;
             }
             .top-nav-link {
                 display: flex;
@@ -1156,6 +1160,11 @@
                 opacity: 1;
                 transform: translateX(-50%) translateY(0);
             }
+            /* Primo e ultimo link: tooltip allineato al bordo, così non viene tagliato ai lati */
+            .top-nav-link[data-tip]:first-child::after { left: 0; transform: translateY(-4px); }
+            .top-nav-link[data-tip]:first-child:hover::after { transform: translateY(0); }
+            .top-nav-link[data-tip]:last-child::after { left: auto; right: 0; transform: translateY(-4px); }
+            .top-nav-link[data-tip]:last-child:hover::after { transform: translateY(0); }
             .top-nav-right {
                 display: flex;
                 align-items: center;
