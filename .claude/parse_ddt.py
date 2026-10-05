@@ -1,6 +1,7 @@
 """
 WILSON - Parser DDT (Documenti di Trasporto) Fischer
-File: Consegna_XXXXXXXXXX_-_Bolla_XXXXXX.PDF
+File: Consegna_XXXXXXXXXX_-_Bolla_XXXXXX.PDF   (layout vecchio, "Campo: valore")
+      DN_XXXXXXXXXX_AAAAMMGG.pdf               (layout nuovo, "Campo valore")
 """
 
 import re
@@ -24,21 +25,26 @@ def num_it(val):
 def data_it(val):
     if not val:
         return None
-    try:
-        return datetime.strptime(val.strip(), "%d.%m.%Y").strftime("%Y-%m-%d")
-    except:
-        return None
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(val.strip(), fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return None
 
 
-RE_DATA        = re.compile(r'Data:\s+(\d{2}\.\d{2}\.\d{4})')
-RE_NUM_CLI     = re.compile(r'Numero di Cliente:\s+(\d+)')
-RE_CONSEGNA    = re.compile(r'Consegna:\s+(\d+)')
-RE_DDT         = re.compile(r'DDT:\s+(\w+)')
-RE_PIVA        = re.compile(r'Partita IVA:\s+(IT\w+)')
-RE_NO_ORDINE   = re.compile(r'No\. ordine\s+(\d+)')
-RE_DATA_ORD    = re.compile(r'No\. ordine\s+\d+\s+(\d{2}\.\d{2}\.\d{4})')
-RE_NO_ACQUISTO = re.compile(r"No\. ord d'acquisto\s+(.+)")
-RE_PESO        = re.compile(r'Peso totale\s+([\d,]+)\s+KG')
+# I due punti dopo l'etichetta ci sono solo nel layout vecchio
+_DATA = r'(\d{2}\.\d{2}\.\d{4}|\d{4}-\d{2}-\d{2}|\d{8})'
+
+RE_DATA        = re.compile(r'\bData:?\s+' + _DATA)
+RE_NUM_CLI     = re.compile(r'Numero di Cliente:?\s+(\d+)')
+RE_CONSEGNA    = re.compile(r'\bConsegna:?\s+(\d+)')
+RE_DDT         = re.compile(r'\bDDT:?\s+(\w+)')
+RE_PIVA        = re.compile(r'Partita IVA:?\s+(IT\w+)')
+RE_NO_ORDINE   = re.compile(r'No\.? ordine\s+(\d+)')
+RE_DATA_ORD    = re.compile(r'No\.? ordine\s+\d+\s+' + _DATA)
+RE_NO_ACQUISTO = re.compile(r"No\.\s?ord d'acquisto\s+(.+)", re.IGNORECASE)
+RE_PESO        = re.compile(r'Peso totale\s+([\d\.,]+)\s+KG')
 RE_MAGAZZINO   = re.compile(r'Magazzino\s+(.+)')
 RE_COLLI       = re.compile(r'Colli\s+(\d+)\s+/')
 RE_CORRIERE    = re.compile(r'Corriere\s+(.+)')
@@ -48,9 +54,12 @@ RE_SEGNACOLLO  = re.compile(r'SEGNACOLLO:\s+(.+)')
 
 # Righe articolo: codice Fischer inizia sempre con 0
 RE_RIGA_DDT = re.compile(
-    r'^(0\d{7})\s+(.+?)\s+([\d\.]+)\s+(PZ|CZ|ST|PAK|IMB)\s*$',
+    r'^(0\d{7})\s+(.+?)\s+([\d\.]+)\s+(PZ|PCE|CZ|ST|PAK|IMB)\s*$',
     re.MULTILINE
 )
+
+# Fallback dal nome file: DN_<consegna>_<data>.pdf
+RE_FILE_DN = re.compile(r'^DN_(\d+)_(\d{8})', re.IGNORECASE)
 
 
 def parse_ddt(filepath):
@@ -83,6 +92,11 @@ def parse_ddt(filepath):
         "stato":              "spedito",
         "file_pdf":           os.path.basename(filepath),
     }
+
+    m = RE_FILE_DN.match(os.path.basename(filepath))
+    if m:
+        ddt["numero_consegna"] = ddt["numero_consegna"] or m.group(1)
+        ddt["data_ddt"] = ddt["data_ddt"] or data_it(m.group(2))
 
     if not ddt["numero_consegna"]:
         print(f"  ❌ Numero consegna non trovato in {filepath}")
