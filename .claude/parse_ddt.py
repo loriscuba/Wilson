@@ -78,7 +78,8 @@ def parse_ddt(filepath):
         "numero_consegna":    get(RE_CONSEGNA),
         "numero_ddt":         get(RE_DDT),
         "data_ddt":           data_it(get(RE_DATA)),
-        "codice_cliente":     get(RE_NUM_CLI),
+        # Senza zeri iniziali, come in clienti.codice_cliente (import_clienti.py)
+        "codice_cliente":     (get(RE_NUM_CLI) or '').lstrip('0') or get(RE_NUM_CLI),
         "numero_ordine":      get(RE_NO_ORDINE),
         "data_ordine":        data_it(get(RE_DATA_ORD)),
         "riferimento_acquisto": get(RE_NO_ACQUISTO),
