@@ -87,6 +87,7 @@ async function loadBudget() {
 // ── Helpers formatters ────────────────────────────────────────────────────────
 const _eur  = n => n != null ? '€ ' + Math.round(n).toLocaleString('it-IT') : '—';
 const _pct  = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1).replace('.', ',') + '%' : '—';
+const _ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const _cls  = n => n == null ? '' : n >= 0 ? 'pos' : 'neg';
 const _mini = (val, tot, color) => {
   const w = tot > 0 ? Math.min(100, (val / tot) * 100) : 0;
@@ -200,8 +201,9 @@ async function loadBudgetPremio() {
   try {
     const now       = new Date();
     const today     = now.toISOString().split('T')[0];
-    const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    // Date in ora locale: toISOString() in Italia sposta il 1° del mese al giorno prima
+    const startMese = _ymdLocal(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endMese   = _ymdLocal(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     const [{ data: bArr }, { data: focus }, rows, { data: cediRaw }] = await Promise.all([
       sb.from('budget').select('budget_mese,evaso,data_aggiornamento')
         .lte('data_aggiornamento', today)
@@ -213,6 +215,7 @@ async function loadBudgetPremio() {
       loadRollingEnriched(),
       sb.from('cedi_ridistribuito')
         .select('valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
         .order('data_aggiornamento', { ascending: false })
         .limit(500),
     ]);
@@ -359,8 +362,9 @@ async function loadBudgetMensile() {
   try {
     const now       = new Date();
     const today     = now.toISOString().split('T')[0];
-    const startMese = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const endMese   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    // Date in ora locale: toISOString() in Italia sposta il 1° del mese al giorno prima
+    const startMese = _ymdLocal(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endMese   = _ymdLocal(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     const [{ data: latestArr, error: bErr }, { data: bMonthArr }, { data: cediRaw }] = await Promise.all([
       sb.from('budget').select('*').lte('data_aggiornamento', today)
         .order('data_aggiornamento', { ascending: false }).limit(1),
@@ -368,6 +372,7 @@ async function loadBudgetMensile() {
         .not('budget_mese', 'is', null)
         .order('data_aggiornamento', { ascending: false }).limit(1),
       sb.from('cedi_ridistribuito').select('valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
         .order('data_aggiornamento', { ascending: false })
         .limit(500),
     ]);

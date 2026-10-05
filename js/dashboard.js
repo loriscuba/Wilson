@@ -102,8 +102,10 @@ async function loadDashboard() {
       sb.from('ordini').select('totale_ordine, data_ordine')
         .gte('data_ordine', startMese).lte('data_ordine', endMese),
       sb.from('ddt').select('stato, stato_shippeo, eta_shippeo').neq('stato', 'consegnato'),
+      // CEDI: solo import del mese corrente (l'ultimo del mese, filtrato sotto)
       sb.from('cedi_ridistribuito')
         .select('ragione_sociale, valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
         .order('data_aggiornamento', { ascending: false })
         .order('valore_ridistribuito', { ascending: false })
         .limit(500),
@@ -147,7 +149,7 @@ async function loadDashboard() {
       if (d.stato_shippeo && d.stato_shippeo.toUpperCase().includes('CONFIRMED') && etaMs >= todayMs) return false;
       return etaMs < todayMs;
     }).length;
-    // Solo l'ultimo import CEDI (filtra per la data_aggiornamento più recente)
+    // Solo l'ultimo import CEDI del mese corrente (nessun import nel mese → 0)
     const allCedi     = cediData || [];
     const cediDate    = allCedi.length ? allCedi[0].data_aggiornamento : '';
     const latestCedi  = allCedi.filter(r => r.data_aggiornamento === cediDate);
