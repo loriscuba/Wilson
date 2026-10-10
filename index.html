@@ -554,6 +554,25 @@
         .pf-pos { color:var(--green); }
         .pf-ref { font-size:10px; color:#854D0E; background:#FEF9C3; border-radius:10px; padding:1px 6px; margin-left:4px; white-space:nowrap; }
         .pf-sortable { cursor:pointer; user-select:none; }
+        .pf-dash-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+        .pf-dash-link { font-size:12px; font-weight:600; color:var(--accent); text-decoration:none; }
+        .pf-dash-main { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+        .pf-dash-val { font-size:24px; font-weight:700; }
+        .pf-dash-bar { position:relative; height:8px; margin:10px 0 4px; overflow:visible; }
+        .pf-dash-proj { position:absolute; left:0; top:0; bottom:0; background:rgba(192,57,43,.22); border-radius:3px; }
+        .pf-dash-acq { position:absolute; left:0; top:0; background:var(--accent); }
+        .pf-dash-ly { position:absolute; top:-4px; width:2px; height:16px; background:var(--text); border-radius:1px; transform:translateX(-1px); }
+        .pf-dash-leg { display:flex; gap:14px; font-size:11px; color:var(--text2); margin-top:6px; }
+        .pf-dash-leg i { display:inline-block; width:10px; height:8px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+        .pf-dash-leg i.pf-dash-leg-ly { width:2px; height:12px; background:var(--text); border-radius:1px; }
+        .pf-dash-azioni { display:flex; flex-direction:column; gap:2px; margin-top:12px; border-top:1px solid var(--border); padding-top:8px; }
+        .pf-dash-az { display:grid; grid-template-columns:auto 1fr auto auto; gap:10px; align-items:center; font-size:13px; padding:5px 4px; border-radius:var(--r); cursor:pointer; }
+        .pf-dash-az:hover { background:var(--bg); }
+        .pf-dash-az .badge { padding:3px 7px; }
+        .pf-dash-az-nome { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .pf-dash-az-lbl { font-size:11px; color:var(--text2); white-space:nowrap; }
+        .pf-dash-az-imp { font-weight:700; white-space:nowrap; }
+        @media (max-width: 700px) { .pf-dash-az-lbl { display:none; } }
         .pf-note { font-size:11px; color:var(--text2); margin:10px 0 24px; line-height:1.5; }
         @media (max-width: 700px) {
             .pf-az { grid-template-columns:1fr auto; gap:6px 10px; padding:10px 12px; }
@@ -1617,6 +1636,7 @@
                 <div class="loading">Caricamento KPI…</div>
             </div>
             <div id="stato-mese"></div>
+            <div id="dash-proiezione"></div>
             <h2 id="top-clienti-h2">Top 10 da recuperare vs anno scorso</h2>
             <div class="table-wrapper">
                 <div class="table-scroll">
@@ -2024,20 +2044,20 @@
     <script src="js/config.js?v=14"></script>
     <script src="js/auth.js?v=3"></script>
     <script src="js/analytics.js?v=13"></script>
-    <script src="js/dashboard.js?v=21"></script>
+    <script src="js/dashboard.js?v=22"></script>
     <script src="js/clienti.js?v=24"></script>
     <script src="js/ordini.js?v=19"></script>
     <script src="js/ddt.js?v=15"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=10"></script>
-    <script src="js/proiezione.js?v=1"></script>
+    <script src="js/proiezione.js?v=2"></script>
     <script src="js/impostazioni.js?v=6"></script>
     <script src="js/agenda.js?v=1"></script>
     <script src="js/statistiche.js?v=2"></script>
     <script src="js/note_visite.js?v=1"></script>
     <script src="js/listino.js?v=2"></script>
     <script src="js/promozioni.js?v=6"></script>
-    <script src="js/app.js?v=16"></script>
+    <script src="js/app.js?v=17"></script>
     <script>
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {

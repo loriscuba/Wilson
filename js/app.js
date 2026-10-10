@@ -115,6 +115,7 @@ function _reloadActivePage() {
   _rollingEnriched    = null;
   _clientiEsclusi     = null;
   _ordinaDiPersonaSet = null;
+  _pfPromise          = null;
   const activePage = document.querySelector('.page.active')?.id;
   if (activePage && PAGE_LOADERS[activePage]) PAGE_LOADERS[activePage]();
   loadUltimoSync();

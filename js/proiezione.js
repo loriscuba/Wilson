@@ -300,79 +300,150 @@ function _pfVarBadge(curr, prec) {
 
 // ── Load & render ────────────────────────────────────────────────────────────
 
+// Calcola (o restituisce dalla cache) lo stato completo della proiezione.
+// Condiviso tra la sezione Proiezione Fatturato e il riquadro in Dashboard.
+let _pfPromise = null;
+
+async function calcolaProiezione(force) {
+  const rollingDate = await getLatestRollingDate();
+  if (!rollingDate) return null;
+  if (!force && _pfPromise && _pfPromise.rollingDate === rollingDate) return _pfPromise;
+  const p = _pfCalcola(rollingDate);
+  p.rollingDate = rollingDate;
+  _pfPromise = p;
+  p.catch(() => { if (_pfPromise === p) _pfPromise = null; });
+  return p;
+}
+
+async function _pfCalcola(rollingDate) {
+  const oggi = new Date();
+  oggi.setHours(0, 0, 0, 0);
+
+  const rd    = new Date(rollingDate + 'T00:00:00');
+  const anno  = rd.getFullYear();
+  const m0    = rd.getMonth();
+  const startMese = _pfYmd(new Date(anno, m0, 1));
+  const from15 = _pfYmd(new Date(oggi.getTime() - 455 * 86400000));
+  const from6  = _pfYmd(new Date(oggi.getTime() - 180 * 86400000));
+
+  const [esclusi, { data: rolling, error: rErr }, { data: cediRows }, snapshots, ordini, { data: visiteRows }] = await Promise.all([
+    loadClientiEsclusi(),
+    sb.from('rolling_fatturato').select('*').eq('data_aggiornamento', rollingDate),
+    sb.from('cedi_ridistribuito').select('codice_cliente').limit(5000),
+    _pfFetchAll(() => sb.from('rolling_fatturato')
+      .select('data_aggiornamento, codice_cliente, spedito_ordinato_mese')
+      .gte('data_aggiornamento', startMese).lte('data_aggiornamento', rollingDate)
+      .order('data_aggiornamento').order('codice_cliente')),
+    _pfFetchAll(() => sb.from('ordini')
+      .select('codice_cliente, data_ordine, importo_totale, righe_ordine(codice_articolo, descrizione_articolo, importo_eur)')
+      .gte('data_ordine', from15)
+      .neq('stato', 'annullato')
+      .order('data_ordine').order('id'), 300),
+    sb.from('agenda_visite').select('codice_cliente, data_visita, completata').gte('data_visita', from6),
+  ]);
+  if (rErr) throw rErr;
+
+  const cedi = new Set((cediRows || []).map(r => String(r.codice_cliente)));
+  const incluso = cod => !cedi.has(String(cod)) && !esclusi.has(String(cod));
+  const righe = (rolling || []).filter(r => incluso(r.codice_cliente));
+
+  // Visite: ultima effettuata e prossima programmata per cliente
+  const todayStr = _pfYmd(oggi);
+  const visite = {};
+  for (const v of visiteRows || []) {
+    const cod = String(v.codice_cliente);
+    const x = visite[cod] || (visite[cod] = {});
+    if (v.data_visita <= todayStr && (v.completata || v.data_visita < todayStr)) {
+      if (!x.ultima || v.data_visita > x.ultima) x.ultima = v.data_visita;
+    } else if (v.data_visita >= todayStr) {
+      if (!x.prossima || v.data_visita < x.prossima) x.prossima = v.data_visita;
+    }
+  }
+
+  // Avanzamento del mese in giorni lavorativi (giorni prima della data rolling)
+  const gl     = _pfGiorniLavorativi(anno, m0);
+  const fatti  = gl.filter(d => d < rollingDate).length;
+  const frazione = gl.length ? fatti / gl.length : 0;
+
+  const analisi = _pfAnalisiOrdini(ordini, oggi);
+  const mod     = _pfModello(righe, anno, m0, frazione, analisi);
+  const azioni  = _pfAzioni(mod.clienti, frazione, visite, oggi);
+
+  // Serie giornaliera dell'acquisito (somma perimetro pulito per snapshot)
+  const perGiorno = {};
+  for (const s of snapshots) {
+    if (!incluso(s.codice_cliente)) continue;
+    perGiorno[s.data_aggiornamento] = (perGiorno[s.data_aggiornamento] || 0) + Number(s.spedito_ordinato_mese || 0);
+  }
+
+  return { ...mod, azioni, perGiorno, gl, fatti, frazione, rollingDate, anno, m0, visite };
+}
+
 async function loadProiezione() {
   const root = document.getElementById('pf-root');
   if (!root) return;
   root.innerHTML = '<div class="loading">Calcolo proiezione…</div>';
-
   try {
-    const oggi       = new Date();
-    oggi.setHours(0, 0, 0, 0);
-    const rollingDate = await getLatestRollingDate();
-    if (!rollingDate) { root.innerHTML = '<div class="loading">Nessun dato rolling disponibile</div>'; return; }
-
-    const rd    = new Date(rollingDate + 'T00:00:00');
-    const anno  = rd.getFullYear();
-    const m0    = rd.getMonth();
-    const startMese = _pfYmd(new Date(anno, m0, 1));
-    const from15 = _pfYmd(new Date(oggi.getTime() - 455 * 86400000));
-    const from6  = _pfYmd(new Date(oggi.getTime() - 180 * 86400000));
-
-    const [esclusi, { data: rolling, error: rErr }, { data: cediRows }, snapshots, ordini, { data: visiteRows }] = await Promise.all([
-      loadClientiEsclusi(),
-      sb.from('rolling_fatturato').select('*').eq('data_aggiornamento', rollingDate),
-      sb.from('cedi_ridistribuito').select('codice_cliente').limit(5000),
-      _pfFetchAll(() => sb.from('rolling_fatturato')
-        .select('data_aggiornamento, codice_cliente, spedito_ordinato_mese')
-        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', rollingDate)
-        .order('data_aggiornamento').order('codice_cliente')),
-      _pfFetchAll(() => sb.from('ordini')
-        .select('codice_cliente, data_ordine, importo_totale, righe_ordine(codice_articolo, descrizione_articolo, importo_eur)')
-        .gte('data_ordine', from15)
-        .neq('stato', 'annullato')
-        .order('data_ordine').order('id'), 300),
-      sb.from('agenda_visite').select('codice_cliente, data_visita, completata').gte('data_visita', from6),
-    ]);
-    if (rErr) throw rErr;
-
-    const cedi = new Set((cediRows || []).map(r => String(r.codice_cliente)));
-    const incluso = cod => !cedi.has(String(cod)) && !esclusi.has(String(cod));
-    const righe = (rolling || []).filter(r => incluso(r.codice_cliente));
-
-    // Visite: ultima effettuata e prossima programmata per cliente
-    const todayStr = _pfYmd(oggi);
-    const visite = {};
-    for (const v of visiteRows || []) {
-      const cod = String(v.codice_cliente);
-      const x = visite[cod] || (visite[cod] = {});
-      if (v.data_visita <= todayStr && (v.completata || v.data_visita < todayStr)) {
-        if (!x.ultima || v.data_visita > x.ultima) x.ultima = v.data_visita;
-      } else if (v.data_visita >= todayStr) {
-        if (!x.prossima || v.data_visita < x.prossima) x.prossima = v.data_visita;
-      }
-    }
-
-    // Avanzamento del mese in giorni lavorativi (giorni prima della data rolling)
-    const gl     = _pfGiorniLavorativi(anno, m0);
-    const fatti  = gl.filter(d => d < rollingDate).length;
-    const frazione = gl.length ? fatti / gl.length : 0;
-
-    const analisi = _pfAnalisiOrdini(ordini, oggi);
-    const mod     = _pfModello(righe, anno, m0, frazione, analisi);
-    const azioni  = _pfAzioni(mod.clienti, frazione, visite, oggi);
-
-    // Serie giornaliera dell'acquisito (somma perimetro pulito per snapshot)
-    const perGiorno = {};
-    for (const s of snapshots) {
-      if (!incluso(s.codice_cliente)) continue;
-      perGiorno[s.data_aggiornamento] = (perGiorno[s.data_aggiornamento] || 0) + Number(s.spedito_ordinato_mese || 0);
-    }
-
-    _pfState = { ...mod, azioni, perGiorno, gl, fatti, frazione, rollingDate, anno, m0, visite };
+    const state = await calcolaProiezione();
+    if (!state) { root.innerHTML = '<div class="loading">Nessun dato rolling disponibile</div>'; return; }
+    _pfState = state;
     _pfRender();
   } catch (err) {
     console.error(err);
     root.innerHTML = `<div class="loading">Errore: ${_pfEsc(err.message)}</div>`;
+  }
+}
+
+// Riquadro sintetico in Dashboard: proiezione, forbice e prime azioni suggerite
+async function renderDashProiezione() {
+  const el = document.getElementById('dash-proiezione');
+  if (!el) return;
+  el.innerHTML = '<div class="b-panel"><div class="loading">Calcolo proiezione…</div></div>';
+  try {
+    const s = await calcolaProiezione();
+    if (!s) { el.innerHTML = ''; return; }
+    const t = s.totali;
+    const varPct = t.annoScorso ? (t.proiezione / t.annoScorso - 1) * 100 : null;
+    // Una sola scala per acquisito, proiezione e anno scorso
+    const scala   = Math.max(t.max, t.annoScorso, t.acquisito, 1);
+    const pctAcq  = 100 * t.acquisito / scala;
+    const pctProj = 100 * t.proiezione / scala;
+    const pctLy   = 100 * t.annoScorso / scala;
+    const top = s.azioni.slice(0, 3).map(a => {
+      const tipo = PF_AZIONI[a.tipo];
+      return `<div class="pf-dash-az" onclick="apriClienteDaDashboard('${a.cod}')">
+        <span class="badge ${tipo.cls}"><i class="ti ${tipo.icon}"></i></span>
+        <span class="pf-dash-az-nome">${_pfEsc(a.nome)}</span>
+        <span class="pf-dash-az-lbl">${tipo.label}</span>
+        <span class="pf-dash-az-imp">€${_pfEur(a.impatto)}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="b-panel pf-dash">
+        <div class="pf-dash-head">
+          <p class="b-sec" style="margin:0">Proiezione ${PF_MESI_FULL[s.m0].toLowerCase()} · senza CEDI</p>
+          <a href="#" class="pf-dash-link" onclick="navToPage('proiezione');return false;">Apri <i class="ti ti-arrow-right"></i></a>
+        </div>
+        <div class="pf-dash-main">
+          <span class="pf-dash-val">€${_pfEur(t.proiezione)}</span>
+          ${varPct == null ? '' : `<span class="kpi-change ${varPct >= 0 ? 'positive' : 'negative'}">${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}% vs ${s.anno - 1}</span>`}
+        </div>
+        <div class="kpi-sub">forbice €${_pfEur(t.min)} – €${_pfEur(t.max)} · acquisito €${_pfEur(t.acquisito)} · anno scorso €${_pfEur(t.annoScorso)} · giorno ${s.fatti} di ${s.gl.length}</div>
+        <div class="b-bbg pf-dash-bar">
+          <div class="pf-dash-proj" style="width:${pctProj.toFixed(1)}%" title="Proiezione €${_pfEur(t.proiezione)}"></div>
+          <div class="b-bfill pf-dash-acq" style="width:${pctAcq.toFixed(1)}%" title="Acquisito €${_pfEur(t.acquisito)}"></div>
+          <span class="pf-dash-ly" style="left:${pctLy.toFixed(1)}%" title="Anno scorso €${_pfEur(t.annoScorso)}"></span>
+        </div>
+        <div class="pf-dash-leg">
+          <span><i style="background:var(--accent)"></i>acquisito</span>
+          <span><i style="background:rgba(192,57,43,.22)"></i>proiezione</span>
+          <span><i class="pf-dash-leg-ly"></i>anno scorso</span>
+        </div>
+        ${top ? `<div class="pf-dash-azioni">${top}</div>` : ''}
+      </div>`;
+  } catch (err) {
+    console.error(err);
+    el.innerHTML = '';
   }
 }
 

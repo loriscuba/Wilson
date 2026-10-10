@@ -253,6 +253,7 @@ async function loadDashboard() {
     });
 
     renderStatoMese(rows, totCEDI, cediDate);
+    renderDashProiezione();
 
     // Top 10 da ordinare nel mese
     document.getElementById('top-clienti-h2').textContent = 'Top 10 da ordinare nel mese';
