@@ -548,7 +548,10 @@
         .pf-az-imp span { display:block; font-size:10px; font-weight:400; color:var(--text2); }
         .pf-agenda { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 6px 0 8px; border:1px solid var(--border); border-radius:var(--r); color:var(--text2); font-size:17px; background:var(--surface); }
         .pf-agenda.on { border-color:var(--green); color:var(--green); }
-        .pf-agenda input { border:none; background:transparent; color:var(--text); font:inherit; font-size:12px; width:118px; min-height:28px; }
+        .pf-ag-field { position:relative; display:inline-flex; align-items:center; gap:6px; min-height:32px; min-width:150px; cursor:pointer; }
+        .pf-ag-txt { font-size:12px; color:var(--text); white-space:nowrap; }
+        .pf-agenda:not(.on) .pf-ag-txt { color:var(--text2); }
+        .pf-ag-field input { position:absolute; inset:0; width:100%; height:100%; opacity:0; border:none; cursor:pointer; -webkit-appearance:none; appearance:none; }
         .pf-ag-btn { border:none; border-radius:var(--r); font-size:12px; font-weight:600; cursor:pointer; padding:5px 10px; }
         .pf-ag-ok { background:var(--accent); color:#fff; }
         .pf-ag-del { background:transparent; color:var(--text2); font-size:18px; padding:2px 6px; line-height:1; }
@@ -2059,7 +2062,7 @@
     <script src="js/ddt.js?v=15"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=10"></script>
-    <script src="js/proiezione.js?v=6"></script>
+    <script src="js/proiezione.js?v=7"></script>
     <script src="js/impostazioni.js?v=6"></script>
     <script src="js/agenda.js?v=1"></script>
     <script src="js/statistiche.js?v=2"></script>
