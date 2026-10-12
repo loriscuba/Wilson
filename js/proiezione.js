@@ -1,11 +1,11 @@
 // ── Proiezione Fatturato ──────────────────────────────────────────────────────
 //
 // Proiezione di fine mese del fatturato (fonte: rolling_fatturato), su tutti i
-// clienti del rolling (disattivati compresi), escluso il CEDI ridistribuito:
-// dei clienti CEDI (presenti in cedi_ridistribuito) si contano solo gli ordini
-// diretti. Durante il mese lo spedito+ordinato del rolling è già solo diretto;
-// per i mesi chiusi il diretto è gto_mese − ultimo import CEDI di quel mese
-// (disponibile solo per i mesi con un file CEDI; l'anno scorso non è separabile).
+// clienti del rolling (disattivati compresi), escluso il CEDI ridistribuito.
+// Clienti CEDI (presenti in cedi_ridistribuito): gli ordini diretti sono
+// eccezionali, quindi non entrano nella previsione (previsto = 0, niente
+// azioni); se nel mese ce ne sono, contano solo come acquisito (lo
+// spedito+ordinato del rolling durante il mese è già solo diretto).
 //
 // Algoritmo (backtest mag–set 2026 sugli snapshot giornalieri del rolling:
 // errore medio assoluto ~4% sul totale, bias ~+1%):
@@ -161,27 +161,17 @@ function _pfAnalisiOrdini(ordini, oggi) {
 
 // ── Modello di proiezione ─────────────────────────────────────────────────────
 
-function _pfModello(rolling, anno, m0, frazione, analisi, cediMesi = {}) {
+function _pfModello(rolling, anno, m0, frazione, analisi, cediSet = new Set()) {
   const sum  = a => a.reduce((s, x) => s + x, 0);
   const winA = Math.max(0, m0 - 6);           // finestra trend: ultimi 6 mesi chiusi
   const nWin = m0 - winA;
 
   const clienti = rolling.map(r => {
-    const so   = Number(r.spedito_ordinato_mese || 0);
-    const cedi = cediMesi[String(r.codice_cliente)];
-    if (cedi) {
-      // Cliente CEDI: solo ordini diretti. Storico = gto del mese − CEDI ridistribuito
-      // del mese, solo per i mesi con un import CEDI; anno scorso non separabile.
-      const diretti = [];
-      for (let i = 0; i < m0; i++) {
-        if (cedi[i] == null) continue;
-        diretti.push(Math.max(0, Number(r[`gto_${PF_MESI[i]}_${anno}`] || 0) - cedi[i]));
-      }
-      const ultimi = diretti.slice(-6);
-      return {
-        r, so, cedi: true, f25: Array(12).fill(0), a25: 0, a26: sum(ultimi),
-        L: 0, avg25: 0, mediaDiretti: ultimi.length ? sum(ultimi) / ultimi.length : 0,
-      };
+    const so = Number(r.spedito_ordinato_mese || 0);
+    if (cediSet.has(String(r.codice_cliente))) {
+      // Cliente CEDI: fuori dalla previsione (storico e anno scorso includono il
+      // ridistribuito); gli eventuali ordini diretti del mese contano come acquisito.
+      return { r, so, cedi: true, f25: Array(12).fill(0), a25: 0, a26: 0, L: 0, avg25: 0 };
     }
     const f25 = PF_MESI.map(m => Number(r[`fatt_${m}_${anno - 1}`] || 0));
     const g26 = PF_MESI.map(m => Number(r[`gto_${m}_${anno}`] || 0));
@@ -202,12 +192,7 @@ function _pfModello(rolling, anno, m0, frazione, analisi, cediMesi = {}) {
   const tp     = nWin > 0 && a25tot > 0 ? a26tot / a25tot : 1;
 
   for (const c of clienti) {
-    if (c.cedi) {
-      // Media degli ordini diretti dei mesi noti × stagionalità; trend = portafoglio
-      c.base  = c.mediaDiretti * sm;
-      c.trend = tp;
-      continue;
-    }
+    if (c.cedi) { c.base = 0; c.trend = tp; continue; }
     c.base  = c.avg25 > 0 ? 0.5 * c.L + 0.5 * c.avg25 * sm
             : nWin > 0 ? (c.a26 / nWin) * sm : 0;
     c.trend = nWin > 0
@@ -260,6 +245,7 @@ function _pfAzioni(clienti, frazione, visite, oggi) {
     const nome = c.r.ragione_sociale || cod;
     const an   = c.an;
     const vis  = visite[cod] || {};
+    if (c.cedi) continue;   // clienti CEDI: nessuna azione (ordini diretti eccezionali)
 
     // 📞 Sollecita: ha un previsto rilevante e ha acquisito poco, ed è "in ritardo"
     // rispetto al suo ritmo abituale (o il mese è già avanzato)
@@ -352,8 +338,7 @@ async function _pfCalcola(rollingDate) {
 
   const [{ data: rolling, error: rErr }, { data: cediRows }, snapshots, ordini, { data: visiteRows }] = await Promise.all([
     sb.from('rolling_fatturato').select('*').eq('data_aggiornamento', rollingDate),
-    sb.from('cedi_ridistribuito').select('codice_cliente, valore_ridistribuito, data_aggiornamento')
-      .gte('data_aggiornamento', `${anno}-01-01`).limit(5000),
+    sb.from('cedi_ridistribuito').select('codice_cliente').limit(5000),
     _pfFetchAll(() => sb.from('rolling_fatturato')
       .select('data_aggiornamento, codice_cliente, spedito_ordinato_mese')
       .gte('data_aggiornamento', startMese).lte('data_aggiornamento', rollingDate)
@@ -367,21 +352,7 @@ async function _pfCalcola(rollingDate) {
   ]);
   if (rErr) throw rErr;
 
-  // CEDI: per cliente e mese, il valore dell'ultimo import del mese (ridistribuito)
-  const cediMesi = {}, cediUltimo = {};
-  for (const r of cediRows || []) {
-    const cod = String(r.codice_cliente);
-    const d   = r.data_aggiornamento || '';
-    if (Number(d.slice(0, 4)) !== anno) continue;
-    const mi  = Number(d.slice(5, 7)) - 1;
-    const key = `${cod}:${mi}`;
-    if (!cediUltimo[key] || d > cediUltimo[key]) {
-      cediUltimo[key] = d;
-      (cediMesi[cod] = cediMesi[cod] || Array(12).fill(null))[mi] = Number(r.valore_ridistribuito || 0);
-    }
-  }
-  // Clienti CEDI anche senza import quest'anno: storico non separabile, solo ordini diretti del mese
-  for (const r of cediRows || []) cediMesi[String(r.codice_cliente)] ||= Array(12).fill(null);
+  const cediSet = new Set((cediRows || []).map(r => String(r.codice_cliente)));
   const righe = rolling || [];
 
   // Visite: ultima effettuata e prossima programmata per cliente
@@ -403,7 +374,7 @@ async function _pfCalcola(rollingDate) {
   const frazione = gl.length ? fatti / gl.length : 0;
 
   const analisi = _pfAnalisiOrdini(ordini, oggi);
-  const mod     = _pfModello(righe, anno, m0, frazione, analisi, cediMesi);
+  const mod     = _pfModello(righe, anno, m0, frazione, analisi, cediSet);
   const azioni  = _pfAzioni(mod.clienti, frazione, visite, oggi);
 
   // Serie giornaliera dell'acquisito (spedito+ordinato: per i CEDI è già solo diretto)
@@ -498,7 +469,7 @@ function _pfRender() {
     .map(([k, l]) => `<button class="pf-chip${_pfFiltro === k ? ' on' : ''}" onclick="pfFiltraAzioni('${k}')">${l}</button>`).join('');
 
   root.innerHTML = `
-    <p class="pf-sub">${PF_MESI_FULL[s.m0]} ${s.anno} · rolling del ${fmtDate(s.rollingDate)} · giorno lavorativo ${s.fatti} di ${s.gl.length} · tutti i clienti, CEDI ridistribuito escluso (dei clienti CEDI solo ordini diretti)</p>
+    <p class="pf-sub">${PF_MESI_FULL[s.m0]} ${s.anno} · rolling del ${fmtDate(s.rollingDate)} · giorno lavorativo ${s.fatti} di ${s.gl.length} · CEDI esclusi dalla previsione (contati solo eventuali ordini diretti già arrivati)</p>
 
     <div class="kpi-grid">
       <div class="kpi-card">
@@ -552,7 +523,7 @@ function _pfRender() {
     </div></div>
     <p class="pf-note">Previsto = stesso mese anno scorso + media annua, corretti per il trend degli ultimi 6 mesi e per le referenze perse.
     Proiezione = acquisito + quota del previsto ancora da acquisire, in proporzione ai giorni lavorativi rimasti.
-    Clienti CEDI: solo ordini diretti (previsto dalla media dei mesi con file CEDI; anno scorso non separabile, quindi non conteggiato).
+    Clienti CEDI: fuori dalla previsione; eventuali ordini diretti del mese contano solo come acquisito.
     Backtest maggio–settembre 2026: errore medio ~4% sul totale.</p>`;
 
   _pfRenderAzioni();
@@ -645,7 +616,7 @@ function _pfRenderTabella() {
     return `
       <tr>
         <td><a href="#" class="pf-az-nome" onclick="event.preventDefault();apriClienteDaDashboard('${c.r.codice_cliente}')"><strong>${_pfEsc(c.r.ragione_sociale || c.r.codice_cliente)}</strong></a>
-            ${c.cedi ? '<span class="pf-ref" title="Cliente CEDI: contati solo gli ordini diretti">CEDI diretti</span>' : ''}
+            ${c.cedi ? '<span class="pf-ref" title="Cliente CEDI: fuori dalla previsione, contati solo eventuali ordini diretti già arrivati">CEDI</span>' : ''}
             ${c.refFactor < 1 ? `<span class="pf-ref" title="Previsto ridotto per referenze perse">−${Math.round((1 - c.refFactor) * 100)}% ref.</span>` : ''}</td>
         <td class="num-right">${c.cedi ? '<span title="Anno scorso non separabile dal CEDI ridistribuito">—</span>' : '€' + _pfEur(c.L)}</td>
         <td class="num-right">€${_pfEur(c.previsto)}</td>
