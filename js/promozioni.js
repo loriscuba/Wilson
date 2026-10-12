@@ -538,11 +538,11 @@ function _promoDettaglioHtml(promo) {
         <table class="b-tbl" style="min-width:750px">
           <thead><tr>
             <th>Cliente</th>
+            <th style="text-align:center">Azioni</th>
             <th style="text-align:right">${yr}</th>
             <th style="text-align:right">${yr - 1}</th>
             <th style="text-align:center">Ultimo acq.</th>
             <th style="text-align:right">N° acq.</th>
-            <th style="text-align:center">Stato</th>
             <th style="text-align:center">Data prop.</th>
             <th style="width:32px"></th>
           </tr></thead>
@@ -561,7 +561,6 @@ function _promoRigaHtml(r, promo) {
   const t          = r._tracking;
   const stato      = t?.stato || 'da_contattare';
   const statoInfo  = PROMO_STATI.find(s => s.id === stato) || PROMO_STATI[0];
-  const statoBadge = `<span class="bc-stato" style="background:${statoInfo.color}20;color:${statoInfo.color};border-color:${statoInfo.color}40;white-space:nowrap">${statoInfo.label}</span>`;
   const nome       = _esc(r.ragione_sociale || t?.ragione_sociale || r.codice_cliente);
   const dtUlt      = r.ultimo_acquisto ? new Date(r.ultimo_acquisto).toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
   const dtProp     = t?.data_proposta   ? new Date(t.data_proposta + 'T00:00:00').toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '—';
@@ -570,6 +569,15 @@ function _promoRigaHtml(r, promo) {
   const cod        = r.codice_cliente.replace(/'/g, "\\'");
   const nomeEsc    = nome.replace(/'/g, "\\'");
   const isOpen     = _promoRigaAperta[promo.id] === r.codice_cliente;
+  // Stessi pulsanti di stato della Pipeline clienti (Budget): PL_STATI da budget.js
+  const statiHtml  = PL_STATI.map(s => {
+    const attivo = t?.[`stato_${s.key}`] === true;
+    return `<button class="btn-action" onclick="event.stopPropagation();togglePromoStato(${promo.id},'${cod}','${nomeEsc}','${s.key}')"
+              title="${s.label}${attivo ? ' ✓' : ''}" style="color:${attivo ? s.color : '#ccc'};opacity:${attivo ? '1' : '.6'}">
+              <i class="ti ${s.icon}"></i></button>`;
+  }).join('');
+  const nonInt     = stato === 'non_interessato'
+    ? `<span class="bc-stato" style="background:${statoInfo.color}20;color:${statoInfo.color};border-color:${statoInfo.color}40;white-space:nowrap;margin-left:4px">${statoInfo.label}</span>` : '';
 
   const detailRow = isOpen ? `<tr style="background:var(--bg)"><td colspan="8" style="padding:6px 12px 12px 16px">${_ordiniDetailHtml(promo.id, r.codice_cliente)}</td></tr>` : '';
 
@@ -578,11 +586,11 @@ function _promoRigaHtml(r, promo) {
       <div class="bc-cliente-nome">${nome} <span style="font-size:10px;color:var(--text2)">${isOpen ? '▴' : '▾'}</span></div>
       <div class="bc-cliente-div">${r.codice_cliente}</div>
     </td>
+    <td style="text-align:center;white-space:nowrap">${statiHtml}${nonInt}</td>
     <td style="text-align:right;font-size:12px;font-weight:500">${fc}</td>
     <td style="text-align:right;font-size:12px;color:var(--text2)">${fp}</td>
     <td style="text-align:center;font-size:12px;color:var(--text2)">${dtUlt}</td>
     <td style="text-align:right;font-size:12px;color:var(--text2)">${r.n_ordini || '—'}</td>
-    <td style="text-align:center">${statoBadge}</td>
     <td style="text-align:center;font-size:12px;color:var(--text2)">${dtProp}</td>
     <td style="text-align:center">
       <button class="pl-art-btn" title="Modifica stato" onclick="event.stopPropagation();apriEditPromoCliente(${promo.id},'${cod}','${nomeEsc}')">✏</button>
@@ -701,6 +709,50 @@ function _riapriSetup(promoId) {
   _rerenderRoot();
 }
 
+// Pulsanti stato (come Pipeline clienti): toggle indipendenti, salvati in promo_clienti.
+// La colonna `stato` viene derivata per mantenere i filtri della promo.
+async function togglePromoStato(promoId, codice, nome, chiave) {
+  const list = _promoClienti[promoId] || (_promoClienti[promoId] = []);
+  const cur  = list.find(r => r.codice_cliente === codice) || {};
+  const flags = {};
+  for (const s of PL_STATI) flags[`stato_${s.key}`] = cur[`stato_${s.key}`] === true;
+  flags[`stato_${chiave}`] = !flags[`stato_${chiave}`];
+
+  const qualcosa = PL_STATI.some(s => flags[`stato_${s.key}`]);
+  const stato = flags.stato_ordine ? 'ordinato'
+              : qualcosa ? (cur.stato === 'in_attesa' ? 'in_attesa' : 'proposta')
+              : (cur.stato === 'non_interessato' ? 'non_interessato' : 'da_contattare');
+  const oggi  = new Date();
+  const record = {
+    promo_id: promoId, codice_cliente: codice, ragione_sociale: cur.ragione_sociale || nome,
+    ...flags, stato,
+    // Data proposta: impostata al primo contatto, se non c'è già
+    data_proposta: cur.data_proposta || (qualcosa
+      ? `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
+      : null),
+  };
+
+  // Aggiornamento immediato a video, poi salvataggio
+  const idx = list.findIndex(r => r.codice_cliente === codice);
+  const prev = idx >= 0 ? list[idx] : null;
+  if (idx >= 0) list[idx] = { ...list[idx], ...record }; else list.push(record);
+  _rerenderPromoBody(promoId);
+  try {
+    const { error } = await sb.from('promo_clienti').upsert(record, { onConflict: 'promo_id,codice_cliente' });
+    if (error) throw error;
+  } catch (e) {
+    if (prev) list[idx] = prev; else list.splice(list.findIndex(r => r.codice_cliente === codice), 1);
+    _rerenderPromoBody(promoId);
+    alert('Errore salvataggio stato: ' + e.message);
+  }
+}
+
+function _rerenderPromoBody(promoId) {
+  const promo  = _promoList.find(p => p.id === promoId);
+  const bodyEl = document.querySelector(`#promo-card-${promoId} .promo-card-body`);
+  if (bodyEl && promo) bodyEl.innerHTML = _promoDettaglioHtml(promo);
+}
+
 // ── Modal edit cliente promo ───────────────────────────────────────────────────
 
 function apriEditPromoCliente(promoId, codice, nome) {
@@ -763,6 +815,10 @@ async function salvaEditPromoCliente(promoId, codice, nome) {
       data_proposta:   data_prop,
       nota,
     };
+    // Allinea i pulsanti stato alla scelta fatta nel modulo
+    if (stato === 'ordinato') { record.stato_avvisato = true; record.stato_ordine = true; }
+    else if (stato === 'proposta' || stato === 'in_attesa') { record.stato_avvisato = true; record.stato_ordine = false; }
+    else if (stato === 'da_contattare') PL_STATI.forEach(s => { record[`stato_${s.key}`] = false; });
     const { error } = await sb.from('promo_clienti')
       .upsert(record, { onConflict: 'promo_id,codice_cliente' });
     if (error) throw error;
