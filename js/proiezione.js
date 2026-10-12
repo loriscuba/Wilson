@@ -555,12 +555,15 @@ function _pfRenderAzioni() {
   el.innerHTML = list.map(a => {
     const t   = PF_AZIONI[a.tipo];
     const vis = _pfState.visite[a.cod] || {};
-    // Data sempre modificabile; si salva solo all'uscita dal campo (su iPad/iPhone
-    // il selettore imposta subito la data di oggi e segnala "change" all'apertura)
-    const agenda = `<label class="pf-agenda${vis.prossima ? ' on' : ''}" title="${vis.prossima ? 'Visita in Agenda — tocca per spostarla, svuota per toglierla' : 'Programma una visita in Agenda'}">
+    // La data si salva solo col pulsante "Salva": su iPad/iPhone il selettore imposta
+    // subito la data di oggi e lancia change/blur all'apertura, quindi niente salvataggi automatici
+    const agenda = `<div class="pf-agenda${vis.prossima ? ' on' : ''}" title="${vis.prossima ? 'Visita in Agenda' : 'Programma una visita in Agenda'}">
            <i class="ti ${vis.prossima ? 'ti-calendar-check' : 'ti-calendar-plus'}"></i>
-           <input type="date" value="${vis.prossima || ''}" data-cod="${_pfEsc(a.cod)}"
-                  onblur="pfSalvaVisita(this)" onkeydown="if(event.key==='Enter')this.blur()"></label>`;
+           <input type="date" value="${vis.prossima || ''}" data-cod="${_pfEsc(a.cod)}" data-saved="${vis.prossima || ''}"
+                  oninput="pfDataCambiata(this)" onchange="pfDataCambiata(this)">
+           <button type="button" class="pf-ag-btn pf-ag-ok" hidden onclick="pfSalvaVisita(this.parentNode.querySelector('input'))">Salva</button>
+           ${vis.prossima ? `<button type="button" class="pf-ag-btn pf-ag-del" title="Togli la visita dall'Agenda" onclick="pfTogliVisita('${_pfEsc(a.cod)}')">×</button>` : ''}
+         </div>`;
     return `
       <div class="pf-az">
         <span class="badge ${t.cls} pf-az-tipo"><i class="ti ${t.icon}"></i> ${t.label}</span>
@@ -572,6 +575,17 @@ function _pfRenderAzioni() {
         ${agenda}
       </div>`;
   }).join('');
+}
+
+// Mostra "Salva" solo se la data scelta è diversa da quella in Agenda
+function pfDataCambiata(el) {
+  const ok = el.parentNode.querySelector('.pf-ag-ok');
+  if (ok) ok.hidden = !el.value || el.value === el.dataset.saved;
+}
+
+async function pfTogliVisita(codice) {
+  if (!confirm('Togliere la visita dall\'Agenda?')) return;
+  await pfSalvaVisita({ dataset: { cod: codice }, value: '' });
 }
 
 // Crea, sposta o toglie la prossima visita in Agenda per il cliente
