@@ -348,7 +348,7 @@ async function _pfCalcola(rollingDate) {
       .gte('data_ordine', from15)
       .neq('stato', 'annullato')
       .order('data_ordine').order('id'), 300),
-    sb.from('agenda_visite').select('codice_cliente, data_visita, completata').gte('data_visita', from6),
+    sb.from('agenda_visite').select('id, codice_cliente, data_visita, completata').gte('data_visita', from6),
   ]);
   if (rErr) throw rErr;
 
@@ -364,7 +364,7 @@ async function _pfCalcola(rollingDate) {
     if (v.data_visita <= todayStr && (v.completata || v.data_visita < todayStr)) {
       if (!x.ultima || v.data_visita > x.ultima) x.ultima = v.data_visita;
     } else if (v.data_visita >= todayStr) {
-      if (!x.prossima || v.data_visita < x.prossima) x.prossima = v.data_visita;
+      if (!x.prossima || v.data_visita < x.prossima) { x.prossima = v.data_visita; x.prossimaId = v.id; }
     }
   }
 
@@ -555,10 +555,12 @@ function _pfRenderAzioni() {
   el.innerHTML = list.map(a => {
     const t   = PF_AZIONI[a.tipo];
     const vis = _pfState.visite[a.cod] || {};
-    const agenda = vis.prossima
-      ? `<span class="pf-agenda-ok"><i class="ti ti-calendar-check"></i> ${fmtDate(vis.prossima)}</span>`
-      : `<label class="pf-agenda" title="Programma una visita in Agenda"><i class="ti ti-calendar-plus"></i>
-           <input type="date" min="${_pfYmd(new Date())}" onchange="pfPianificaVisita('${a.cod}', this.value)"></label>`;
+    // Data sempre modificabile; si salva solo all'uscita dal campo (su iPad/iPhone
+    // il selettore imposta subito la data di oggi e segnala "change" all'apertura)
+    const agenda = `<label class="pf-agenda${vis.prossima ? ' on' : ''}" title="${vis.prossima ? 'Visita in Agenda — tocca per spostarla, svuota per toglierla' : 'Programma una visita in Agenda'}">
+           <i class="ti ${vis.prossima ? 'ti-calendar-check' : 'ti-calendar-plus'}"></i>
+           <input type="date" value="${vis.prossima || ''}" data-cod="${_pfEsc(a.cod)}"
+                  onblur="pfSalvaVisita(this)" onkeydown="if(event.key==='Enter')this.blur()"></label>`;
     return `
       <div class="pf-az">
         <span class="badge ${t.cls} pf-az-tipo"><i class="ti ${t.icon}"></i> ${t.label}</span>
@@ -572,17 +574,34 @@ function _pfRenderAzioni() {
   }).join('');
 }
 
-async function pfPianificaVisita(codice, data) {
-  if (!data) return;
+// Crea, sposta o toglie la prossima visita in Agenda per il cliente
+async function pfSalvaVisita(el) {
+  const codice = el.dataset.cod;
+  const data   = el.value || '';
+  const vis    = _pfState.visite[codice] || (_pfState.visite[codice] = {});
+  if (data === (vis.prossima || '')) return;
   try {
-    const { error } = await sb.from('agenda_visite')
-      .insert({ codice_cliente: codice, data_visita: data, completata: false, generata_auto: false });
-    if (error) throw error;
-    (_pfState.visite[codice] = _pfState.visite[codice] || {}).prossima = data;
-    _pfRenderAzioni();
+    if (!data) {
+      if (vis.prossimaId) {
+        const { error } = await sb.from('agenda_visite').delete().eq('id', vis.prossimaId);
+        if (error) throw error;
+      }
+      vis.prossima = null; vis.prossimaId = null;
+    } else if (vis.prossimaId) {
+      const { error } = await sb.from('agenda_visite').update({ data_visita: data }).eq('id', vis.prossimaId);
+      if (error) throw error;
+      vis.prossima = data;
+    } else {
+      const { data: row, error } = await sb.from('agenda_visite')
+        .insert({ codice_cliente: codice, data_visita: data, completata: false, generata_auto: false })
+        .select('id').single();
+      if (error) throw error;
+      vis.prossima = data; vis.prossimaId = row?.id || null;
+    }
   } catch (e) {
     alert('Errore salvataggio agenda: ' + e.message);
   }
+  _pfRenderAzioni();
 }
 
 function _pfRenderTabella() {

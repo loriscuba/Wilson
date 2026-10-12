@@ -546,10 +546,10 @@
         .pf-az-txt { font-size:12px; color:var(--text2); margin-top:2px; line-height:1.4; }
         .pf-az-imp { font-weight:700; font-size:14px; text-align:right; white-space:nowrap; }
         .pf-az-imp span { display:block; font-size:10px; font-weight:400; color:var(--text2); }
-        .pf-agenda { position:relative; display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border:1px solid var(--border); border-radius:var(--r); color:var(--text2); cursor:pointer; font-size:17px; }
+        .pf-agenda { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 8px; border:1px solid var(--border); border-radius:var(--r); color:var(--text2); cursor:pointer; font-size:17px; background:var(--surface); }
         .pf-agenda:hover { border-color:var(--accent); color:var(--accent); }
-        .pf-agenda input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }
-        .pf-agenda-ok { font-size:11px; color:var(--green); white-space:nowrap; }
+        .pf-agenda.on { border-color:var(--green); color:var(--green); }
+        .pf-agenda input { border:none; background:transparent; color:var(--text); font:inherit; font-size:12px; width:118px; min-height:28px; cursor:pointer; }
         .pf-neg { color:var(--red); }
         .pf-pos { color:var(--green); }
         .pf-ref { font-size:10px; color:#854D0E; background:#FEF9C3; border-radius:10px; padding:1px 6px; margin-left:4px; white-space:nowrap; }
@@ -579,7 +579,7 @@
             .pf-az-tipo { grid-column:1 / -1; }
             .pf-az-body { grid-column:1; }
             .pf-az-imp { grid-column:2; grid-row:2; }
-            .pf-agenda, .pf-agenda-ok { grid-column:2; grid-row:3; justify-self:end; }
+            .pf-agenda { grid-column:1 / -1; grid-row:3; justify-self:start; }
             .pf-chart-wrap { height:220px; }
         }
         /* ── Griglie Netti ── */
@@ -2055,7 +2055,7 @@
     <script src="js/ddt.js?v=15"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/budget.js?v=10"></script>
-    <script src="js/proiezione.js?v=4"></script>
+    <script src="js/proiezione.js?v=5"></script>
     <script src="js/impostazioni.js?v=6"></script>
     <script src="js/agenda.js?v=1"></script>
     <script src="js/statistiche.js?v=2"></script>
