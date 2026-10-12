@@ -1559,6 +1559,11 @@
         .promo-label { font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:.04em; }
         .promo-setup { padding-top:12px; }
         .promo-setup-title { font-size:13px; font-weight:700; margin-bottom:8px; }
+        .promo-codici-storico { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; max-width:520px; }
+        .promo-codici-lbl { width:100%; font-size:11px; color:var(--text2); }
+        .promo-cod-toggle { font-size:12px; padding:3px 10px; border-radius:12px; border:1px dashed var(--border); background:var(--surface); color:var(--text2); cursor:pointer; }
+        .promo-cod-toggle.on { border-style:solid; border-color:#D97706; background:#D9770615; color:#D97706; font-weight:600; }
+        .promo-cod-chip.promo-cod-off { background:transparent; color:var(--text2); border-color:var(--border); text-decoration:line-through; }
         .promo-check-lbl { display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; padding:3px 0; }
         .promo-check-lbl input { margin:0; }
         .bc-btn-primary { padding:7px 16px; background:var(--accent); color:#fff; border:none; border-radius:var(--r); font-size:13px; font-weight:600; cursor:pointer; }
@@ -2056,7 +2061,7 @@
     <script src="js/statistiche.js?v=2"></script>
     <script src="js/note_visite.js?v=1"></script>
     <script src="js/listino.js?v=2"></script>
-    <script src="js/promozioni.js?v=6"></script>
+    <script src="js/promozioni.js?v=8"></script>
     <script src="js/app.js?v=17"></script>
     <script>
         document.addEventListener('keydown', e => {
