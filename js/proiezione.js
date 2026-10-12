@@ -18,7 +18,10 @@
 //                         Il trend cliente distribuisce il previsto; il totale è
 //                         ancorato al trend del portafoglio (evita sovrastime).
 //  3. Referenze perse   = riduce il previsto del cliente di metà del peso delle
-//                         referenze che non compra più (max −30%).
+//                         referenze che non compra più (max −30%). Una referenza
+//                         è persa solo quando il cliente ha saltato il suo ritmo
+//                         abituale: intervallo mediano tra gli acquisti + margine
+//                         (es. comprata ogni 3 mesi → persa dopo 4 mesi).
 //  4. Proiezione        = 0.97 × acquisito (una parte dell'ordinato slitta al mese
 //                         dopo) + quota mancante del previsto × giorni lavorativi
 //                         rimasti; chi ha già superato il previsto aggiunge una
@@ -29,6 +32,8 @@ const PF_MESI_FULL = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','L
 const PF_K_TREND   = 8000;
 const PF_SLIP      = 0.97;
 const PF_TAIL      = 0.15;
+const PF_REF_MERGE = 7;    // acquisti dello stesso articolo a meno di 7 gg = un solo riordino
+const PF_REF_MARG  = 30;   // margine minimo (gg) oltre il ritmo abituale prima di dirla persa
 
 const PF_AZIONI = {
   sollecita: { icon: 'ti-phone',            label: 'Sollecita ordine', cls: 'badge-orange' },
@@ -92,6 +97,8 @@ async function _pfFetchAll(build, pageSize = 1000) {
 
 // ── Analisi referenze (da ordini + righe_ordine) ─────────────────────────────
 
+const _pfRitmo = gg => gg < 45 ? `${Math.max(1, Math.round(gg / 7))} sett.` : `${Math.round(gg / 30)} mesi`;
+
 function _pfAnalisiOrdini(ordini, oggi) {
   const DAY   = 86400000;
   const t0    = oggi.getTime();
@@ -101,20 +108,22 @@ function _pfAnalisiOrdini(ordini, oggi) {
     const cod = String(o.codice_cliente || '').trim();
     if (!cod || !o.data_ordine) continue;
     const age = (t0 - new Date(o.data_ordine + 'T00:00:00').getTime()) / DAY;
-    const c   = byCli[cod] || (byCli[cod] = { date: [], art: {}, valPrec: 0 });
+    const c   = byCli[cod] || (byCli[cod] = { date: [], art: {}, valTot: 0 });
     c.date.push(o.data_ordine);
-    if (age >= 90 && age < 455) c.valPrec += Number(o.importo_totale || 0);
+    c.valTot += Number(o.importo_totale || 0);
     for (const r of o.righe_ordine || []) {
       const art = r.codice_articolo;
       if (!art) continue;
       const a = c.art[art] || (c.art[art] = {
-        desc: r.descrizione_articolo || art, ultimo: null,
-        nPrec: 0, valPrec: 0, val0_6: 0, val6_12: 0, recente: 0,
+        desc: r.descrizione_articolo || art, ultimo: null, date: [],
+        nPrec: 0, valTot: 0, val0_6: 0, val6_12: 0, recente: 0,
       });
       const imp = Number(r.importo_eur || 0);
       if (!a.ultimo || o.data_ordine > a.ultimo) a.ultimo = o.data_ordine;
+      a.date.push(o.data_ordine);
+      a.valTot += imp;
       if (age < 90) a.recente += imp;
-      if (age >= 90 && age < 455) { a.nPrec++; a.valPrec += imp; }
+      if (age >= 90 && age < 455) a.nPrec++;
       if (age < 182) a.val0_6 += imp;
       else if (age < 365) a.val6_12 += imp;
     }
@@ -133,11 +142,30 @@ function _pfAnalisiOrdini(ordini, oggi) {
     const freq = gaps.length >= 2 ? gaps[Math.floor(gaps.length / 2)] : null;
     const giorniDaUltimo = last ? Math.floor((t0 - new Date(last + 'T00:00:00').getTime()) / DAY) : null;
 
-    // Referenze perse: ≥2 ordini tra 15 e 3 mesi fa, nessun acquisto negli ultimi 90 gg
+    // Referenze perse: in base al ritmo di riordino del singolo articolo.
+    // Servono ≥2 riordini per stimare l'intervallo abituale (mediana); la
+    // referenza è persa quando dall'ultimo acquisto è passato più di
+    // intervallo + max(30 gg, 30% dell'intervallo): ogni mese → persa dopo
+    // 2 mesi, ogni 3 mesi → dopo 4, ogni 6 mesi → dopo ~8.
     const perse = [], calo = [], nuove = [];
     for (const [art, a] of Object.entries(c.art)) {
-      if (a.nPrec >= 2 && a.recente === 0 && a.valPrec >= 100)
-        perse.push({ art, desc: a.desc, ultimo: a.ultimo, mensile: a.valPrec / 12 });
+      const riordini = [];
+      for (const d of [...new Set(a.date)].sort()) {
+        const t = new Date(d + 'T00:00:00').getTime();
+        if (!riordini.length || (t - riordini[riordini.length - 1]) / DAY >= PF_REF_MERGE) riordini.push(t);
+      }
+      if (riordini.length >= 2 && a.valTot >= 100) {
+        const gapsArt = [];
+        for (let i = 1; i < riordini.length; i++) gapsArt.push((riordini[i] - riordini[i - 1]) / DAY);
+        gapsArt.sort((x, y) => x - y);
+        const mid = gapsArt.length >> 1;
+        const intervallo = gapsArt.length % 2 ? gapsArt[mid] : (gapsArt[mid - 1] + gapsArt[mid]) / 2;
+        const soglia = intervallo + Math.max(PF_REF_MARG, 0.3 * intervallo);
+        const giorni = (t0 - riordini[riordini.length - 1]) / DAY;
+        if (giorni > soglia)
+          perse.push({ art, desc: a.desc, ultimo: a.ultimo, intervallo: Math.round(intervallo),
+                       mensile: a.valTot / riordini.length * 30 / intervallo });
+      }
       // In calo: comprato in entrambi i semestri, ultimo semestre < 60% del precedente
       if (a.val6_12 >= 150 && a.val0_6 > 0 && a.val0_6 < 0.6 * a.val6_12)
         calo.push({ art, desc: a.desc, pct: (a.val0_6 / a.val6_12 - 1) * 100, mensile: (a.val6_12 - a.val0_6) / 6 });
@@ -147,7 +175,7 @@ function _pfAnalisiOrdini(ordini, oggi) {
     perse.sort((a, b) => b.mensile - a.mensile);
     calo.sort((a, b) => b.mensile - a.mensile);
     nuove.sort((a, b) => b.valore - a.valore);
-    const mensilePrec = c.valPrec / 12;
+    const mensilePrec = c.valTot / 15;   // ordini caricati: ultimi 15 mesi
     const persoMensile = perse.reduce((s, p) => s + p.mensile, 0);
 
     res[cod] = {
@@ -277,7 +305,7 @@ function _pfAzioni(clienti, frazione, visite, oggi) {
     if (an?.perse?.length) {
       const tot = an.perse.reduce((s, p) => s + p.mensile, 0);
       if (tot >= 100) {
-        const top = an.perse.slice(0, 3).map(p => `${_pfEsc(p.desc)} (ult. ${fmtDate(p.ultimo)})`).join(', ');
+        const top = an.perse.slice(0, 3).map(p => `${_pfEsc(p.desc)} (ogni ~${_pfRitmo(p.intervallo)}, ult. ${fmtDate(p.ultimo)})`).join(', ');
         out.push({ tipo: 'persa', cod, nome, impatto: tot,
           testo: `Non compra più ${an.perse.length} referenz${an.perse.length === 1 ? 'a' : 'e'} (~€${_pfEur(tot)}/mese): ${top}${an.perse.length > 3 ? '…' : ''}` });
       }
