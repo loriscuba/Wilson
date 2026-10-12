@@ -240,13 +240,55 @@ function _setupFamiglieHtml(p) {
       <div style="margin-bottom:1.5rem">
         <label class="promo-label">Codici articolo aggiuntivi (opzionale, separati da virgola)</label>
         <input type="text" id="psetup-extra-${p.id}" value="${_esc(curExtra)}"
-               placeholder="es. 5044590, 5044591"
+               placeholder="es. 5044590, 5044591" oninput="_renderCodiciStorico(${p.id})"
                style="display:block;margin-top:4px;width:100%;max-width:350px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+        <div id="psetup-codici-${p.id}" class="promo-codici-storico">${_codiciStoricoHtml(p, p.codici_extra || [])}</div>
       </div>
 
       <button class="bc-btn-primary" onclick="_saveSetupFamiglie(${p.id})">Salva e mostra clienti idonei</button>
       <button class="bc-btn-secondary" style="margin-left:8px" onclick="_cancelSetup()">Annulla</button>
     </div>`;
+}
+
+// ── Storico codici della promo ───────────────────────────────────────────────
+// codici_disponibili conserva tutti i codici della promo (anche quelli tolti
+// dalla ricerca): nel setup compaiono come etichette da riattivare con un tocco.
+
+function _parseCodici(str) {
+  return [...new Set(String(str || '').split(',').map(s => s.trim()).filter(Boolean))];
+}
+
+function _codiciStorico(p, attivi) {
+  return [...new Set([...(p.codici_disponibili || []), ...(p.codici_extra || []), ...attivi].filter(Boolean))];
+}
+
+function _codiciStoricoHtml(p, attivi) {
+  const on   = new Set(attivi);
+  const tutti = _codiciStorico(p, attivi);
+  if (!tutti.length) return '';
+  return `<span class="promo-codici-lbl">Codici della promo — tocca per togliere o rimettere nella ricerca:</span>` +
+    tutti.map(c => {
+      const isOn = on.has(c);
+      return `<button type="button" class="promo-cod-toggle${isOn ? ' on' : ''}"
+                title="${isOn ? 'Togli dalla ricerca' : 'Rimetti nella ricerca'}"
+                data-cod="${_esc(c)}" onclick="_toggleCodiceSetup(${p.id}, this.dataset.cod)">${isOn ? '✓ ' : '+ '}${_esc(c)}</button>`;
+    }).join('');
+}
+
+function _renderCodiciStorico(promoId) {
+  const promo = _promoList.find(p => p.id === promoId);
+  const box   = document.getElementById(`psetup-codici-${promoId}`);
+  const input = document.getElementById(`psetup-extra-${promoId}`);
+  if (!promo || !box || !input) return;
+  box.innerHTML = _codiciStoricoHtml(promo, _parseCodici(input.value));
+}
+
+function _toggleCodiceSetup(promoId, codice) {
+  const input = document.getElementById(`psetup-extra-${promoId}`);
+  if (!input) return;
+  const attivi = _parseCodici(input.value);
+  input.value = (attivi.includes(codice) ? attivi.filter(c => c !== codice) : [...attivi, codice]).join(', ');
+  _renderCodiciStorico(promoId);
 }
 
 function _onSetupFamChange(promoId) {
@@ -267,8 +309,9 @@ async function _saveSetupFamiglie(promoId) {
   const promoCur = _promoList.find(p => p.id === promoId);
   // Selezione completa, incluse le sottofamiglie nascoste dal filtro famiglia
   const checked  = promoCur ? [..._setupSel(promoCur)] : [];
-  const extraRaw = document.getElementById(`psetup-extra-${promoId}`)?.value || '';
-  const extra    = extraRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const extra    = _parseCodici(document.getElementById(`psetup-extra-${promoId}`)?.value);
+  // Lo storico non perde mai un codice: i codici tolti dalla ricerca restano riattivabili
+  const disponibili = promoCur ? _codiciStorico(promoCur, extra) : extra;
 
   if (!checked.length && !extra.length) {
     alert('Seleziona almeno una sottofamiglia o inserisci dei codici articolo.');
@@ -277,12 +320,12 @@ async function _saveSetupFamiglie(promoId) {
 
   try {
     const { error } = await sb.from('promozioni')
-      .update({ famiglie: checked, codici_extra: extra })
+      .update({ famiglie: checked, codici_extra: extra, codici_disponibili: disponibili })
       .eq('id', promoId);
     if (error) throw error;
 
     const promo = _promoList.find(p => p.id === promoId);
-    if (promo) { promo.famiglie = checked; promo.codici_extra = extra; }
+    if (promo) { promo.famiglie = checked; promo.codici_extra = extra; promo.codici_disponibili = disponibili; }
 
     _promoSetup    = null;
     _promoSetupSel = null;
@@ -473,6 +516,7 @@ function _promoDettaglioHtml(promo) {
         <span style="font-size:12px;color:var(--text2)">Famiglie:</span>
         ${(promo.famiglie || []).map(f => `<span class="promo-fam-chip">${_esc(f)}</span>`).join('')}
         ${(promo.codici_extra || []).filter(Boolean).map(c => `<span class="promo-cod-chip">art. ${_esc(c)}</span>`).join('')}
+        ${_codiciStorico(promo, []).filter(c => !(promo.codici_extra || []).includes(c)).map(c => `<span class="promo-cod-chip promo-cod-off" title="Tolto dalla ricerca — riattivalo da ✏ Modifica famiglie">art. ${_esc(c)}</span>`).join('')}
         <button class="bc-btn-secondary" style="padding:2px 8px;font-size:11px" onclick="_riapriSetup(${id})">✏ Modifica famiglie</button>
       </div>
 
@@ -1192,6 +1236,8 @@ async function _salvaTutti() {
     settore, divisione, mese, anno, data_inizio, data_fine,
     non_cumulabile: non_cum, attiva: true, pdf_nome,
     famiglie: [], codici_extra,
+    // I codici letti dal PDF restano nello storico anche se poi li togli dalla ricerca
+    codici_disponibili: codici_extra,
   })).filter(p => p.nome);
 
   if (!promos.length) {

@@ -74,6 +74,8 @@ client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 print(f"🚀 Inserimento {len(PROMOS)} promo su Supabase…")
 for p in PROMOS:
+    # Storico codici: parte dai codici della promo, così restano riattivabili nell'app
+    p.setdefault("codici_disponibili", list(p.get("codici_extra") or []))
     try:
         res = client.table("promozioni").upsert(
             p,
