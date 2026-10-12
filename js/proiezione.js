@@ -557,11 +557,16 @@ function _pfRenderAzioni() {
     const vis = _pfState.visite[a.cod] || {};
     // La data si salva solo col pulsante "Salva": su iPad/iPhone il selettore imposta
     // subito la data di oggi e lancia change/blur all'apertura, quindi niente salvataggi automatici
+    // Testo sempre visibile (su iPad un campo data vuoto non mostra nulla): il campo
+    // data è trasparente sopra icona+testo e apre il calendario al tocco
     const agenda = `<div class="pf-agenda${vis.prossima ? ' on' : ''}" title="${vis.prossima ? 'Visita in Agenda' : 'Programma una visita in Agenda'}">
-           <i class="ti ${vis.prossima ? 'ti-calendar-check' : 'ti-calendar-plus'}"></i>
-           <input type="date" value="${vis.prossima || ''}" data-cod="${_pfEsc(a.cod)}" data-saved="${vis.prossima || ''}"
-                  oninput="pfDataCambiata(this)" onchange="pfDataCambiata(this)">
-           <button type="button" class="pf-ag-btn pf-ag-ok" hidden onclick="pfSalvaVisita(this.parentNode.querySelector('input'))">Salva</button>
+           <label class="pf-ag-field">
+             <i class="ti ${vis.prossima ? 'ti-calendar-check' : 'ti-calendar-plus'}"></i>
+             <span class="pf-ag-txt">${vis.prossima ? fmtDate(vis.prossima) : 'Programma visita'}</span>
+             <input type="date" value="${vis.prossima || ''}" data-cod="${_pfEsc(a.cod)}" data-saved="${vis.prossima || ''}"
+                    oninput="pfDataCambiata(this)" onchange="pfDataCambiata(this)">
+           </label>
+           <button type="button" class="pf-ag-btn pf-ag-ok" hidden onclick="pfSalvaVisita(this.closest('.pf-agenda').querySelector('input'))">Salva</button>
            ${vis.prossima ? `<button type="button" class="pf-ag-btn pf-ag-del" title="Togli la visita dall'Agenda" onclick="pfTogliVisita('${_pfEsc(a.cod)}')">×</button>` : ''}
          </div>`;
     return `
@@ -579,7 +584,10 @@ function _pfRenderAzioni() {
 
 // Mostra "Salva" solo se la data scelta è diversa da quella in Agenda
 function pfDataCambiata(el) {
-  const ok = el.parentNode.querySelector('.pf-ag-ok');
+  const box = el.closest('.pf-agenda');
+  const txt = box.querySelector('.pf-ag-txt');
+  if (txt) txt.textContent = el.value ? fmtDate(el.value) : (el.dataset.saved ? fmtDate(el.dataset.saved) : 'Programma visita');
+  const ok = box.querySelector('.pf-ag-ok');
   if (ok) ok.hidden = !el.value || el.value === el.dataset.saved;
 }
 
