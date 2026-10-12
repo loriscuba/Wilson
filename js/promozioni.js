@@ -7,6 +7,7 @@ let _promoQuery       = '';
 let _promoClienti     = {};
 let _promoIdonei      = {};
 let _promoSetup       = null;
+let _promoSetupSel    = null;  // { id, subs: Set } sottofamiglie selezionate nel setup in corso
 let _famiglieLiv2     = [];
 let _promoRigaAperta  = {};  // { promoId: codice_cliente espanso | null }
 let _promoOrdiniCache = {};  // { `${promoId}:${codice}`: [] | 'loading' | 'error:msg' }
@@ -178,7 +179,27 @@ function _rerenderRoot() {
 
 // ── Setup famiglie ─────────────────────────────────────────────────────────────
 
+function _setupSel(p) {
+  if (_promoSetupSel?.id !== p.id) _promoSetupSel = { id: p.id, subs: new Set(p.famiglie || []) };
+  return _promoSetupSel.subs;
+}
+
+function _setupSubCheckHtml(promoId, s, sel) {
+  return `<label class="promo-check-lbl">
+      <input type="checkbox" name="psetup-sub-${promoId}" value="${_esc(s)}"${sel.has(s) ? ' checked' : ''}
+             onchange="_onSetupSubToggle(${promoId}, this)"> ${s}
+     </label>`;
+}
+
+function _onSetupSubToggle(promoId, el) {
+  const promo = _promoList.find(p => p.id === promoId);
+  if (!promo) return;
+  const sel = _setupSel(promo);
+  if (el.checked) sel.add(el.value); else sel.delete(el.value);
+}
+
 function _setupFamiglieHtml(p) {
+  const sel = _setupSel(p);
   const famOptions = _famiglieLiv2.map(f =>
     `<option value="${_esc(f.nome)}">${f.nome}</option>`
   ).join('');
@@ -188,11 +209,7 @@ function _setupFamiglieHtml(p) {
     ? (_famiglieLiv2.find(f => f.nome === selFam)?.subs || [])
     : _famiglieLiv2.flatMap(f => f.subs);
 
-  const subChecks = subs.sort((a, b) => a.localeCompare(b)).map(s =>
-    `<label class="promo-check-lbl">
-      <input type="checkbox" name="psetup-sub-${p.id}" value="${_esc(s)}"> ${s}
-     </label>`
-  ).join('');
+  const subChecks = subs.sort((a, b) => a.localeCompare(b)).map(s => _setupSubCheckHtml(p.id, s, sel)).join('');
 
   const curExtra = (p.codici_extra || []).filter(Boolean).join(', ');
 
@@ -242,15 +259,14 @@ function _onSetupFamChange(promoId) {
 
   const container = document.getElementById(`psetup-subs-${promoId}`);
   if (!container) return;
-  container.innerHTML = subs.sort((a, b) => a.localeCompare(b)).map(s =>
-    `<label class="promo-check-lbl">
-      <input type="checkbox" name="psetup-sub-${promoId}" value="${_esc(s)}"> ${s}
-     </label>`
-  ).join('');
+  const sel = _setupSel(promo);
+  container.innerHTML = subs.sort((a, b) => a.localeCompare(b)).map(s => _setupSubCheckHtml(promoId, s, sel)).join('');
 }
 
 async function _saveSetupFamiglie(promoId) {
-  const checked = [...document.querySelectorAll(`input[name="psetup-sub-${promoId}"]:checked`)].map(c => c.value);
+  const promoCur = _promoList.find(p => p.id === promoId);
+  // Selezione completa, incluse le sottofamiglie nascoste dal filtro famiglia
+  const checked  = promoCur ? [..._setupSel(promoCur)] : [];
   const extraRaw = document.getElementById(`psetup-extra-${promoId}`)?.value || '';
   const extra    = extraRaw.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -268,8 +284,14 @@ async function _saveSetupFamiglie(promoId) {
     const promo = _promoList.find(p => p.id === promoId);
     if (promo) { promo.famiglie = checked; promo.codici_extra = extra; }
 
-    _promoSetup  = null;
-    _promoAperta = promoId;
+    _promoSetup    = null;
+    _promoSetupSel = null;
+    _promoAperta   = promoId;
+    // Codici/famiglie cambiati: invalida i clienti idonei e il dettaglio ordini già calcolati
+    delete _promoIdonei[promoId];
+    for (const k of Object.keys(_promoOrdiniCache))
+      if (k.startsWith(`${promoId}:`)) delete _promoOrdiniCache[k];
+    _promoRigaAperta[promoId] = null;
     await _loadPromoClienti(promoId);
     await _loadPromoIdonei(_promoList.find(p => p.id === promoId));
     _rerenderRoot();
@@ -279,7 +301,8 @@ async function _saveSetupFamiglie(promoId) {
 }
 
 function _cancelSetup() {
-  _promoSetup = null;
+  _promoSetup    = null;
+  _promoSetupSel = null;
   _rerenderRoot();
 }
 
@@ -628,7 +651,8 @@ function _updatePromoTbody(promoId, promo) {
 }
 
 function _riapriSetup(promoId) {
-  _promoAperta = null;
+  _promoAperta   = null;
+  _promoSetupSel = null;
   _promoSetup  = promoId;
   _rerenderRoot();
 }
