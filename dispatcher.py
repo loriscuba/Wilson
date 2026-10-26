@@ -11,6 +11,7 @@ Uso su file singolo:
 Il dispatcher riconosce automaticamente il tipo di file dal nome:
   Conferma_Ordine_*.PDF       → parse_ordine.py
   Consegna_*_-_Bolla_*.PDF   → parse_ddt.py
+  DN_<consegna>_<data>.pdf   → parse_ddt.py
   XXXXXXXXXX.txt              → parse_tracking.py (numero = consegna DDT)
   *rolling_consuntivo*.xlsx   → parse_rolling.py
   *Monitoraggio_cedi*.xlsx    → parse_cedi.py
@@ -52,6 +53,8 @@ def tipo_file(filename):
         if nome_norm.startswith('conferma_ordine_'):
             return 'ordine'
         if nome_norm.startswith('consegna_') and 'bolla' in nome_norm:
+            return 'ddt'
+        if re.match(r'dn_\d+_\d{8}\.pdf$', nome_norm):
             return 'ddt'
         if nome_norm.startswith('avanzamento_fatturati'):
             return 'avanzamento'
