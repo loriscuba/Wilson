@@ -22,6 +22,7 @@ Dipendenze:
 import os
 import re
 import glob
+import json
 import argparse
 from supabase import create_client
 
@@ -44,6 +45,9 @@ def tipo_file(filename):
     Valori: 'ordine' | 'ddt' | 'tracking' | 'rolling' | 'cedi' | 'sconosciuto'
     """
     nome = os.path.basename(filename).lower()
+    # Prefisso data/ora aggiunto dalla macro Outlook "ScaricaOrdini":
+    # "20261104_091916_1_Conferma Ordine 0222009397.PDF" → "conferma ordine 0222009397.pdf"
+    nome = re.sub(r'^\d{8}_\d{6}_(\d+_)?', '', nome)
     nome_norm = re.sub(r'\s+', '_', nome)  # "Conferma Ordine" → "conferma_ordine"
     ext  = os.path.splitext(nome)[1]
 
@@ -63,7 +67,7 @@ def tipo_file(filename):
 
     # TXT: nome = solo cifre (numero consegna)
     if ext == '.txt':
-        base = os.path.splitext(os.path.basename(filename))[0]
+        base = os.path.splitext(nome)[0]
         if base.isdigit() and len(base) == 10:
             return 'tracking'
         return 'sconosciuto'
@@ -249,10 +253,13 @@ def main():
 
     # Processa
     ok = errori = skip = 0
+    ignorati = []
     for f in files_ordinati:
         t = tipo_file(f)
         if t == 'sconosciuto':
             skip += 1
+            ignorati.append(os.path.basename(f))
+            print(f"  ⏭️  Non riconosciuto, resta in Inbox: {os.path.basename(f)}")
             continue
         result = dispatch(f, client)
         if result:
@@ -262,6 +269,11 @@ def main():
 
     print(f"\n{'='*55}")
     print(f"✅ OK: {ok} | ❌ Errori: {errori} | ⏭️  Skip: {skip}")
+
+    # Il workflow non sposta in processed/ i file non riconosciuti,
+    # così restano visibili in Inbox invece di sparire in silenzio.
+    with open("file_ignorati.json", "w") as fh:
+        json.dump(ignorati, fh)
 
 
 if __name__ == "__main__":

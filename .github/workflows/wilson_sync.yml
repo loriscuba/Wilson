@@ -170,6 +170,16 @@ jobs:
               print("Lista file vuota.")
               exit(0)
 
+          # I file che il dispatcher non ha riconosciuto restano in Inbox
+          ignorati = set()
+          if os.path.exists('file_ignorati.json'):
+              with open('file_ignorati.json') as f:
+                  ignorati = set(json.load(f))
+          for _, nome in files:
+              if nome in ignorati:
+                  print(f"  ⏭️  Lasciato in Inbox (non riconosciuto): {nome}")
+          files = [(fid, nome) for fid, nome in files if nome not in ignorati]
+
           # Autenticazione
           sa_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'])
           creds = service_account.Credentials.from_service_account_info(
@@ -209,5 +219,5 @@ jobs:
         if: always()
         run: |
           rm -rf allegati/
-          rm -f drive_files_to_delete.json
+          rm -f drive_files_to_delete.json file_ignorati.json
           echo "Pulizia locale completata."
