@@ -673,6 +673,8 @@ function _renderClienti(root) {
       <div class="bc-kpi"><div class="bc-kpi-label">ordinato mese</div><div class="bc-kpi-val ${_cls(dMese)}">${_eur(totOrd)}</div><div class="bc-kpi-sub ${_cls(dMese)}">${_pct(dMese)} vs anno prec</div></div>
       <div class="bc-kpi bc-kpi-neg"><div class="bc-kpi-label">gap da recuperare</div><div class="bc-kpi-val neg">–${_eur(totGap)}</div></div>
       <div class="bc-kpi"><div class="bc-kpi-label">progressivo 2026</div><div class="bc-kpi-val">${_eur(totP26)}</div><div class="bc-kpi-sub ${_cls(dProg)}">${_pct(dProg)} vs 2025</div></div>
+      <div class="bc-kpi"><div class="bc-kpi-label" id="bc-kpi-gaptot-lbl">totale GAP</div><div class="bc-kpi-val" id="bc-kpi-gaptot">—</div><div class="bc-kpi-sub" id="bc-kpi-gaptot-sub"></div></div>
+      <div class="bc-kpi"><div class="bc-kpi-label" id="bc-kpi-cum-lbl">cumulativo</div><div class="bc-kpi-val" id="bc-kpi-cum">—</div><div class="bc-kpi-sub" id="bc-kpi-cum-sub"></div></div>
     </div>
     <div class="bc-chips" id="bc-chips">${chipHtml}</div>
     <div class="bc-toolbar">
@@ -734,6 +736,8 @@ function _renderBcRows() {
     if (col === 'priority' && va === vb) return b.gap - a.gap;
     return dir * (va - vb);
   });
+
+  _updateBcKpiTotali(visible);
 
   if (!visible.length) {
     tbody.innerHTML = `<tr><td colspan="11" style="padding:1.5rem;text-align:center;color:var(--text2)">Nessun cliente trovato</td></tr>`;
@@ -839,6 +843,48 @@ function _renderBcRows() {
 
     return rowHtml;
   }).join('');
+}
+
+// Riquadri "totale GAP" e "cumulativo": seguono le righe visibili (filtro stato + ricerca),
+// così il cumulativo coincide con l'ultima cella della colonna CUMULATIVO in tabella.
+// Il GAP usa lo stesso valore effettivo della tabella: quello scritto a mano se presente,
+// altrimenti quello calcolato; i clienti esclusi (occhio barrato) valgono 0.
+function _updateBcKpiTotali(visible) {
+  const elGap = document.getElementById('bc-kpi-gaptot');
+  const elCum = document.getElementById('bc-kpi-cum');
+  if (!elGap || !elCum) return;
+
+  let totGap = 0, nInclusi = 0, nManuali = 0;
+  for (const r of visible) {
+    if (r._esclusoManuale) continue;
+    nInclusi++;
+    if (r._gapPersonalizzato !== null) nManuali++;
+    totGap += r._gapPersonalizzato !== null ? r._gapPersonalizzato : r.gap;
+  }
+  const budgetMese = _plCache?.budgetMese || 0;
+  const cum        = (_plCache?.baseTotale || 0) + totGap;
+  const filtrato   = !!(_bcFilter || _bcQuery);
+  const suffisso   = filtrato ? ' <span style="opacity:.7">(filtro)</span>' : '';
+
+  document.getElementById('bc-kpi-gaptot-lbl').innerHTML = 'totale GAP' + suffisso;
+  document.getElementById('bc-kpi-cum-lbl').innerHTML    = 'cumulativo' + suffisso;
+
+  elGap.textContent = _eur(totGap);
+  document.getElementById('bc-kpi-gaptot-sub').textContent =
+    `${nInclusi} clienti` + (nManuali ? ` · ${nManuali} a mano` : '');
+
+  elCum.textContent = _eur(cum);
+  elCum.style.color = budgetMese > 0
+    ? (cum >= budgetMese ? '#2D7D4F' : cum >= budgetMese * 0.85 ? '#D97706' : '')
+    : '';
+  const subCum = document.getElementById('bc-kpi-cum-sub');
+  if (budgetMese > 0) {
+    const diff = cum - budgetMese;
+    subCum.textContent = diff >= 0 ? `+${_eur(diff)} sopra budget` : `–${_eur(-diff)} al budget`;
+    subCum.style.color = diff >= 0 ? '#2D7D4F' : '#C84B2F';
+  } else {
+    subCum.textContent = '';
+  }
 }
 
 // ── Event handlers clienti ────────────────────────────────────────────────────
