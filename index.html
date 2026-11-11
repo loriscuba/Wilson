@@ -754,12 +754,14 @@
         .pl-stats   { display:flex; flex-wrap:wrap; gap:10px; align-items:center;
                       font-size:13px; margin-bottom:8px; }
         .pl-stats-sep { color:var(--border); }
+        /* La % sta a destra della barra, sulla stessa riga: prima era sopra la parte
+           riempita (top:-18px) e finiva sopra il testo "da recuperare". */
         .pl-bar-bg  { height:8px; background:var(--border); border-radius:4px; overflow:visible;
-                      position:relative; }
-        .pl-bar-fill{ height:100%; background:#378ADD; border-radius:4px; transition:width .5s;
-                      position:relative; }
-        .pl-bar-pct { position:absolute; right:0; top:-18px; font-size:11px; font-weight:700;
-                      color:#378ADD; }
+                      position:relative; margin-right:52px; }
+        .pl-bar-fill{ height:100%; background:#378ADD; border-radius:4px; transition:width .5s; }
+        .pl-bar-pct { position:absolute; left:100%; top:50%; transform:translateY(-50%);
+                      margin-left:8px; font-size:11px; font-weight:700; line-height:1;
+                      white-space:nowrap; color:#378ADD; }
         .pl-body    { overflow-y:auto; flex:1; min-width:0; }
         .pl-art-btn { background:none; border:none; cursor:pointer; font-size:13px;
                       padding:2px 5px; border-radius:4px; color:var(--text2); line-height:1; }
