@@ -107,11 +107,19 @@ function agendaCampoHtml(codice, data, opts = {}) {
     <label class="pf-ag-field">
       <i class="ti ${d ? 'ti-calendar-check' : 'ti-calendar-plus'}"></i>
       <span class="pf-ag-txt">${d ? fmtDate(d) : 'Programma visita'}</span>
-      <input type="date" value="${d}" data-saved="${d}" oninput="agCampoCambiato(this)" onchange="agCampoCambiato(this)">
+      <input type="date" value="${d}" data-saved="${d}" onclick="agApriCalendario(this)" oninput="agCampoCambiato(this)" onchange="agCampoCambiato(this)">
     </label>
     <button type="button" class="pf-ag-btn pf-ag-ok" hidden onclick="agCampoSalva(this)">Salva</button>
     ${d ? `<button type="button" class="pf-ag-btn pf-ag-del" title="Togli la visita dall'Agenda" onclick="agCampoTogli(this)">×</button>` : ''}
   </div>`;
+}
+
+// Su PC (Chrome/Edge/Firefox) cliccando sul campo data il calendario si apre solo
+// sull'iconcina a destra, che qui è invisibile: lo apriamo noi al clic.
+// Solo con mouse/trackpad: su iPad/iPhone il tocco lo apre già da sé.
+function agApriCalendario(el) {
+  if (!window.matchMedia?.('(pointer: fine)').matches || typeof el.showPicker !== 'function') return;
+  try { el.showPicker(); } catch { /* browser senza supporto: resta il comportamento normale */ }
 }
 
 // Mostra "Salva" solo se la data scelta è diversa da quella in Agenda
