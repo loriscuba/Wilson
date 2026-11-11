@@ -391,7 +391,7 @@ async function _pfCalcola(rollingDate) {
     const x = visite[cod] || (visite[cod] = {});
     if (v.data_visita <= todayStr && (v.completata || v.data_visita < todayStr)) {
       if (!x.ultima || v.data_visita > x.ultima) x.ultima = v.data_visita;
-    } else if (v.data_visita >= todayStr) {
+    } else if (v.data_visita >= todayStr && !v.completata) {
       if (!x.prossima || v.data_visita < x.prossima) { x.prossima = v.data_visita; x.prossimaId = v.id; }
     }
   }
@@ -421,6 +421,7 @@ async function loadProiezione() {
   try {
     const state = await calcolaProiezione();
     if (!state) { root.innerHTML = '<div class="loading">Nessun dato rolling disponibile</div>'; return; }
+    try { await _pfAggiornaProssime(state); } catch (e) { console.warn('Agenda non riletta:', e); }
     _pfState = state;
     _pfRender();
   } catch (err) {
@@ -583,20 +584,7 @@ function _pfRenderAzioni() {
   el.innerHTML = list.map(a => {
     const t   = PF_AZIONI[a.tipo];
     const vis = _pfState.visite[a.cod] || {};
-    // La data si salva solo col pulsante "Salva": su iPad/iPhone il selettore imposta
-    // subito la data di oggi e lancia change/blur all'apertura, quindi niente salvataggi automatici
-    // Testo sempre visibile (su iPad un campo data vuoto non mostra nulla): il campo
-    // data è trasparente sopra icona+testo e apre il calendario al tocco
-    const agenda = `<div class="pf-agenda${vis.prossima ? ' on' : ''}" title="${vis.prossima ? 'Visita in Agenda' : 'Programma una visita in Agenda'}">
-           <label class="pf-ag-field">
-             <i class="ti ${vis.prossima ? 'ti-calendar-check' : 'ti-calendar-plus'}"></i>
-             <span class="pf-ag-txt">${vis.prossima ? fmtDate(vis.prossima) : 'Programma visita'}</span>
-             <input type="date" value="${vis.prossima || ''}" data-cod="${_pfEsc(a.cod)}" data-saved="${vis.prossima || ''}"
-                    oninput="pfDataCambiata(this)" onchange="pfDataCambiata(this)">
-           </label>
-           <button type="button" class="pf-ag-btn pf-ag-ok" hidden onclick="pfSalvaVisita(this.closest('.pf-agenda').querySelector('input'))">Salva</button>
-           ${vis.prossima ? `<button type="button" class="pf-ag-btn pf-ag-del" title="Togli la visita dall'Agenda" onclick="pfTogliVisita('${_pfEsc(a.cod)}')">×</button>` : ''}
-         </div>`;
+    const agenda = agendaCampoHtml(a.cod, vis.prossima);
     return `
       <div class="pf-az">
         <span class="badge ${t.cls} pf-az-tipo"><i class="ti ${t.icon}"></i> ${t.label}</span>
@@ -610,48 +598,22 @@ function _pfRenderAzioni() {
   }).join('');
 }
 
-// Mostra "Salva" solo se la data scelta è diversa da quella in Agenda
-function pfDataCambiata(el) {
-  const box = el.closest('.pf-agenda');
-  const txt = box.querySelector('.pf-ag-txt');
-  if (txt) txt.textContent = el.value ? fmtDate(el.value) : (el.dataset.saved ? fmtDate(el.dataset.saved) : 'Programma visita');
-  const ok = box.querySelector('.pf-ag-ok');
-  if (ok) ok.hidden = !el.value || el.value === el.dataset.saved;
-}
+// Data visita cambiata da qui o da Pipeline clienti: allinea lo stato (anche quello in cache)
+window.addEventListener('agenda:prossima', ({ detail }) => {
+  if (!_pfState?.visite) return;
+  const vis = _pfState.visite[detail.codice] || (_pfState.visite[detail.codice] = {});
+  vis.prossima = detail.data; vis.prossimaId = detail.id;
+});
 
-async function pfTogliVisita(codice) {
-  if (!confirm('Togliere la visita dall\'Agenda?')) return;
-  await pfSalvaVisita({ dataset: { cod: codice }, value: '' });
-}
-
-// Crea, sposta o toglie la prossima visita in Agenda per il cliente
-async function pfSalvaVisita(el) {
-  const codice = el.dataset.cod;
-  const data   = el.value || '';
-  const vis    = _pfState.visite[codice] || (_pfState.visite[codice] = {});
-  if (data === (vis.prossima || '')) return;
-  try {
-    if (!data) {
-      if (vis.prossimaId) {
-        const { error } = await sb.from('agenda_visite').delete().eq('id', vis.prossimaId);
-        if (error) throw error;
-      }
-      vis.prossima = null; vis.prossimaId = null;
-    } else if (vis.prossimaId) {
-      const { error } = await sb.from('agenda_visite').update({ data_visita: data }).eq('id', vis.prossimaId);
-      if (error) throw error;
-      vis.prossima = data;
-    } else {
-      const { data: row, error } = await sb.from('agenda_visite')
-        .insert({ codice_cliente: codice, data_visita: data, completata: false, generata_auto: false })
-        .select('id').single();
-      if (error) throw error;
-      vis.prossima = data; vis.prossimaId = row?.id || null;
-    }
-  } catch (e) {
-    alert('Errore salvataggio agenda: ' + e.message);
+// La proiezione è in cache per tutta la sessione: le date in Agenda si rileggono
+// a ogni apertura, perché possono essere cambiate da Pipeline clienti o dall'Agenda
+async function _pfAggiornaProssime(state) {
+  const pross = await agendaProssimeVisite();
+  for (const vis of Object.values(state.visite)) { vis.prossima = null; vis.prossimaId = null; }
+  for (const [cod, v] of Object.entries(pross)) {
+    const vis = state.visite[cod] || (state.visite[cod] = {});
+    vis.prossima = v.data; vis.prossimaId = v.id;
   }
-  _pfRenderAzioni();
 }
 
 function _pfRenderTabella() {
