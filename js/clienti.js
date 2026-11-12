@@ -206,6 +206,8 @@ async function loadClienteDetail(codice, nome, container) {
           .order('settore').order('ordine'),
       ]);
 
+    const incentivoHTML = await _buildIncentivoQuadrimestrale(codice);
+
     const r       = enrichRecord(rollingRec || {});
     const meseSped = r.spedito_ordinato_mese || 0;
     const mesePrec = r.fatt_mese_anno_prec   || 0;
@@ -287,6 +289,7 @@ async function loadClienteDetail(codice, nome, container) {
           <div class="cks">${nOrdini > 0 ? '€' + fmt(valOrdini) + ' in corso' : 'Nessun ordine attivo'}</div>
         </div>
       </div>
+      ${incentivoHTML}
       <div class="gamma-section" style="margin-bottom:18px;">
         <h4>Ritmo ordini (Wilson)</h4>
         ${ritmoHTML}
@@ -306,6 +309,86 @@ async function loadClienteDetail(codice, nome, container) {
   } catch (err) {
     container.innerHTML = `<div class="loading" style="padding:12px 0">Errore: ${err.message}</div>`;
   }
+}
+
+// ── Incentivo quadrimestrale ────────────────────────────────────────────────
+// Legge v_incentivi_quadrimestrali (migration 010). Se il cliente non ha un
+// accordo configurato, o la view non esiste ancora, non mostra nulla.
+async function _buildIncentivoQuadrimestrale(codice) {
+  let righe = [], scaglioni = [];
+  try {
+    const [v, s] = await Promise.all([
+      sb.from('v_incentivi_quadrimestrali').select('*').eq('codice_cliente', codice).order('quadrimestre'),
+      sb.from('incentivi_scaglioni').select('soglia, aliquota_pct').eq('codice_cliente', codice).eq('anno', 2026).order('soglia'),
+    ]);
+    if (v.error || s.error) return '';
+    righe = v.data || []; scaglioni = s.data || [];
+  } catch { return ''; }
+  if (!righe.length || !scaglioni.length) return '';
+
+  const maxSoglia = Number(scaglioni[scaglioni.length - 1].soglia);
+  const scala     = maxSoglia * 1.1;
+  const pct       = v => Math.max(0, Math.min(100, (Number(v) || 0) / scala * 100));
+  const aliq      = a => Number(a).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + '%';
+  const statoLbl  = { chiuso: 'Chiuso', in_corso: 'In corso', futuro: 'Da iniziare' };
+  const statoCls  = { chiuso: 'badge-green', in_corso: 'badge-orange', futuro: '' };
+
+  const tacche = scaglioni.map(sc => `
+    <div title="€${fmt(sc.soglia)} → ${aliq(sc.aliquota_pct)}"
+         style="position:absolute;left:${pct(sc.soglia)}%;top:-3px;bottom:-3px;width:2px;background:var(--text2);opacity:.6;"></div>`).join('');
+
+  const card = q => {
+    const cons = Number(q.netto_consolidato) || 0;
+    const ord  = Number(q.netto_con_ordinato) || 0;
+    const raggiunto = q.soglia_raggiunta != null;
+    const coloreBarra = raggiunto ? 'var(--green)' : 'var(--accent)';
+    let riga1, riga2 = '';
+    if (q.stato === 'futuro') {
+      riga1 = `Obiettivo minimo €${fmt(q.soglia_minima)}`;
+    } else {
+      riga1 = raggiunto
+        ? `Scaglione ${aliq(q.aliquota_raggiunta)} · premio <strong>€${fmt(q.premio_maturato)}</strong>`
+        : `Nessuno scaglione raggiunto`;
+      riga2 = q.prossima_soglia != null
+        ? `Mancano <strong>€${fmt(q.mancante_prossima)}</strong> per ${aliq(q.prossima_aliquota)} (soglia €${fmt(q.prossima_soglia)})`
+        : `Scaglione massimo raggiunto`;
+    }
+    const extraOrd = q.stato === 'in_corso' && ord > cons
+      ? `<div class="cks">Con ordinato del mese: €${fmt(ord)}${q.soglia_con_ordinato != null ? ` → ${aliq(q.aliquota_con_ordinato)}, premio €${fmt(q.premio_con_ordinato)}` : ''}</div>`
+      : '';
+    const rett = Number(q.rettifiche) ? `<div class="cks">Escluse commesse Fischer: −€${fmt(q.rettifiche)}</div>` : '';
+    return `
+      <div class="cliente-kpi-card"${q.stato === 'futuro' ? ' style="opacity:.6"' : ''}>
+        <h4 style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+          <span>${q.periodo}</span>
+          <span class="badge ${statoCls[q.stato] || ''}" style="font-size:11px;">${statoLbl[q.stato] || q.stato}</span>
+        </h4>
+        <div class="ckv">€${fmt(cons)}</div>
+        <div style="position:relative;height:8px;border-radius:4px;background:var(--border);margin:8px 0 10px;">
+          ${q.stato === 'in_corso' && ord > cons ? `<div style="position:absolute;left:0;top:0;bottom:0;width:${pct(ord)}%;border-radius:4px;background:${coloreBarra};opacity:.3;"></div>` : ''}
+          <div style="position:absolute;left:0;top:0;bottom:0;width:${pct(cons)}%;border-radius:4px;background:${coloreBarra};"></div>
+          ${tacche}
+        </div>
+        <div class="cks">${riga1}</div>
+        ${riga2 ? `<div class="cks">${riga2}</div>` : ''}
+        ${extraOrd}${rett}
+      </div>`;
+  };
+
+  const legenda = scaglioni.map(sc => `€${fmt(sc.soglia)} → ${aliq(sc.aliquota_pct)}`).join(' · ');
+  const totPremio = righe.reduce((s, q) => s + (Number(q.premio_maturato) || 0), 0);
+
+  return `
+      <div class="gamma-section" style="margin-bottom:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          <h4 style="margin-bottom:0">Incentivo quadrimestrale 2026</h4>
+          <span class="cks">Premio maturato nell'anno: <strong>€${fmt(totPremio)}</strong> · rolling del ${fmtDate(righe[0].data_rolling)}</span>
+        </div>
+        <div class="cliente-kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+          ${righe.map(card).join('')}
+        </div>
+        <div class="cks" style="margin-top:6px;">Scaglioni: ${legenda}</div>
+      </div>`;
 }
 
 function buildRitmoHTML(ritmo) {
