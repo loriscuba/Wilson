@@ -81,7 +81,7 @@ function swBudget(tab, btn) {
 }
 
 async function loadBudget() {
-  await Promise.all([loadBudgetMensile(), loadBudgetClienti(), loadBudgetPremio()]);
+  await Promise.all([loadBudgetMensile(), loadBudgetClienti(), loadBudgetPremio(), loadBudgetRaggiunto()]);
 }
 
 // ── Helpers formatters ────────────────────────────────────────────────────────
@@ -347,6 +347,108 @@ async function loadBudgetPremio() {
     document.getElementById('bpane-premio').innerHTML =
       `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
   }
+}
+
+// ── TAB BUDGET RAGGIUNTO ──────────────────────────────────────────────────────
+// Legge v_budget_mensile_raggiunto (migration 011): budget mensile 2026 dal file
+// Fischer "Bdgt_mensilizzato" e fatturato dall'ultimo Rolling importato.
+//   mesi chiusi → GTO del mese · mese in corso → consegnato (+ ordinato a parte)
+
+const _brClr = p => p == null ? 'var(--text2)' : p >= 100 ? '#2D7D4F' : p >= 80 ? '#378ADD' : '#C84B2F';
+const _brPct = p => p == null ? '—' : Number(p).toFixed(1).replace('.', ',') + '%';
+const _brCell = p => p == null ? '—'
+  : `<span class="br-bar"><i style="width:${Math.min(100, p).toFixed(0)}%;background:${_brClr(p)}"></i></span>`
+  + `<span class="br-pct" style="color:${_brClr(p)}">${_brPct(p)}</span>`;
+const _brDelta = d => d == null ? '—'
+  : `<span class="${_cls(d)}">${d >= 0 ? '+' : '−'}${_eur(Math.abs(d))}</span>`;
+
+async function loadBudgetRaggiunto() {
+  const root = document.getElementById('bpane-raggiunto');
+  if (!root) return;
+  try {
+    const { data, error } = await sb.from('v_budget_mensile_raggiunto')
+      .select('*').eq('anno', 2026).order('mese');
+    if (error) throw error;
+    if (!data || !data.length) {
+      root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun budget mensile caricato.<br>Esegui la migration 011 su Supabase.</p>';
+      return;
+    }
+    _renderBudgetRaggiunto(root, data);
+  } catch (err) {
+    root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
+  }
+}
+
+function _renderBudgetRaggiunto(root, rows) {
+  const sum = (arr, k) => arr.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const pct = (v, b) => b > 0 ? v / b * 100 : null;
+
+  const dataRolling = rows.find(r => r.data_rolling)?.data_rolling;
+  const chiusi   = rows.filter(r => r.stato === 'chiuso');
+  const inCorso  = rows.find(r => r.stato === 'in_corso');
+  const conDati  = rows.filter(r => r.stato !== 'futuro');
+
+  const budgetAnno   = sum(rows, 'budget_eur');
+  const budgetChiusi = sum(chiusi, 'budget_eur');
+  const fattChiusi   = sum(chiusi, 'fatturato');
+  const fattAnno     = sum(conDati, 'fatturato');
+  const fattAnnoOrd  = sum(conDati, 'fatturato_con_ordinato');
+
+  const kpiChiusi = chiusi.length
+    ? `<div class="b-kcard"><p class="b-klabel">mesi chiusi (${chiusi[0].nome_mese.slice(0,3).toLowerCase()}–${chiusi[chiusi.length-1].nome_mese.slice(0,3).toLowerCase()})</p>
+         <p class="b-kval" style="color:${_brClr(pct(fattChiusi, budgetChiusi))}">${_brPct(pct(fattChiusi, budgetChiusi))}</p>
+         <p class="b-ksub ${_cls(fattChiusi - budgetChiusi)}">${_brDelta(fattChiusi - budgetChiusi)} su ${_eur(budgetChiusi)}</p></div>`
+    : `<div class="b-kcard"><p class="b-klabel">mesi chiusi</p><p class="b-kval">—</p></div>`;
+
+  const kpiCorso = inCorso
+    ? `<div class="b-kcard"><p class="b-klabel">${inCorso.nome_mese.toLowerCase()} (in corso)</p>
+         <p class="b-kval" style="color:${_brClr(inCorso.pct_raggiunto)}">${_brPct(inCorso.pct_raggiunto)}</p>
+         <p class="b-ksub" style="color:var(--text2)">con ordinato: ${_brPct(inCorso.pct_con_ordinato)}</p></div>`
+    : `<div class="b-kcard"><p class="b-klabel">mese in corso</p><p class="b-kval">—</p></div>`;
+
+  const body = rows.map(r => {
+    const futuro = r.stato === 'futuro';
+    const corso  = r.stato === 'in_corso';
+    const fatt = futuro ? '—'
+      : _eur(r.fatturato) + (corso
+          ? `<span class="br-sub">con ordinato ${_eur(r.fatturato_con_ordinato)}</span>` : '');
+    const pctHtml = futuro ? '—'
+      : _brCell(r.pct_raggiunto) + (corso
+          ? `<span class="br-sub">con ordinato ${_brPct(r.pct_con_ordinato)}</span>` : '');
+    return `<tr class="${futuro ? 'br-futuro' : corso ? 'br-corso' : ''}">
+      <td>${r.nome_mese}${corso ? ' <span class="br-sub" style="display:inline">· in corso</span>' : ''}</td>
+      <td>${_eur(r.budget_eur)}</td>
+      <td>${fatt}</td>
+      <td style="white-space:nowrap">${pctHtml}</td>
+      <td class="br-col-delta">${futuro ? '—' : _brDelta(r.delta_eur)}</td>
+    </tr>`;
+  }).join('');
+
+  root.innerHTML = `
+    <p class="b-sec">budget 2026 per mese · rolling ${dataRolling ? 'al ' + fmtDate(dataRolling) : 'non disponibile'}</p>
+    <div class="b-g4">
+      <div class="b-kcard"><p class="b-klabel">budget anno</p><p class="b-kval">${_eur(budgetAnno)}</p></div>
+      <div class="b-kcard"><p class="b-klabel">fatturato da inizio anno</p><p class="b-kval">${_eur(fattAnno)}</p>
+        <p class="b-ksub" style="color:var(--text2)">${_brPct(pct(fattAnno, budgetAnno))} del budget anno</p></div>
+      ${kpiChiusi}
+      ${kpiCorso}
+    </div>
+    <div class="b-panel" style="overflow-x:auto">
+      <table class="pr-ftbl br-tbl">
+        <thead><tr>
+          <th>Mese</th><th>Budget</th><th>Fatturato</th><th>% raggiunto</th><th class="br-col-delta">Delta</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+        <tfoot><tr>
+          <td>Totale anno</td>
+          <td>${_eur(budgetAnno)}</td>
+          <td>${_eur(fattAnno)}${inCorso ? `<span class="br-sub">con ordinato ${_eur(fattAnnoOrd)}</span>` : ''}</td>
+          <td style="white-space:nowrap">${_brCell(pct(fattAnno, budgetAnno))}</td>
+          <td class="br-col-delta">${_brDelta(fattAnno - budgetAnno)}</td>
+        </tr></tfoot>
+      </table>
+      <p class="b-hint"><span>Mesi chiusi: GTO del Rolling · mese in corso: consegnato (in piccolo con l'ordinato)</span></p>
+    </div>`;
 }
 
 // ── TAB MENSILE ───────────────────────────────────────────────────────────────
