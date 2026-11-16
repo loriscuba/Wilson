@@ -506,8 +506,8 @@
         .gap-row-btn:hover { text-decoration:underline; }
 
         /* ── Budget page ── */
-        .budget-tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
-        .budget-tab  { font-size:13px; padding:8px 18px; cursor:pointer; color:var(--text2);
+        .budget-tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:1.25rem; overflow-x:auto; scrollbar-width:none; }
+        .budget-tab  { font-size:13px; padding:8px 18px; cursor:pointer; color:var(--text2); white-space:nowrap; flex-shrink:0;
                        border-bottom:2px solid transparent; margin-bottom:-1px;
                        background:none; border-top:none; border-left:none; border-right:none;
                        font-family:'DM Sans',sans-serif; }
@@ -908,6 +908,16 @@
         .pr-ftbl td   { padding:6px 8px 6px 0; border-bottom:1px solid var(--border); color:var(--text); }
         .pr-ftbl td:not(:first-child) { text-align:right; }
         .pr-ftbl tr:last-child td { border-bottom:none; }
+        /* ── Budget raggiunto per mese ── */
+        .br-tbl td { vertical-align:middle; }
+        .br-tbl tr.br-futuro td { color:var(--text2); }
+        .br-tbl tr.br-corso td { background:rgba(55,138,221,.06); }
+        .br-tbl tfoot td { font-weight:700; border-top:2px solid var(--border); border-bottom:none; padding-top:8px; }
+        .br-sub { display:block; font-size:10px; color:var(--text2); font-weight:400; }
+        .br-pct { font-weight:700; }
+        .br-bar { display:inline-block; width:60px; height:5px; background:var(--border); border-radius:3px; overflow:hidden; vertical-align:middle; margin-right:6px; }
+        .br-bar > i { display:block; height:100%; border-radius:3px; }
+        @media(max-width:600px) { .br-bar, .br-col-delta { display:none; } }
         .pr-active td { font-weight:600; background:#edf7ed; }
 
         @media (max-width: 768px) {
@@ -1827,6 +1837,7 @@
                 <button class="budget-tab on" onclick="swBudget('mensile',this)">budget mensile</button>
                 <button class="budget-tab" onclick="swBudget('clienti',this)">pipeline clienti</button>
                 <button class="budget-tab" onclick="swBudget('premio',this)">premio</button>
+                <button class="budget-tab" onclick="swBudget('raggiunto',this)">budget raggiunto</button>
             </div>
             <div id="bpane-mensile" class="budget-pane on">
                 <div class="loading">Caricamento…</div>
@@ -1835,6 +1846,9 @@
                 <div class="loading">Caricamento…</div>
             </div>
             <div id="bpane-premio" class="budget-pane">
+                <div class="loading">Caricamento…</div>
+            </div>
+            <div id="bpane-raggiunto" class="budget-pane">
                 <div class="loading">Caricamento…</div>
             </div>
         </div>
@@ -2069,7 +2083,7 @@
     <script src="js/ddt.js?v=15"></script>
     <script src="js/fatturato.js?v=12"></script>
     <script src="js/agenda_prossima.js?v=2"></script>
-    <script src="js/budget.js?v=11"></script>
+    <script src="js/budget.js?v=12"></script>
     <script src="js/proiezione.js?v=8"></script>
     <script src="js/impostazioni.js?v=6"></script>
     <script src="js/agenda.js?v=1"></script>
