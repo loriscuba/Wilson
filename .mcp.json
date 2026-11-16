@@ -4,7 +4,7 @@
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=btcnfxoqkddpfhzahhaz&features=database,docs,debugging,development,functions",
       "headers": {
-        "Authorization": "Bearer ${SUPABASE_ACCESS_TOKEN}"
+        "Authorization": "Bearer ${SUPABASE_ACCESS_TOKEN_2}"
       }
     }
   }
