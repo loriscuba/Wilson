@@ -373,6 +373,32 @@ async function loadBudgetRaggiunto() {
       root.innerHTML = '<p style="color:var(--text2);padding:1rem">Nessun budget mensile caricato.<br>Esegui la migration 011 su Supabase.</p>';
       return;
     }
+    // CEDI del mese in corso: come dashboard e budget mensile, si prende
+    // l'ultimo import CEDI del mese e lo si somma al fatturato del mese.
+    const corso = data.find(r => r.stato === 'in_corso');
+    if (corso) {
+      const startMese = _ymdLocal(new Date(corso.anno, corso.mese - 1, 1));
+      const endMese   = _ymdLocal(new Date(corso.anno, corso.mese, 0));
+      const { data: cediRaw, error: cErr } = await sb.from('cedi_ridistribuito')
+        .select('valore_ridistribuito, data_aggiornamento')
+        .gte('data_aggiornamento', startMese).lte('data_aggiornamento', endMese)
+        .order('data_aggiornamento', { ascending: false })
+        .limit(500);
+      if (cErr) console.warn('Errore caricamento CEDI:', cErr);
+      const cediArr  = cediRaw || [];
+      const cediDate = cediArr.length ? cediArr[0].data_aggiornamento : '';
+      const cedi = cediArr.filter(r => r.data_aggiornamento === cediDate)
+                          .reduce((s, r) => s + (Number(r.valore_ridistribuito) || 0), 0);
+      if (cedi) {
+        const b = Number(corso.budget_eur) || 0;
+        corso.cedi = cedi;
+        corso.fatturato = (Number(corso.fatturato) || 0) + cedi;
+        corso.fatturato_con_ordinato = (Number(corso.fatturato_con_ordinato) || 0) + cedi;
+        corso.delta_eur = corso.fatturato - b;
+        corso.pct_raggiunto    = b > 0 ? Math.round(corso.fatturato / b * 1000) / 10 : null;
+        corso.pct_con_ordinato = b > 0 ? Math.round(corso.fatturato_con_ordinato / b * 1000) / 10 : null;
+      }
+    }
     _renderBudgetRaggiunto(root, data);
   } catch (err) {
     root.innerHTML = `<p style="color:var(--red);padding:1rem">Errore: ${err.message}</p>`;
@@ -411,7 +437,8 @@ function _renderBudgetRaggiunto(root, rows) {
     const corso  = r.stato === 'in_corso';
     const fatt = futuro ? '—'
       : _eur(r.fatturato) + (corso
-          ? `<span class="br-sub">con ordinato ${_eur(r.fatturato_con_ordinato)}</span>` : '');
+          ? (r.cedi ? `<span class="br-sub" style="color:#2D7D4F">incl. CEDI ${_eur(r.cedi)}</span>` : '')
+            + `<span class="br-sub">con ordinato ${_eur(r.fatturato_con_ordinato)}</span>` : '');
     const pctHtml = futuro ? '—'
       : _brCell(r.pct_raggiunto) + (corso
           ? `<span class="br-sub">con ordinato ${_brPct(r.pct_con_ordinato)}</span>` : '');
@@ -447,7 +474,7 @@ function _renderBudgetRaggiunto(root, rows) {
           <td class="br-col-delta">${_brDelta(fattAnno - budgetAnno)}</td>
         </tr></tfoot>
       </table>
-      <p class="b-hint"><span>Mesi chiusi: GTO del Rolling · mese in corso: consegnato (in piccolo con l'ordinato)</span></p>
+      <p class="b-hint"><span>Mesi chiusi: GTO del Rolling · mese in corso: consegnato + CEDI (in piccolo con l'ordinato)</span></p>
     </div>`;
 }
 
