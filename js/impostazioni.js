@@ -34,6 +34,49 @@ function salvaGithubToken() {
   if (status) status.textContent = val ? '✓ Salvato' : '— Rimosso';
 }
 
+// ── Impostazioni → Soglia ordinato oltre mese ────────────────────────────────
+// Ordini con consegna prevista entro l'N-esimo giorno lavorativo del mese
+// successivo contano nel fatturato stimato del mese corrente (migration 013).
+
+const OLTRE_MESE_CHIAVE = 'oltre_mese_soglia_gg_lavorativi';
+
+async function _renderOltreMeseSection() {
+  const root = document.getElementById('cfg-oltre-mese-root');
+  if (!root) return;
+  let soglia = 2;
+  try {
+    const { data } = await sb.from('impostazioni_app').select('valore').eq('chiave', OLTRE_MESE_CHIAVE).maybeSingle();
+    if (data?.valore != null) soglia = Number(data.valore);
+  } catch (e) { console.error('Errore lettura soglia oltre mese:', e); }
+  root.innerHTML = `
+    <p class="b-sec" style="margin-top:0">fatturato stimato — ordinato oltre mese</p>
+    <div class="b-panel" style="padding:1rem 1.25rem;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:220px">
+        <label for="cfg-oltre-soglia" style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.06em">
+          Conta nel mese le consegne fino al giorno lavorativo n° del mese dopo
+        </label>
+        <input type="number" id="cfg-oltre-soglia" class="filter-input" min="0" max="10" step="1" style="width:100px" value="${soglia}">
+        <span style="font-size:12px;color:var(--text2)">0 = non includere l'oltre mese. Dai dati storici: 1°-2° giorno quasi sempre fatturato nel mese, 3° circa metà, dal 4° quasi mai.</span>
+      </div>
+      <button class="btn-nuova-stat" onclick="salvaSogliaOltreMese()" style="flex-shrink:0">Salva soglia</button>
+      <span id="cfg-oltre-status" style="font-size:13px;color:var(--text2);align-self:center"></span>
+    </div>`;
+}
+
+async function salvaSogliaOltreMese() {
+  const status = document.getElementById('cfg-oltre-status');
+  const val = parseInt(document.getElementById('cfg-oltre-soglia')?.value, 10);
+  if (!Number.isInteger(val) || val < 0 || val > 10) {
+    if (status) status.textContent = 'Valore tra 0 e 10';
+    return;
+  }
+  const { error } = await sb.from('impostazioni_app').upsert(
+    { chiave: OLTRE_MESE_CHIAVE, valore: val, updated_at: new Date().toISOString() },
+    { onConflict: 'chiave' }
+  );
+  if (status) status.textContent = error ? 'Errore: ' + error.message : '✓ Salvato';
+}
+
 // ── Impostazioni → Gestione clienti ──────────────────────────────────────────
 
 let _cfgRows      = [];
@@ -53,6 +96,7 @@ async function _loadLookups() {
 
 async function loadImpostazioni() {
   _renderTokenSection();
+  _renderOltreMeseSection();
   loadGammaConfig();
   const root = document.getElementById('cfg-clienti-root');
   if (!root) return;

@@ -96,7 +96,7 @@ async function loadDashboard() {
     const endMese   = _ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     const today     = _ymd(now);
 
-    const [rows, rollingDate, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }, fatturatoOggi] = await Promise.all([
+    const [rows, rollingDate, { data: ordiniData }, { data: ddtData }, { data: cediData }, { data: budgetArr }, fatturatoOggi, { data: oltreArr }] = await Promise.all([
       loadRollingEnriched(),
       getLatestRollingDate(),
       sb.from('ordini').select('totale_ordine, data_ordine')
@@ -115,6 +115,10 @@ async function loadDashboard() {
         .order('data_aggiornamento', { ascending: false })
         .limit(1),
       computeFatturatoOggi(today),
+      // Stima della parte di "ordinato oltre mese" che verrà spedita e fatturata
+      // nel mese corrente (consegne entro la soglia di giorni lavorativi, migration 013)
+      sb.from('v_oltre_mese_stimato').select('*').limit(1)
+        .then(r => r, () => ({ data: null })),
     ]);
 
     // KPI aggregati
@@ -155,6 +159,15 @@ async function loadDashboard() {
     const latestCedi  = allCedi.filter(r => r.data_aggiornamento === cediDate);
     const totCEDI     = latestCedi.reduce((s, r) => s + (r.valore_ridistribuito || 0), 0);
     const totOrdinato  = totMese26 + totCEDI;
+    // Stimato: ufficiale + quota di oltre mese con consegna entro la soglia.
+    // Solo se la stima si riferisce allo stesso PDF usato per il dato ufficiale.
+    const oltre        = oltreArr?.[0] || null;
+    const oltreNelMese = (oltre && budget?.evaso_ordinato_resi != null
+                          && oltre.data_aggiornamento === budget.data_aggiornamento)
+      ? Number(oltre.oltre_mese_nel_mese) || 0 : 0;
+    const totOrdinatoStimato = totOrdinato + oltreNelMese;
+    const budgetStimatoPct   = budget?.budget_mese > 0 ? (totOrdinatoStimato / budget.budget_mese) * 100 : null;
+    const oltreSogliaLabel   = oltre?.data_soglia ? fmtDate(oltre.data_soglia) : '';
     const budgetPct    = budget?.budget_mese > 0 ? (budget.evaso / budget.budget_mese) * 100 : null;
     const budgetColor  = budgetPct == null ? 'var(--text2)' : budgetPct >= 100 ? 'var(--green)' : budgetPct >= 80 ? '#378ADD' : budgetPct >= 40 ? '#D97706' : 'var(--red)';
 
@@ -176,6 +189,8 @@ async function loadDashboard() {
             <h3>Ordinato del mese</h3>
             <div class="kpi-value">€${fmt(totOrdinato)}</div>
             ${totCEDI > 0 ? `<div class="kpi-sub">di cui CEDI: €${fmt(totCEDI)}${cediDate ? ' · ' + fmtDate(cediDate) : ''}</div>` : ''}
+            ${oltreNelMese > 0 ? `<div class="kpi-sub" title="Dato ufficiale PDF + parte dell'ordinato oltre mese (€${fmt(oltre.oltre_mese_pdf)}) con consegna entro il ${oltreSogliaLabel}: di solito spedita e fatturata nel mese. Soglia modificabile in Impostazioni.">Stimato con oltre mese: <strong>€${fmt(totOrdinatoStimato)}</strong>${budgetStimatoPct != null ? ` · ${budgetStimatoPct.toFixed(1)}% budget` : ''}</div>
+            <div class="kpi-sub">+€${fmt(oltreNelMese)} consegne entro ${oltreSogliaLabel}</div>` : ''}
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
               ${varOrdinatoPct != null ? `<span class="badge" style="background:#EFF6FF;color:#1A56DB;">${varOrdinatoPct >= 0 ? '+' : ''}${varOrdinatoPct.toFixed(1)}% vs ${annoP}</span>` : ''}
               ${budgetOrdinatoPct != null ? `<span class="badge" style="background:#FFF7ED;color:#D97706;">${budgetOrdinatoPct.toFixed(1)}% budget</span>` : ''}
